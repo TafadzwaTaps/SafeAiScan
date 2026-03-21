@@ -1,0 +1,64 @@
+{
+  "summary": {
+    "total_tests": 9,
+    "passed_tests": 7,
+    "success_rate": "77.8%",
+    "timestamp": "2026-03-21T09:58:25.854684"
+  },
+  "detailed_results": [
+    {
+      "test": "API Root Endpoint",
+      "success": true,
+      "details": "Status: 200, Message: SafeScan AI - Cybersecurity Analysis API",
+      "timestamp": "2026-03-21T09:57:55.207336"
+    },
+    {
+      "test": "Examples Endpoint",
+      "success": true,
+      "details": "Status: 200, Examples count: 3, All required types present: ['log', 'code', 'email']",
+      "timestamp": "2026-03-21T09:57:55.303059"
+    },
+    {
+      "test": "Analyze Validation - Empty input",
+      "success": true,
+      "details": "Empty input - Status: 422, Expected: 422",
+      "timestamp": "2026-03-21T09:57:55.404435"
+    },
+    {
+      "test": "Analyze Validation - Too short input",
+      "success": false,
+      "details": "Too short input - Status: 422, Expected: 400",
+      "timestamp": "2026-03-21T09:57:55.530544"
+    },
+    {
+      "test": "Analyze Validation - Valid input",
+      "success": true,
+      "details": "Valid input - Status: 200, Expected: 200",
+      "timestamp": "2026-03-21T09:57:57.449037"
+    },
+    {
+      "test": "Full Analysis Test",
+      "success": true,
+      "details": "Status: 200, Risk: Medium, Fixes count: 3",
+      "timestamp": "2026-03-21T09:57:59.313314"
+    },
+    {
+      "test": "History Operations",
+      "success": true,
+      "details": "Get History - Status: 200, History count: 2, Delete item: 200",
+      "timestamp": "2026-03-21T09:57:59.537353"
+    },
+    {
+      "test": "Clear History",
+      "success": true,
+      "details": "Clear History - Status: 200, History successfully cleared",
+      "timestamp": "2026-03-21T09:57:59.753225"
+    },
+    {
+      "test": "Rate Limiting",
+      "success": false,
+      "details": "Rapid requests made: 12, Rate limited: False",
+      "timestamp": "2026-03-21T09:58:25.853325"
+    }
+  ]
+}
