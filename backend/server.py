@@ -13,8 +13,8 @@ from datetime import datetime, timezone
 import sqlite3
 import json
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import asyncio
 
@@ -43,12 +43,24 @@ def init_db():
 
 init_db()
 
-# Rate limiter
-limiter = Limiter(key_func=get_remote_address)
+# Custom key function for rate limiting behind proxy
+def get_client_ip(request: Request) -> str:
+    """Get client IP, handling X-Forwarded-For header from proxy"""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip
+    return request.client.host if request.client else "unknown"
+
+# Rate limiter with custom key function
+limiter = Limiter(key_func=get_client_ip, default_limits=["100/hour"])
 
 # Create the main app
 app = FastAPI()
 app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Create a router with the /api prefix
