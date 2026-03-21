@@ -1,0 +1,130 @@
+{
+  "design_philosophy": {
+    "theme": "The Interrogator Terminal (Retro-Futuristic Tactical Minimalism)",
+    "description": "A brutalist, high-contrast, cybersecurity command center. It rejects standard SaaS aesthetics in favor of sharp edges, deep blacks, and phosphor glows. The interface should feel like a secure vault terminal where data is ruthlessly analyzed.",
+    "core_principles": [
+      "No Curves: Absolute 0px border-radius everywhere. Sharp, aggressive functionality.",
+      "Terminal Vibes: Monospace dominance, explicit grid lines, and high-contrast glowing accents.",
+      "Data First: Generous padding for containers, but dense typography for logs and analysis text."
+    ]
+  },
+  "typography": {
+    "fonts": {
+      "headings_and_labels": {
+        "family": "'JetBrains Mono', 'Space Mono', monospace",
+        "usage": "Headers, buttons, risk badges, form labels, small metadata",
+        "import_url": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap"
+      },
+      "body": {
+        "family": "'IBM Plex Sans', sans-serif",
+        "usage": "Long explanation text, history descriptions, suggested fixes",
+        "import_url": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&display=swap"
+      }
+    },
+    "rules": [
+      "Headings must use tight tracking (letter-spacing: -0.02em).",
+      "Labels must be UPPERCASE with wide tracking (letter-spacing: 0.1em) and smaller font size.",
+      "Line height for body text must be loose (1.6) for readability of dense technical analysis."
+    ]
+  },
+  "colors": {
+    "background": {
+      "base": "#050505",
+      "surface": "#0C0C0C",
+      "surface_hover": "#141414"
+    },
+    "border": {
+      "default": "#1F2937",
+      "active": "#00FFAA",
+      "muted": "#111827"
+    },
+    "text": {
+      "primary": "#F8FAFC",
+      "secondary": "#94A3B8",
+      "muted": "#475569",
+      "inverse": "#050505"
+    },
+    "accents": {
+      "primary": "#00FFAA",
+      "risk_low": "#00FFAA",
+      "risk_medium": "#FFCC00",
+      "risk_high": "#FF3366"
+    }
+  },
+  "visual_enhancers": {
+    "scanlines": "Add a pseudo-element overlay with a repeating linear gradient of transparent and rgba(0,0,0,0.2) to give a subtle CRT monitor feel.",
+    "grid_borders": "Containers and sections should have 1px solid borders (#1F2937). Use a border-collapse style layout where adjacent sections share a single border.",
+    "glow_effects": "Focus states and high-risk alerts should have a subtle box-shadow glow (e.g., box-shadow: 0 0 12px rgba(0, 255, 170, 0.2))."
+  },
+  "layout_and_spacing": {
+    "framework": "Bootstrap 5 (Customized)",
+    "structure": [
+      "Use 'container-fluid vh-100 p-0' for the main wrapper.",
+      "Left Sidebar (History): 'col-lg-3 col-md-4 border-end border-dark'. Fixed height, independent scroll.",
+      "Right Main Content: 'col-lg-9 col-md-8 d-flex flex-column'.",
+      "Inside Main Content: Top half (Input form) and Bottom half (Analysis Results). Or split into 'row' with two columns if preferred."
+    ],
+    "spacing_rules": [
+      "Override standard Bootstrap padding. Use 'p-4' or 'p-5' for major section padding.",
+      "Containers with borders must have internal padding.",
+      "Use 'gap-3' or 'gap-4' in flex containers."
+    ]
+  },
+  "components": {
+    "input_area": {
+      "style": "Massive borderless-looking textarea inside a bordered wrapper. Background #0C0C0C. Font JetBrains Mono. Focus state highlights the wrapper border with #00FFAA.",
+      "custom_scrollbar": "Scrollbar track #050505, thumb #1F2937, hover thumb #00FFAA. No rounded corners."
+    },
+    "buttons": {
+      "base": "btn-terminal: 0px border-radius, 1px solid, transparent background. Text uppercase JetBrains Mono.",
+      "primary": "Border #00FFAA, Text #00FFAA. Hover: Background #00FFAA, Text #050505, box-shadow glow.",
+      "secondary": "Border #475569, Text #94A3B8. Hover: Border #F8FAFC, Text #F8FAFC."
+    },
+    "risk_badges": {
+      "style": "Square badges, no border-radius. Padding 4px 8px. Uppercase. Border 1px solid matching the risk color. Text matching the risk color. Background transparent or 10% opacity of risk color."
+    },
+    "loading_indicator": {
+      "style": "ASCII style loader. Example: '[ ||||||.... ] Analyzing Payload...' or a pulsing sharp rectangle. DO NOT use standard Bootstrap rounded spinners."
+    },
+    "explanation_panel": {
+      "style": "Background #0C0C0C. 1px border. Left-aligned text. IBM Plex Sans for body. List of suggested fixes should have a border-bottom on each item for clear separation."
+    }
+  },
+  "motion": {
+    "transitions": "Use specific transitions: 'transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease'. NEVER use 'transition: all'.",
+    "hover_states": "All interactive elements must change state on hover. Buttons invert. List items get a lighter background (#141414).",
+    "focus_states": "Visible 2px solid outline or box-shadow with the primary accent color."
+  },
+  "accessibility": {
+    "contrast": "Ensure minimum 4.5:1 contrast for normal text and 3:1 for large text. Use text-shadow if placed over busy backgrounds.",
+    "focus": "Do not remove focus rings. Customize them to fit the terminal theme (#00FFAA).",
+    "aria": "Include aria-labels on the textarea and buttons."
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: The frontend MUST be written in standard HTML, CSS, and Bootstrap 5 ONLY. NO React. NO Shadcn/UI.",
+    "Include Bootstrap 5 via CDN in the HTML <head>.",
+    "Include Google Fonts 'JetBrains Mono' and 'IBM Plex Sans' via CDN.",
+    "Create a 'style.css' file to override Bootstrap defaults heavily.",
+    "In 'style.css', use the universal selector '*' to force 'border-radius: 0 !important;' globally.",
+    "Do NOT center align the app container. Preserve natural left-aligned reading flow.",
+    "Implement the 'btn-terminal' class in CSS for the custom button styles.",
+    "Implement custom scrollbars using '::-webkit-scrollbar' pseudo-elements in CSS.",
+    "Build the interaction logic (fetching analysis, adding to history, copy to clipboard) using Vanilla JavaScript (ES6+).",
+    "Use Phosphor Icons or Heroicons (via SVG or CDN) for visual adornments. NO Emojis.",
+    "Add 'data-testid' attributes to all interactive elements (buttons, inputs, risk badges, copy buttons) for automated testing."
+  ],
+  "universal_guidelines_for_main_agent": [
+    "You tend to converge toward generic, 'on distribution' outputs. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy and crisp 1px borders.",
+    "You MUST NOT apply universal transition. Eg: 'transition: all'. Always add transitions for specific interactive elements like button, input excluding transforms.",
+    "You MUST NOT center align the app container. This disrupts the human natural reading flow of text.",
+    "Always use modern button styles (for this design: sharp rectangular) with interaction animations & color relevant to the app style.",
+    "NEVER use AI assistant Emoji characters for icons.",
+    "Every interaction needs micro-animations - hover states, transitions. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, custom cursors, selection states, and loading animations separate good from extraordinary.",
+    "All interactive and key informational elements MUST include a 'data-testid' attribute to facilitate robust automated testing."
+  ]
+}
