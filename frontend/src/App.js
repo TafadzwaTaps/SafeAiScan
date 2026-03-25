@@ -27,7 +27,6 @@ function App() {
 
   // Load examples and history on mount
   useEffect(() => {
-    loadExamples();
     loadHistory();
   }, []);
 
@@ -112,7 +111,10 @@ function App() {
     const data = await response.json();
 
     // 🔥 Parse AI response
-    const parsed = JSON.parse(data.result);
+   const parsed =
+  typeof data.result === "string"
+    ? JSON.parse(data.result)
+    : data.result;
 
     const newResult = {
       ...parsed,

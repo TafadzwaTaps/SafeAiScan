@@ -44,7 +44,18 @@ Keep it short.`
 
     const data = await response.json();
 
-    const result = data.choices?.[0]?.message?.content || "No response";
+    let result = data.choices?.[0]?.message?.content || "{}";
+
+// 🛡️ Ensure valid JSON
+try {
+  result = JSON.parse(result);
+} catch {
+  result = {
+    risk: "unknown",
+    explanation: result,
+    fixes: []
+  };
+}
 
     return res.status(200).json({ result });
 
