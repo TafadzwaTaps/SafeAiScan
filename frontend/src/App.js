@@ -178,22 +178,22 @@ const deleteHistoryItem = async (id) => {
 };
 
  const clearHistory = async () => {
+  if (!window.confirm("Clear all analysis history?")) return;
+
   await supabase.from("analyses").delete().neq("id", "0");
   setHistory([]);
+  setResult(null);
 };
 
   const showHistoryItem = (item) => {
-    setResult({
-      id: item.id,
-      risk: item.risk,
-      explanation: item.explanation,
-      fixes: item.fixes,
-      timestamp: item.created_at
-    });
-    if (window.innerWidth < 992) {
-      setSidebarOpen(false);
-    }
-  };
+  setResult({
+    id: item.id,
+    risk: item.risk,
+    explanation: item.explanation,
+    fixes: item.fixes,
+    timestamp: item.created_at
+  });
+};
 
   const showToast = (message) => {
     setToast({ show: true, message });
