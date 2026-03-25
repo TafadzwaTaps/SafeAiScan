@@ -50,7 +50,7 @@ function App() {
 
   const loadExamples = async () => {
     try {
-      const response = await fetch(`${API}/examples`);
+      const response = await fetch("/api/examples");
       if (response.ok) {
         const data = await response.json();
         setExamples(data.examples || []);
@@ -100,7 +100,7 @@ function App() {
   setIsLoading(true);
 
   try {
-    const response = await fetch(`${API}/analyze`, {
+    const response = await fetch(`${API}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
