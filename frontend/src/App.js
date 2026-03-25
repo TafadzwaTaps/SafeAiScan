@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import "./App.css";
 import { supabase } from "./supabaseClient";
 
-const API = "/api";
+const API = "/api/analyze";
 
 function App() {
   // State
@@ -105,7 +105,7 @@ function App() {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text: inputText })
     });
 
     const data = await response.json();
