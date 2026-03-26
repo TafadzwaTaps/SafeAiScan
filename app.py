@@ -1,12 +1,11 @@
-# server.py
-
+# app.py
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List
 import os, json, uuid, sqlite3, logging
 from datetime import datetime, timezone
-from openai import OpenAI
+import httpx
 
 # ------------------------
 # CONFIG
@@ -17,9 +16,8 @@ EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 if not EMERGENT_LLM_KEY:
     raise RuntimeError("EMERGENT_LLM_KEY not set in environment variables")
 
-# Use the same OpenAI client interface with the Emergent key
-from openai import OpenAI
-client = OpenAI(api_key=EMERGENT_LLM_KEY)
+# Emergent HTTP API endpoint
+EMERGENT_API_URL = "https://api.emergent.so/v1/completions"  # Confirm from Emergent docs
 
 # ------------------------
 # DATABASE
@@ -63,7 +61,7 @@ app = FastAPI(title="SafeScan AI API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # allow frontend access
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
@@ -73,55 +71,73 @@ app.add_middleware(
 # AI ANALYSIS FUNCTION
 # ------------------------
 async def analyze_with_ai(text: str) -> dict:
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are a cybersecurity expert.
-
+    """
+    Analyze text using Emergent LLM via HTTP API.
+    Returns dict with 'risk', 'explanation', 'fixes'
+    """
+    prompt = f"""You are a cybersecurity expert.
 Return ONLY valid JSON:
-{
+{{
   "risk": "Low | Medium | High",
   "explanation": "",
   "fixes": []
-}
+}}
+Keep it short.
 
-Keep it short."""
-                },
-                {
-                    "role": "user",
-                    "content": text[:4000]
-                }
-            ],
-            temperature=0.2,
-            max_tokens=150
-        )
+User input:
+{text[:4000]}
+"""
+    headers = {
+        "Authorization": f"Bearer {EMERGENT_LLM_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "gpt-4o-mini",
+        "prompt": prompt,
+        "max_tokens": 150,
+        "temperature": 0.2
+    }
 
-        content = response.choices[0].message.content.strip()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(EMERGENT_API_URL, headers=headers, json=data)
+            response.raise_for_status()
+            resp_json = response.json()
 
-        # Clean JSON (handle ```json blocks)
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        content = content.strip()
+            # Extract generated text
+            content = resp_json.get("choices", [{}])[0].get("text", "")
+            # Clean JSON blocks
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            content = content.strip()
 
-        result = json.loads(content)
+            try:
+                result = json.loads(content)
+            except json.JSONDecodeError:
+                logging.warning("Emergent returned invalid JSON, using fallback")
+                result = {"risk": "Medium", "explanation": content, "fixes": ["Check input"]}
 
+            return {
+                "risk": result.get("risk", "Medium"),
+                "explanation": result.get("explanation", ""),
+                "fixes": result.get("fixes", [])
+            }
+
+    except httpx.HTTPStatusError as e:
+        logging.error(f"Emergent API HTTP error: {e}")
         return {
-            "risk": result.get("risk", "Medium"),
-            "explanation": result.get("explanation", ""),
-            "fixes": result.get("fixes", [])
+            "risk": "Medium",
+            "explanation": f"HTTP error: {e.response.text}",
+            "fixes": ["Retry analysis"]
         }
-
     except Exception as e:
-        logging.error(f"AI error: {e}")
+        logging.error(f"Emergent API error: {e}")
         return {
             "risk": "Medium",
             "explanation": str(e),
-            "fixes": ["Retry analysis", "Check input format"]
+            "fixes": ["Retry analysis"]
         }
 
 # ------------------------
@@ -134,7 +150,6 @@ async def root():
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(body: AnalyzeRequest):
     text = body.text.strip()
-
     if len(text) < 10:
         raise HTTPException(status_code=400, detail="Input too short")
 
