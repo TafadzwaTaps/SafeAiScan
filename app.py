@@ -13,11 +13,13 @@ from openai import OpenAI
 # ------------------------
 DB_PATH = "security_analysis.db"
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY not set in environment variables")
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
+if not EMERGENT_LLM_KEY:
+    raise RuntimeError("EMERGENT_LLM_KEY not set in environment variables")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Use the same OpenAI client interface with the Emergent key
+from openai import OpenAI
+client = OpenAI(api_key=EMERGENT_LLM_KEY)
 
 # ------------------------
 # DATABASE
