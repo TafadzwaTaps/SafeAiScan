@@ -220,3 +220,5 @@ async def clear_history():
     conn.commit()
     conn.close()
     return {"message": "History cleared"}
+
+    #solution for the above code is to create a .env file in the root directory of the project and add the following line:
