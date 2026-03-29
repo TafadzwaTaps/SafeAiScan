@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from typing import List
 import os, json, uuid, sqlite3, logging
 from datetime import datetime, timezone
-from openai import OpenAI
+import requests
 
 # ------------------------
 # CONFIG
@@ -16,12 +16,6 @@ DB_PATH = "security_analysis.db"
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 if not EMERGENT_LLM_KEY:
     raise RuntimeError("EMERGENT_LLM_KEY not set in environment variables")
-
-# ✅ Correct Emergent endpoint (OpenAI-compatible)
-client = OpenAI(
-    api_key=EMERGENT_LLM_KEY,
-    base_url="https://api.emergent.run/v1"
-)
 
 # ------------------------
 # DATABASE
@@ -75,35 +69,49 @@ app.add_middleware(
 # AI ANALYSIS FUNCTION
 # ------------------------
 async def analyze_with_ai(text: str) -> dict:
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+
+    if not api_key:
+        return {
+            "risk": "Medium",
+            "explanation": "Missing EMERGENT_LLM_KEY",
+            "fixes": ["Set secret in Hugging Face"]
+        }
+
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """You are a cybersecurity expert.
+        response = requests.post(
+            "https://api.emergent.run/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": """You are a cybersecurity expert.
 
-Return ONLY valid JSON:
-{
-  "risk": "Low | Medium | High",
-  "explanation": "",
-  "fixes": []
-}
-
-Keep it short."""
-                },
-                {
-                    "role": "user",
-                    "content": text[:4000]
-                }
-            ],
-            temperature=0.2,
-            max_tokens=150
+Return ONLY JSON:
+{"risk":"Low|Medium|High","explanation":"","fixes":[]}
+"""
+                    },
+                    {
+                        "role": "user",
+                        "content": text[:4000]
+                    }
+                ],
+                "temperature": 0.2,
+                "max_tokens": 150
+            },
+            timeout=30
         )
 
-        content = response.choices[0].message.content.strip()
+        data = response.json()
 
-        # Clean markdown JSON blocks
+        content = data["choices"][0]["message"]["content"].strip()
+
+        # Clean markdown
         if content.startswith("```"):
             content = content.split("```")[1]
             if content.startswith("json"):
@@ -111,26 +119,24 @@ Keep it short."""
         content = content.strip()
 
         try:
-            result = json.loads(content)
-        except json.JSONDecodeError:
-            logging.warning("Invalid JSON from model, using fallback")
-            result = {
+            parsed = json.loads(content)
+        except:
+            parsed = {
                 "risk": "Medium",
                 "explanation": content,
                 "fixes": ["Check input"]
             }
 
         return {
-            "risk": result.get("risk", "Medium"),
-            "explanation": result.get("explanation", ""),
-            "fixes": result.get("fixes", [])
+            "risk": parsed.get("risk", "Medium"),
+            "explanation": parsed.get("explanation", ""),
+            "fixes": parsed.get("fixes", [])
         }
 
     except Exception as e:
-        logging.error(f"AI error: {e}")
         return {
             "risk": "Medium",
-            "explanation": str(e),
+            "explanation": f"Connection error: {str(e)}",
             "fixes": ["Retry analysis"]
         }
 
