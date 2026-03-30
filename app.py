@@ -68,21 +68,14 @@ app.add_middleware(
 # ------------------------
 # AI ANALYSIS FUNCTION
 # ------------------------
+
+
 async def analyze_with_ai(text: str) -> dict:
-    api_key = os.getenv("EMERGENT_LLM_KEY")
-
-    if not api_key:
-        return {
-            "risk": "Medium",
-            "explanation": "Missing EMERGENT_LLM_KEY",
-            "fixes": ["Set secret in Hugging Face"]
-        }
-
     try:
         response = requests.post(
             "https://api.emergent.run/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {EMERGENT_LLM_KEY}",
                 "Content-Type": "application/json"
             },
             json={
@@ -92,8 +85,12 @@ async def analyze_with_ai(text: str) -> dict:
                         "role": "system",
                         "content": """You are a cybersecurity expert.
 
-Return ONLY JSON:
-{"risk":"Low|Medium|High","explanation":"","fixes":[]}
+Return ONLY valid JSON:
+{
+  "risk": "Low | Medium | High",
+  "explanation": "",
+  "fixes": []
+}
 """
                     },
                     {
@@ -119,25 +116,22 @@ Return ONLY JSON:
         content = content.strip()
 
         try:
-            parsed = json.loads(content)
+            result = json.loads(content)
         except:
-            parsed = {
+            result = {
                 "risk": "Medium",
                 "explanation": content,
                 "fixes": ["Check input"]
             }
 
-        return {
-            "risk": parsed.get("risk", "Medium"),
-            "explanation": parsed.get("explanation", ""),
-            "fixes": parsed.get("fixes", [])
-        }
+        return result
 
     except Exception as e:
+        logging.error(f"EMERGENT ERROR: {repr(e)}")
         return {
             "risk": "Medium",
-            "explanation": f"Connection error: {str(e)}",
-            "fixes": ["Retry analysis"]
+            "explanation": f"Connection failed: {str(e)}",
+            "fixes": ["Check API key", "Check Emergent balance", "Retry"]
         }
 
 # ------------------------
