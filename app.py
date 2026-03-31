@@ -8,6 +8,9 @@ import os, json, uuid, sqlite3, logging
 from datetime import datetime, timezone
 import httpx
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ------------------------
 # CONFIG
@@ -103,6 +106,7 @@ Return ONLY valid JSON:
                 "max_tokens": 150
             },
             timeout=30
+            verify=False   # 🔥 ADD THIS
         )
 
         data = response.json()
