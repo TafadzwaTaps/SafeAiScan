@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from typing import List
 import os, json, uuid, sqlite3, logging
 from datetime import datetime, timezone
+import httpx
 import requests
 
 # ------------------------
@@ -214,5 +215,9 @@ async def clear_history():
     conn.commit()
     conn.close()
     return {"message": "History cleared"}
+
+@app.get("/debug")
+async def debug():
+    return {"status": "API is reachable"}
 
     #solution for the above code is to create a .env file in the root directory of the project and add the following line:
