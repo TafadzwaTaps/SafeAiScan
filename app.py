@@ -106,7 +106,7 @@ Return ONLY valid JSON:
                 "max_tokens": 150
             },
             timeout=30
-            verify=False   # 🔥 ADD THIS
+            verify=False
         )
 
         data = response.json()
