@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field
 from typing import List
 import os, json, uuid, sqlite3, logging
 from datetime import datetime, timezone
-import httpx
 import requests
 import urllib3
+import certifi
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -105,8 +105,8 @@ Return ONLY valid JSON:
                 "temperature": 0.2,
                 "max_tokens": 150
             },
-            timeout=30
-            verify=False
+            timeout=30,
+            verify=certifi.where()   # ✅ MUST BE HERE (inside request)
         )
 
         data = response.json()
