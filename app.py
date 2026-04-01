@@ -6,9 +6,7 @@ from pydantic import BaseModel, Field
 from typing import List
 import os, json, uuid, sqlite3, logging
 from datetime import datetime, timezone
-import requests
 import urllib3
-import certifi
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -17,9 +15,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ------------------------
 DB_PATH = "security_analysis.db"
 
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
-if not EMERGENT_LLM_KEY:
-    raise RuntimeError("EMERGENT_LLM_KEY not set in environment variables")
+import httpx
+
+HF_API_KEY = os.environ.get("HF_API_KEY")  # optional but recommended
 
 # ------------------------
 # DATABASE
@@ -76,67 +74,54 @@ app.add_middleware(
 
 async def analyze_with_ai(text: str) -> dict:
     try:
-        response = requests.post(
-            "https://api.emergent.run/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {EMERGENT_LLM_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": """You are a cybersecurity expert.
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api-inference.huggingface.co/models/google/flan-t5-large",
+                headers={
+                    "Authorization": f"Bearer {HF_API_KEY}" if HF_API_KEY else ""
+                },
+                json={
+                    "inputs": f"""
+You are a cybersecurity expert.
 
-Return ONLY valid JSON:
-{
+Analyze the following text for vulnerabilities.
+
+Return JSON:
+{{
   "risk": "Low | Medium | High",
   "explanation": "",
   "fixes": []
-}
+}}
+
+Text:
+{text[:2000]}
 """
-                    },
-                    {
-                        "role": "user",
-                        "content": text[:4000]
-                    }
-                ],
-                "temperature": 0.2,
-                "max_tokens": 150
-            },
-            timeout=30,
-            verify=False   # ✅ MUST BE HERE (inside request)
-        )
+                }
+            )
 
         data = response.json()
 
-        content = data["choices"][0]["message"]["content"].strip()
+        # Extract model text
+        output = data[0]["generated_text"] if isinstance(data, list) else str(data)
 
-        # Clean markdown
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        content = content.strip()
-
+        # Try parse JSON
         try:
-            result = json.loads(content)
+            result = json.loads(output)
         except:
             result = {
                 "risk": "Medium",
-                "explanation": content,
-                "fixes": ["Check input"]
+                "explanation": output,
+                "fixes": ["Manual review needed"]
             }
 
         return result
 
     except Exception as e:
-        logging.error(f"EMERGENT ERROR: {repr(e)}")
+        logging.error(f"HF ERROR: {repr(e)}")
         return {
             "risk": "Medium",
-            "explanation": f"Connection failed: {str(e)}",
-            "fixes": ["Check API key", "Check Emergent balance", "Retry"]
+            "explanation": f"HF failed: {str(e)}",
+            "fixes": ["Retry", "Check model availability"]
         }
 
 # ------------------------
