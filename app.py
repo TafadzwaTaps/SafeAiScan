@@ -1,123 +1,175 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import UploadFile, File
+from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi import Request
 from pydantic import BaseModel, Field
-from typing import List
-import os, json, uuid, sqlite3, logging, re
+from typing import List, Dict
+import git
+import os
+import os
+import re
+import json
+import uuid
+import sqlite3
+import logging
 from datetime import datetime, timezone
 import httpx
 
-# ------------------------
+templates = Jinja2Templates(directory="templates")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+USERS = {
+    "master": "Matrix123!"
+}
+
+
+# =========================================================
 # CONFIG
-# ------------------------
+# =========================================================
 DB_PATH = "security_analysis.db"
-HF_API_KEY = os.environ.get("HF_API_KEY")  # optional
-if not HF_API_KEY:
-    print("WARNING: HF_API_KEY not set — AI disabled")
 
-# ------------------------
-# DATABASE INIT
-# ------------------------
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS analysis_history (
-            id TEXT PRIMARY KEY,
-            input_text TEXT NOT NULL,
-            input_preview TEXT NOT NULL,
-            risk_level TEXT NOT NULL,
-            explanation TEXT NOT NULL,
-            fixes TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+HF_API_KEY = os.environ.get("HF_API_KEY")
 
-init_db()
+HF_MODEL_URL = "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta"
 
-# ------------------------
-# MODELS
-# ------------------------
-class AnalyzeRequest(BaseModel):
-    text: str = Field(..., min_length=10, max_length=50000)
-
-class AnalyzeResponse(BaseModel):
-    id: str
-    risk: str
-    explanation: str
-    fixes: List[str]
-    timestamp: str
-
-# ------------------------
-# FASTAPI APP
-# ------------------------
-app = FastAPI(title="SafeScan AI API (Free Engine)")
+# =========================================================
+# APP INIT
+# =========================================================
+app = FastAPI(title="SafeAIScan Enterprise Engine")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
-# ------------------------
-# RULE-BASED DETECTION
-# ------------------------
-def detect_vulnerabilities(text: str):
+# =========================================================
+# DATABASE
+# =========================================================
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS analysis_history (
+            id TEXT PRIMARY KEY,
+            input_text TEXT,
+            risk TEXT,
+            score REAL,
+            explanation TEXT,
+            fixes TEXT,
+            timestamp TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# =========================================================
+# REQUEST MODEL
+# =========================================================
+class AnalyzeRequest(BaseModel):
+    text: str = Field(..., min_length=5, max_length=20000)
+
+# =========================================================
+# SECURITY SIGNATURE ENGINE
+# =========================================================
+SIGNATURES = {
+    "SQL Injection": (r"(SELECT .* FROM .* WHERE .*['\"]?\s*\+|\bOR\b\s+1=1|DROP TABLE)", 9),
+    "XSS": (r"(<script>|javascript:|onerror=|onload=|alert\()", 8),
+    "Command Injection": (r"(;|\|\||&&)\s*(rm|ls|cat|whoami|bash|sh)", 10),
+    "Path Traversal": (r"(\.\./|\.\.\\)", 7),
+    "Hardcoded Secrets": (r"(api_key|password|secret|token)\s*=\s*['\"]", 8),
+    "Insecure Deserialization": (r"(pickle\.loads|yaml\.load\(|marshal\.loads)", 9),
+}
+
+def scan_vulnerabilities(text: str) -> List[Dict]:
     findings = []
 
-    patterns = {
-        "SQL Injection": r"(SELECT .* FROM .* WHERE .*['\"]?\s*\+|\bOR\b\s+1=1)",
-        "XSS": r"(<script>|javascript:|onerror=|onload=)",
-        "Command Injection": r"(;|\|\||&&)\s*(rm|ls|cat|whoami)",
-        "Hardcoded Secrets": r"(api_key|password|secret)\s*=\s*['\"]",
-        "Path Traversal": r"(\.\./|\.\.\\)",
-    }
-
-    for name, pattern in patterns.items():
+    for name, (pattern, weight) in SIGNATURES.items():
         if re.search(pattern, text, re.IGNORECASE):
-            findings.append(name)
+            findings.append({
+                "type": name,
+                "weight": weight
+            })
 
     return findings
 
-# ------------------------
-# AI + HYBRID ENGINE
-# ------------------------
-async def analyze_with_ai(text: str) -> dict:
-    findings = detect_vulnerabilities(text)
+# =========================================================
+# RISK ENGINE (CVSS STYLE)
+# =========================================================
+def calculate_risk(findings: List[Dict]) -> Dict:
+    if not findings:
+        return {
+            "risk": "Low",
+            "score": 0,
+            "level": "Safe"
+        }
 
-    ai_result = {
-        "risk": "Low",
-        "explanation": "",
-        "fixes": []
+    total = sum(f["weight"] for f in findings)
+    score = min(total, 10)
+
+    if total >= 18:
+        level = "Critical"
+    elif total >= 12:
+        level = "High"
+    elif total >= 6:
+        level = "Medium"
+    else:
+        level = "Low"
+
+    return {
+        "risk": level,
+        "score": score
     }
 
-    # ------------------------
-    # TRY AI (HF FREE MODEL)
-    # ------------------------
+# =========================================================
+# EXPLANATION BUILDER
+# =========================================================
+def build_explanation(findings: List[Dict]) -> str:
+    if not findings:
+        return "No vulnerabilities detected in static analysis."
+
+    return "Detected vulnerabilities: " + ", ".join([f["type"] for f in findings])
+
+# =========================================================
+# AI ENRICHMENT LAYER
+# =========================================================
+async def ai_enrich(text: str, findings: List[Dict]):
+
+    if not HF_API_KEY:
+        return {
+            "explanation": "AI disabled (missing HF_API_KEY)",
+            "fixes": ["Set HF_API_KEY in environment variables"]
+        }
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
-                "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta",
+                HF_MODEL_URL,
                 headers={
-                    "Authorization": f"Bearer {HF_API_KEY}" if HF_API_KEY else ""
+                    "Authorization": f"Bearer {HF_API_KEY}"
                 },
                 json={
                     "inputs": f"""
 You are a cybersecurity expert.
 
-Detected issues: {findings}
+Detected issues:
+{findings}
 
-Analyze the security risk and respond ONLY in JSON:
+Return ONLY JSON:
 {{
-  "risk": "Low | Medium | High",
   "explanation": "",
   "fixes": []
 }}
 
-Text:
+Input:
 {text[:2000]}
 """
                 }
@@ -125,128 +177,183 @@ Text:
 
         data = response.json()
 
-        output = data[0]["generated_text"] if isinstance(data, list) else str(data)
+        if isinstance(data, list):
+            output = data[0].get("generated_text", "")
+        else:
+            output = str(data)
 
         try:
-            ai_result = json.loads(output)
+            return json.loads(output)
         except:
-            ai_result = {
-                "risk": "Medium",
+            return {
                 "explanation": output,
-                "fixes": []
+                "fixes": ["Validate input", "Use secure coding practices"]
             }
 
     except Exception as e:
         logging.error(f"HF ERROR: {repr(e)}")
-        ai_result = {
-            "risk": "Medium",
-            "explanation": "AI unavailable, fallback used",
-            "fixes": []
+        return {
+            "explanation": "AI enrichment unavailable",
+            "fixes": ["Check HF API token or model availability"]
         }
 
-    # ------------------------
-    # FINAL DECISION ENGINE
-    # ------------------------
-    if findings:
-        risk = "High" if len(findings) > 1 else "Medium"
-        explanation = f"Detected vulnerabilities: {', '.join(findings)}. {ai_result.get('explanation','')}"
-        fixes = list(set(ai_result.get("fixes", []) + [
-            "Sanitize inputs",
-            "Use parameterized queries",
-            "Validate user input"
-        ]))
-    else:
-        risk = ai_result.get("risk", "Low")
-        explanation = ai_result.get("explanation", "No major issues detected")
-        fixes = ai_result.get("fixes", ["Follow secure coding practices"])
+# =========================================================
+# MAIN ENGINE
+# =========================================================
+async def analyze_engine(text: str):
+
+    findings = scan_vulnerabilities(text)
+    risk_data = calculate_risk(findings)
+    ai_data = await ai_enrich(text, findings)
 
     return {
-        "risk": risk,
-        "explanation": explanation,
-        "fixes": fixes
+        "risk": risk_data["risk"],
+        "score": risk_data["score"],
+        "findings": findings,
+        "explanation": build_explanation(findings) + ". " + ai_data.get("explanation", ""),
+        "fixes": ai_data.get("fixes", ["Sanitize inputs", "Validate input data"])
     }
 
-# ------------------------
-# ROUTES
-# ------------------------
+# =========================================================
+# API ENDPOINTS
+# =========================================================
 @app.get("/")
-async def root():
-    return {"message": "SafeScan AI API is running (Free Mode)"}
+def root():
+    return {"status": "SafeAIScan Enterprise Running"}
 
 @app.get("/debug")
-async def debug():
-    return {"status": "API is reachable"}
+def debug():
+    return {"ok": True}
 
-@app.post("/api/analyze", response_model=AnalyzeResponse)
-async def analyze(body: AnalyzeRequest):
-    text = body.text.strip()
+@app.post("/api/analyze")
+async def analyze(req: AnalyzeRequest):
 
-    if len(text) < 10:
-        raise HTTPException(status_code=400, detail="Input too short")
+    result = await analyze_engine(req.text)
 
-    result = await analyze_with_ai(text)
-
-    # Save to DB
     analysis_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
-    preview = text[:100] + "..." if len(text) > 100 else text
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO analysis_history 
-        (id, input_text, input_preview, risk_level, explanation, fixes, timestamp)
+
+    cursor.execute("""
+        INSERT INTO analysis_history
+        (id, input_text, risk, score, explanation, fixes, timestamp)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (
+    """, (
         analysis_id,
-        text,
-        preview,
+        req.text,
         result["risk"],
+        result["score"],
         result["explanation"],
         json.dumps(result["fixes"]),
         timestamp
     ))
+
     conn.commit()
     conn.close()
 
-    return AnalyzeResponse(
-        id=analysis_id,
-        risk=result["risk"],
-        explanation=result["explanation"],
-        fixes=result["fixes"],
-        timestamp=timestamp
-    )
+    return {
+        "id": analysis_id,
+        "risk": result["risk"],
+        "score": result["score"],
+        "findings": result["findings"],
+        "explanation": result["explanation"],
+        "fixes": result["fixes"],
+        "timestamp": timestamp
+    }
 
 @app.get("/api/history")
-async def history():
+def history():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, input_preview, risk_level, explanation, fixes, timestamp 
-        FROM analysis_history 
-        ORDER BY timestamp DESC 
+
+    cursor.execute("""
+        SELECT id, input_text, risk, score, explanation, fixes, timestamp
+        FROM analysis_history
+        ORDER BY timestamp DESC
         LIMIT 50
-    ''')
+    """)
+
     rows = cursor.fetchall()
     conn.close()
 
     return [
         {
             "id": r[0],
-            "input_preview": r[1],
-            "risk_level": r[2],
-            "explanation": r[3],
-            "fixes": json.loads(r[4]),
-            "timestamp": r[5]
+            "input": r[1],
+            "risk": r[2],
+            "score": r[3],
+            "explanation": r[4],
+            "fixes": json.loads(r[5]),
+            "timestamp": r[6]
         }
         for r in rows
     ]
 
 @app.delete("/api/history")
-async def clear_history():
+def clear_history():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM analysis_history")
     conn.commit()
     conn.close()
     return {"message": "History cleared"}
+
+@app.get("/api/cve")
+async def get_cve(query: str):
+
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={query}"
+
+    async with httpx.AsyncClient() as client:
+        res = await client.get(url)
+
+    return res.json()
+
+@app.post("/login")
+def login(username: str, password: str):
+    if USERS.get(username) != password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_token({"sub": username})
+    return {"access_token": token, "token_type": "bearer"}
+
+@app.post("/api/scan-file")
+async def scan_file(file: UploadFile = File(...), token: str = Depends(oauth2_scheme)):
+
+    content = await file.read()
+    text = content.decode(errors="ignore")
+
+    result = await analyze_engine(text)
+
+    return {
+        "filename": file.filename,
+        "result": result
+    }
+
+@app.post("/api/scan-repo")
+async def scan_repo(repo_url: str, token: str = Depends(oauth2_scheme)):
+
+    path = "/tmp/repo"
+    if os.path.exists(path):
+        os.system(f"rm -rf {path}")
+
+    git.Repo.clone_from(repo_url, path)
+
+    results = []
+
+    for root, _, files in os.walk(path):
+        for f in files:
+            if f.endswith((".py", ".js", ".java", ".txt")):
+                with open(os.path.join(root, f), "r", errors="ignore") as file:
+                    text = file.read()
+
+                result = await analyze_engine(text)
+
+                results.append({
+                    "file": f,
+                    "risk": result["risk"],
+                    "score": result["score"]
+                })
+
+    return {"results": results}

@@ -1,4 +1,10 @@
 fastapi
 uvicorn
-pydantic
 httpx
+pydantic
+python-jose
+passlib
+bcrypt
+python-multipart
+gitpython
+jinja2
