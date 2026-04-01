@@ -98,7 +98,7 @@ async def analyze_with_ai(text: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
-                "https://api-inference.huggingface.co/models/google/flan-t5-large",
+                "https://router.huggingface.co/hf-inference/models/google/flan-t5-large",
                 headers={
                     "Authorization": f"Bearer {HF_API_KEY}" if HF_API_KEY else ""
                 },
