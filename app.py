@@ -11,6 +11,8 @@ import httpx
 # ------------------------
 DB_PATH = "security_analysis.db"
 HF_API_KEY = os.environ.get("HF_API_KEY")  # optional
+if not HF_API_KEY:
+    print("WARNING: HF_API_KEY not set — AI disabled")
 
 # ------------------------
 # DATABASE INIT
@@ -98,7 +100,7 @@ async def analyze_with_ai(text: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
-                "https://router.huggingface.co/hf-inference/models/google/flan-t5-large",
+                "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta",
                 headers={
                     "Authorization": f"Bearer {HF_API_KEY}" if HF_API_KEY else ""
                 },
