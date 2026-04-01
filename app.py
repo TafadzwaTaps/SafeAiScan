@@ -1,26 +1,19 @@
-# app.py
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List
-import os, json, uuid, sqlite3, logging
+import os, json, uuid, sqlite3, logging, re
 from datetime import datetime, timezone
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import httpx
 
 # ------------------------
 # CONFIG
 # ------------------------
 DB_PATH = "security_analysis.db"
-
-import httpx
-
-HF_API_KEY = os.environ.get("HF_API_KEY")  # optional but recommended
+HF_API_KEY = os.environ.get("HF_API_KEY")  # optional
 
 # ------------------------
-# DATABASE
+# DATABASE INIT
 # ------------------------
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -55,9 +48,9 @@ class AnalyzeResponse(BaseModel):
     timestamp: str
 
 # ------------------------
-# APP
+# FASTAPI APP
 # ------------------------
-app = FastAPI(title="SafeScan AI API")
+app = FastAPI(title="SafeScan AI API (Free Engine)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,11 +61,40 @@ app.add_middleware(
 )
 
 # ------------------------
-# AI ANALYSIS FUNCTION
+# RULE-BASED DETECTION
 # ------------------------
+def detect_vulnerabilities(text: str):
+    findings = []
 
+    patterns = {
+        "SQL Injection": r"(SELECT .* FROM .* WHERE .*['\"]?\s*\+|\bOR\b\s+1=1)",
+        "XSS": r"(<script>|javascript:|onerror=|onload=)",
+        "Command Injection": r"(;|\|\||&&)\s*(rm|ls|cat|whoami)",
+        "Hardcoded Secrets": r"(api_key|password|secret)\s*=\s*['\"]",
+        "Path Traversal": r"(\.\./|\.\.\\)",
+    }
 
+    for name, pattern in patterns.items():
+        if re.search(pattern, text, re.IGNORECASE):
+            findings.append(name)
+
+    return findings
+
+# ------------------------
+# AI + HYBRID ENGINE
+# ------------------------
 async def analyze_with_ai(text: str) -> dict:
+    findings = detect_vulnerabilities(text)
+
+    ai_result = {
+        "risk": "Low",
+        "explanation": "",
+        "fixes": []
+    }
+
+    # ------------------------
+    # TRY AI (HF FREE MODEL)
+    # ------------------------
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
@@ -84,9 +106,9 @@ async def analyze_with_ai(text: str) -> dict:
                     "inputs": f"""
 You are a cybersecurity expert.
 
-Analyze the following text for vulnerabilities.
+Detected issues: {findings}
 
-Return JSON:
+Analyze the security risk and respond ONLY in JSON:
 {{
   "risk": "Low | Medium | High",
   "explanation": "",
@@ -101,35 +123,57 @@ Text:
 
         data = response.json()
 
-        # Extract model text
         output = data[0]["generated_text"] if isinstance(data, list) else str(data)
 
-        # Try parse JSON
         try:
-            result = json.loads(output)
+            ai_result = json.loads(output)
         except:
-            result = {
+            ai_result = {
                 "risk": "Medium",
                 "explanation": output,
-                "fixes": ["Manual review needed"]
+                "fixes": []
             }
-
-        return result
 
     except Exception as e:
         logging.error(f"HF ERROR: {repr(e)}")
-        return {
+        ai_result = {
             "risk": "Medium",
-            "explanation": f"HF failed: {str(e)}",
-            "fixes": ["Retry", "Check model availability"]
+            "explanation": "AI unavailable, fallback used",
+            "fixes": []
         }
+
+    # ------------------------
+    # FINAL DECISION ENGINE
+    # ------------------------
+    if findings:
+        risk = "High" if len(findings) > 1 else "Medium"
+        explanation = f"Detected vulnerabilities: {', '.join(findings)}. {ai_result.get('explanation','')}"
+        fixes = list(set(ai_result.get("fixes", []) + [
+            "Sanitize inputs",
+            "Use parameterized queries",
+            "Validate user input"
+        ]))
+    else:
+        risk = ai_result.get("risk", "Low")
+        explanation = ai_result.get("explanation", "No major issues detected")
+        fixes = ai_result.get("fixes", ["Follow secure coding practices"])
+
+    return {
+        "risk": risk,
+        "explanation": explanation,
+        "fixes": fixes
+    }
 
 # ------------------------
 # ROUTES
 # ------------------------
 @app.get("/")
 async def root():
-    return {"message": "SafeScan AI API is running"}
+    return {"message": "SafeScan AI API is running (Free Mode)"}
+
+@app.get("/debug")
+async def debug():
+    return {"status": "API is reachable"}
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(body: AnalyzeRequest):
@@ -204,9 +248,3 @@ async def clear_history():
     conn.commit()
     conn.close()
     return {"message": "History cleared"}
-
-@app.get("/debug")
-async def debug():
-    return {"status": "API is reachable"}
-
-    #solution for the above code is to create a .env file in the root directory of the project and add the following line:
