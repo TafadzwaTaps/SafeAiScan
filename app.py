@@ -106,7 +106,7 @@ Return ONLY valid JSON:
                 "max_tokens": 150
             },
             timeout=30,
-            verify=certifi.where()   # ✅ MUST BE HERE (inside request)
+            verify=False   # ✅ MUST BE HERE (inside request)
         )
 
         data = response.json()
