@@ -1,7 +1,7 @@
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 
-SECRET_KEY = "CHANGE_THIS_TO_RANDOM_SECRET"
+SECRET_KEY = "#SafeAiScan@2026"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
