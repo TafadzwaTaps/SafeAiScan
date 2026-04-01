@@ -193,9 +193,9 @@ Input:
     except Exception as e:
         logging.error(f"HF ERROR: {repr(e)}")
         return {
-            "explanation": "AI enrichment unavailable",
-            "fixes": ["Check HF API token or model availability"]
-        }
+              "explanation": "AI enrichment unavailable",
+              "fixes": ["Sanitize inputs", "Validate input", "Use secure coding practices"]
+              }
 
 # =========================================================
 # MAIN ENGINE
@@ -205,14 +205,22 @@ async def analyze_engine(text: str):
     findings = scan_vulnerabilities(text)
     risk_data = calculate_risk(findings)
     ai_data = await ai_enrich(text, findings)
+    
+    fixes = ai_data.get("fixes")
 
-    return {
-        "risk": risk_data["risk"],
-        "score": risk_data["score"],
-        "findings": findings,
-        "explanation": build_explanation(findings) + ". " + ai_data.get("explanation", ""),
-        "fixes": ai_data.get("fixes", ["Sanitize inputs", "Validate input data"])
-    }
+    if not isinstance(fixes, list):
+        fixes = ["Sanitize inputs", "Validate input data"]
+        
+        return {
+            "risk": risk_data["risk"],
+            "score": risk_data["score"],
+            "findings": findings,
+            "explanation": (
+                build_explanation(findings) + ". " + 
+                ai_data.get("explanation", "No additional insights")
+                ),
+                "fixes": fixes
+                }
 
 # =========================================================
 # API ENDPOINTS
@@ -327,8 +335,12 @@ async def scan_file(file: UploadFile = File(...), token: str = Depends(oauth2_sc
     result = await analyze_engine(text)
 
     return {
-        "filename": file.filename,
-        "result": result
+    "filename": file.filename,
+    "risk": result["risk"],
+    "score": result["score"],
+    "findings": result["findings"],
+    "explanation": result["explanation"],
+    "fixes": result["fixes"]
     }
 
 @app.post("/api/scan-repo")
