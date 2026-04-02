@@ -276,3 +276,6 @@ def history(user=Depends(get_current_user)):
 
     return rows
 
+@app.get("/")
+def root():
+    return {"status": "SafeAIScan Enterprise Running"}
