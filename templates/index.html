@@ -1,104 +1,118 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SafeAIScan Enterprise</title>
+<title>SafeAIScan Enterprise</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <style>
-        body {
-            background: #0d1117;
-            color: #e6edf3;
-        }
+<style>
+body { background: #0d1117; color: #e6edf3; }
+.light-mode { background: #f5f5f5; color: #111; }
 
-        .card {
-            background: #161b22;
-            border: 1px solid #30363d;
-        }
+.card { background: #161b22; border: 1px solid #30363d; }
+.light-mode .card { background: white; color: black; }
 
-        .risk-low { color: #2ecc71; font-weight: bold; }
-        .risk-medium { color: #f1c40f; font-weight: bold; }
-        .risk-high { color: #e74c3c; font-weight: bold; }
+.risk-low { color: #2ecc71; font-weight: bold; }
+.risk-medium { color: #f1c40f; font-weight: bold; }
+.risk-high { color: #e74c3c; font-weight: bold; }
 
-        textarea {
-            background: #0d1117 !important;
-            color: white !important;
-            border: 1px solid #30363d !important;
-        }
-
-        .loader {
-            border: 4px solid #30363d;
-            border-top: 4px solid #58a6ff;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: auto;
-        }
-
-        @keyframes spin {
-            100% { transform: rotate(360deg); }
-        }
-    </style>
+.loader {
+    border: 4px solid #30363d;
+    border-top: 4px solid #58a6ff;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: auto;
+}
+@keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
 </head>
 
 <body>
 
 <div class="container mt-4">
 
-    <h2 class="mb-4">🛡️ SafeAIScan Enterprise</h2>
+<h2>🛡️ SafeAIScan Enterprise</h2>
 
-    <!-- LOGIN -->
-    <div class="card p-3 mb-4">
-        <h5>🔐 Authentication</h5>
-        <input id="username" class="form-control mt-2" placeholder="Username">
-        <input id="password" type="password" class="form-control mt-2" placeholder="Password">
-        <button onclick="login()" class="btn btn-primary mt-3">Login</button>
-    </div>
+<button onclick="toggleTheme()" class="btn btn-secondary btn-sm float-end">🌗 Toggle Theme</button>
 
-    <!-- TABS -->
-    <ul class="nav nav-tabs">
-        <li class="nav-item">
-            <button class="nav-link active" onclick="showTab('text')">📝 Text Scan</button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" onclick="showTab('file')">📂 File Scan</button>
-        </li>
-    </ul>
+<!-- LOGIN -->
+<div class="card p-3 mb-4">
+    <h5>🔐 Authentication</h5>
+    <input id="username" class="form-control mt-2" placeholder="Username">
+    <input id="password" type="password" class="form-control mt-2" placeholder="Password">
+    <button onclick="login()" class="btn btn-primary mt-3">Login</button>
+</div>
 
-    <!-- TEXT TAB -->
-    <div id="textTab" class="card p-3 mt-3">
-        <textarea id="input" rows="6" class="form-control"
-            placeholder="Paste suspicious code, logs, or text..."></textarea>
+<!-- NAV -->
+<ul class="nav nav-tabs">
+    <li class="nav-item"><button class="nav-link active" onclick="showTab('text')">📝 Text</button></li>
+    <li class="nav-item"><button class="nav-link" onclick="showTab('file')">📂 File</button></li>
+    <li class="nav-item"><button class="nav-link" onclick="showTab('repo')">📦 Repo</button></li>
+    <li class="nav-item"><button class="nav-link" onclick="showTab('cve')">🔎 CVE</button></li>
+    <li class="nav-item"><button class="nav-link" onclick="showTab('history')">📜 History</button></li>
+</ul>
 
-        <button onclick="scanText()" class="btn btn-success mt-3">Scan Text</button>
-    </div>
+<!-- TEXT -->
+<div id="textTab" class="card p-3 mt-3">
+<textarea id="input" rows="6" class="form-control"
+placeholder="Paste suspicious code..."></textarea>
+<button onclick="scanText()" class="btn btn-success mt-3">Scan</button>
+</div>
 
-    <!-- FILE TAB -->
-    <div id="fileTab" class="card p-3 mt-3" style="display:none;">
-        <input type="file" id="fileInput" class="form-control">
-        <button onclick="scanFile()" class="btn btn-warning mt-3">Scan File</button>
-    </div>
+<!-- FILE -->
+<div id="fileTab" class="card p-3 mt-3" style="display:none;">
+<input type="file" id="fileInput" class="form-control">
+<button onclick="scanFile()" class="btn btn-warning mt-3">Scan File</button>
+</div>
 
-    <!-- RESULT -->
-    <div class="card p-4 mt-4">
-        <h5>📊 Scan Result</h5>
+<!-- REPO -->
+<div id="repoTab" class="card p-3 mt-3" style="display:none;">
+<input id="repoUrl" class="form-control" placeholder="GitHub repo URL">
+<button onclick="scanRepo()" class="btn btn-info mt-3">Scan Repo</button>
+</div>
 
-        <div id="loading" style="display:none;">
-            <div class="loader"></div>
-            <p class="text-center mt-2">Analyzing...</p>
-        </div>
+<!-- CVE -->
+<div id="cveTab" class="card p-3 mt-3" style="display:none;">
+<input id="cveQuery" class="form-control" placeholder="Search CVE...">
+<button onclick="searchCVE()" class="btn btn-danger mt-3">Search</button>
+<pre id="cveResult" class="mt-3"></pre>
+</div>
 
-        <div id="output" style="display:none;">
-            <p><strong>Risk:</strong> <span id="risk"></span></p>
-            <p><strong>Explanation:</strong></p>
-            <p id="explanation"></p>
+<!-- HISTORY -->
+<div id="historyTab" class="card p-3 mt-3" style="display:none;">
+<button onclick="loadHistory()" class="btn btn-secondary">Load History</button>
+<ul id="historyList" class="mt-3"></ul>
+</div>
 
-            <p><strong>Fixes:</strong></p>
-            <ul id="fixes"></ul>
-        </div>
+<!-- RESULT -->
+<div class="card p-4 mt-4">
 
-    </div>
+<h5>📊 Scan Result</h5>
+
+<div id="loading" style="display:none;">
+<div class="loader"></div>
+<p class="text-center">Analyzing...</p>
+</div>
+
+<div id="output" style="display:none;">
+
+<p><strong>Risk:</strong> <span id="risk"></span></p>
+<p><strong>Score:</strong> <span id="score"></span></p>
+<p><strong>Confidence:</strong> <span id="confidence"></span></p>
+
+<h6>🧠 Detection Types</h6>
+<ul id="findings"></ul>
+
+<p><strong>Explanation:</strong></p>
+<p id="explanation"></p>
+
+<p><strong>Fixes:</strong></p>
+<ul id="fixes"></ul>
+
+</div>
+</div>
 
 </div>
 
@@ -106,128 +120,123 @@
 const BASE_URL = "https://rathious-safeaiscan.hf.space";
 let TOKEN = "";
 
-// ---------------- TAB SWITCH ----------------
+// ---------------- THEME ----------------
+function toggleTheme() {
+    document.body.classList.toggle("light-mode");
+}
+
+// ---------------- TAB ----------------
 function showTab(tab) {
-    document.getElementById("textTab").style.display = tab === "text" ? "block" : "none";
-    document.getElementById("fileTab").style.display = tab === "file" ? "block" : "none";
+    ["text","file","repo","cve","history"].forEach(t=>{
+        document.getElementById(t+"Tab").style.display = "none";
+    });
+    document.getElementById(tab+"Tab").style.display = "block";
 }
 
 // ---------------- LOGIN ----------------
 async function login() {
     const formData = new URLSearchParams();
-    formData.append("username", document.getElementById("username").value);
-    formData.append("password", document.getElementById("password").value);
+    formData.append("username", username.value);
+    formData.append("password", password.value);
 
-    const res = await fetch(BASE_URL + "/login", {
-        method: "POST",
-        body: formData
+    const res = await fetch(BASE_URL+"/login",{method:"POST",body:formData});
+    const data = await res.json();
+
+    TOKEN = data.access_token;
+    alert("✅ Logged in");
+}
+
+// ---------------- RENDER ----------------
+function renderResult(data) {
+    loading.style.display="none";
+    output.style.display="block";
+
+    risk.innerText = data.risk;
+    score.innerText = data.score || "N/A";
+    confidence.innerText = (data.score*10 || 0) + "%";
+
+    // findings
+    findings.innerHTML="";
+    (data.findings || []).forEach(f=>{
+        const li=document.createElement("li");
+        li.innerText = f.type + " (severity "+f.weight+")";
+        findings.appendChild(li);
+    });
+
+    explanation.innerText = data.explanation;
+
+    fixes.innerHTML="";
+    (data.fixes || []).forEach(f=>{
+        const li=document.createElement("li");
+        li.innerText=f;
+        fixes.appendChild(li);
+    });
+}
+
+// ---------------- TEXT ----------------
+async function scanText() {
+    loading.style.display="block";
+    output.style.display="none";
+
+    const res = await fetch(BASE_URL+"/api/analyze",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json",
+            "Authorization":"Bearer "+TOKEN
+        },
+        body:JSON.stringify({text:input.value})
+    });
+
+    renderResult(await res.json());
+}
+
+// ---------------- FILE ----------------
+async function scanFile() {
+    const form=new FormData();
+    form.append("file", fileInput.files[0]);
+
+    const res = await fetch(BASE_URL+"/api/scan-file",{
+        method:"POST",
+        headers:{ "Authorization":"Bearer "+TOKEN },
+        body:form
     });
 
     const data = await res.json();
-    TOKEN = data.access_token;
-
-    alert("✅ Logged in!");
+    renderResult(data.result);
 }
 
-// ---------------- RENDER RESULT ----------------
-function renderResult(data) {
-    document.getElementById("loading").style.display = "none";
-    document.getElementById("output").style.display = "block";
+// ---------------- REPO ----------------
+async function scanRepo() {
+    const res = await fetch(BASE_URL+"/api/scan-repo",{
+        method:"POST",
+        headers:{
+            "Authorization":"Bearer "+TOKEN,
+            "Content-Type":"application/json"
+        },
+        body:JSON.stringify({repo_url:repoUrl.value})
+    });
 
-    console.log("API RESPONSE:", data); // 🔥 debug
-
-    // Handle API errors (auth, etc)
-    if (data.detail) {
-        document.getElementById("explanation").innerText = data.detail;
-        document.getElementById("risk").innerText = "Error";
-        document.getElementById("fixes").innerHTML = "";
-        return;
-    }
-
-    // SAFE DEFAULTS
-    const risk = data.risk || "Unknown";
-    const explanation = data.explanation || "No explanation provided";
-    const fixes = Array.isArray(data.fixes) ? data.fixes : [];
-
-    // Risk display
-    const riskEl = document.getElementById("risk");
-    riskEl.innerText = risk;
-
-    riskEl.className =
-        risk === "High" ? "risk-high" :
-        risk === "Medium" ? "risk-medium" :
-        "risk-low";
-
-    // Explanation
-    document.getElementById("explanation").innerText = explanation;
-
-    // Fixes
-    const fixesList = document.getElementById("fixes");
-    fixesList.innerHTML = "";
-
-    if (fixes.length === 0) {
-        const li = document.createElement("li");
-        li.innerText = "No fixes provided";
-        fixesList.appendChild(li);
-    } else {
-        fixes.forEach(fix => {
-            const li = document.createElement("li");
-            li.innerText = fix;
-            fixesList.appendChild(li);
-        });
-    }
+    alert("Repo scanned (check backend logs/UI expansion next)");
 }
 
-// ---------------- TEXT SCAN ----------------
-async function scanText() {
-    const text = document.getElementById("input").value;
+// ---------------- HISTORY ----------------
+async function loadHistory() {
+    const res = await fetch(BASE_URL+"/api/history");
+    const data = await res.json();
 
-    document.getElementById("output").style.display = "none";
-    document.getElementById("loading").style.display = "block";
-
-    try {
-        const res = await fetch(BASE_URL + "/api/analyze", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + TOKEN
-            },
-            body: JSON.stringify({ text })
-        });
-
-        const data = await res.json();
-        renderResult(data);
-
-    } catch (err) {
-        alert("❌ Error: " + err);
-    }
+    historyList.innerHTML="";
+    data.forEach(item=>{
+        const li=document.createElement("li");
+        li.innerText = item.risk+" - "+item.input;
+        historyList.appendChild(li);
+    });
 }
 
-// ---------------- FILE SCAN ----------------
-async function scanFile() {
-    const file = document.getElementById("fileInput").files[0];
-
-    document.getElementById("output").style.display = "none";
-    document.getElementById("loading").style.display = "block";
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-        const res = await fetch(BASE_URL + "/api/scan-file", {
-            method: "POST",
-            headers: {
-                "Authorization": "Bearer " + TOKEN
-            },
-            body: formData
-        });
-
-        const data = await res.json();
-        renderResult(data);
-
-    } catch (err) {
-        alert("❌ Error: " + err);
-    }
+// ---------------- CVE ----------------
+async function searchCVE() {
+    const res = await fetch(BASE_URL+"/api/cve?query="+cveQuery.value);
+    const data = await res.json();
+    cveResult.innerText = JSON.stringify(data, null, 2);
 }
 </script>
 
