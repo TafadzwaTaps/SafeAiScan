@@ -8,3 +8,4 @@ bcrypt
 python-multipart
 gitpython
 jinja2
+jwt
