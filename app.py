@@ -151,7 +151,7 @@ def login(req: LoginRequest):
     if not verify_password(req.password, user["password_hash"]):
         raise HTTPException(401, "Invalid credentials")
 
-    token = create_jwt(user["id"])
+    token = create_access_token({"sub": user["id"]})
 
     return {
         "access_token": token,
