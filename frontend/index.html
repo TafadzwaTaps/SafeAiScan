@@ -239,11 +239,13 @@ async function register() {
     })
   });
 
-  const data = await res.json();
-  console.log("REGISTER RESPONSE:", data);
-
-  if (!data.access_token) {
-    alert("Register failed");
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    console.error("RAW ERROR:", text);
+    alert("Server error: " + text);
     return;
   }
 
