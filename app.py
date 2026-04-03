@@ -2,13 +2,14 @@ import os
 import uuid
 import hashlib
 from datetime import datetime, timezone, timedelta
-
+from fastapi.security import HTTPBearer , HTTPAuthorizationCredentials
 import httpx
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from jose import jwt, JWTError
 from passlib.context import CryptContext
+from auth import create_access_token, verify_token
 from supabase import create_client
 
 # =========================================================
@@ -18,7 +19,10 @@ app = FastAPI(title="SafeAIScan Enterprise SaaS Layer")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+    "http://localhost:5500",
+    "https://rathious-safeaiscan.hf.space"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,10 +35,9 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
 
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
-ALGORITHM = "HS256"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+security = HTTPBearer()
 
 # =========================================================
 # PASSWORD SYSTEM
@@ -44,24 +47,17 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def hash_password(password: str):
     return pwd_context.hash(password)
 
-def verify_password(password: str, hashed: str):
-    return pwd_context.verify(password, hashed)
+def verify_password(plain, hashed):
+    return pwd_context.verify(plain, hashed)
 
-# =========================================================
-# JWT SYSTEM
-# =========================================================
-def create_jwt(user_id: str):
-    payload = {
-        "sub": user_id,
-        "exp": datetime.utcnow() + timedelta(days=7)
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
 
-def verify_token(token: str):
-    try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
-    except JWTError:
-        return None
+    payload = verify_token(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return payload
 
 # =========================================================
 # HELPERS
@@ -131,7 +127,7 @@ def register(req: RegisterRequest):
         "request_count": 0
     }).execute()
 
-    token = create_jwt(user_id)
+    token = create_access_token({"sub": user["id"]})
 
     return {
         "access_token": token,
@@ -194,7 +190,7 @@ def get_user(
     if not payload:
         raise HTTPException(401, "Invalid token")
 
-    user_id = payload["sub"]
+    user_id = payload.get("sub")
 
     user_res = supabase.table("users").select("*").eq("id", user_id).execute()
 
@@ -203,11 +199,10 @@ def get_user(
 
     user = user_res.data[0]
 
-    if not x_api_key:
-        raise HTTPException(403, "Missing API key")
-
-    if user["api_key_hash"] != hash_key(x_api_key):
-        raise HTTPException(403, "Invalid API key")
+    # OPTIONAL MODE: allow API key OR JWT (fixes your frontend pain)
+    if x_api_key:
+        if user["api_key_hash"] != hash_key(x_api_key):
+            raise HTTPException(403, "Invalid API key")
 
     org = supabase.table("organizations").select("*").eq("id", user["org_id"]).execute()
 

@@ -3,7 +3,7 @@ const BASE_URL = "https://rathious-safeaiscan.hf.space";
 function headers() {
   return {
     "Content-Type": "application/json",
-    "Authorization": "Bearer " + localStorage.getItem("token"),
+    "Authorization": "Bearer " + localStorage.getItem("access_token"),
     "x-api-key": localStorage.getItem("api_key")
   };
 }

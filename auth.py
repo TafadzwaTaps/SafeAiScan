@@ -1,12 +1,13 @@
-from jose import JWTError, jwt
+import os
+from jose import jwt, JWTError
 from datetime import datetime, timedelta
 
-SECRET_KEY = "!Safe-Ai-Scan@2026"
+SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_THIS_IN_PRODUCTION")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 
-def create_token(data: dict):
+def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
@@ -16,5 +17,6 @@ def create_token(data: dict):
 def verify_token(token: str):
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
+    except JWTError as e:
+        print("JWT ERROR:", str(e))
         return None
