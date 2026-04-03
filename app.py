@@ -1,13 +1,14 @@
 import os
 import uuid
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import httpx
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from jose import jwt, JWTError
+from passlib.context import CryptContext
 from supabase import create_client
 
 # =========================================================
@@ -36,27 +37,134 @@ ALGORITHM = "HS256"
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 # =========================================================
-# AI MODEL
+# PASSWORD SYSTEM
 # =========================================================
-HF_MODEL_URL = "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta"
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+def hash_password(password: str):
+    return pwd_context.hash(password)
+
+def verify_password(password: str, hashed: str):
+    return pwd_context.verify(password, hashed)
 
 # =========================================================
-# AUTH
+# JWT SYSTEM
 # =========================================================
+def create_jwt(user_id: str):
+    payload = {
+        "sub": user_id,
+        "exp": datetime.utcnow() + timedelta(days=7)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
+
 def verify_token(token: str):
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
     except JWTError:
         return None
 
-
+# =========================================================
+# HELPERS
+# =========================================================
 def hash_key(key: str):
     return hashlib.sha256(key.encode()).hexdigest()
 
+# =========================================================
+# AUTH MODELS
+# =========================================================
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    org_name: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class AnalyzeRequest(BaseModel):
+    text: str
 
 # =========================================================
-# API KEY GENERATION (ENTERPRISE FEATURE)
+# REGISTER (FULL ONBOARDING)
+# =========================================================
+@app.post("/auth/register")
+def register(req: RegisterRequest):
+    existing = supabase.table("users").select("*").eq("email", req.email).execute()
+
+    if existing.data:
+        raise HTTPException(400, "User already exists")
+
+    user_id = str(uuid.uuid4())
+    org_id = str(uuid.uuid4())
+
+    # create org
+    supabase.table("organizations").insert({
+        "id": org_id,
+        "name": req.org_name
+    }).execute()
+
+    # create user
+    password_hash = hash_password(req.password)
+
+    supabase.table("users").insert({
+        "id": user_id,
+        "email": req.email,
+        "password_hash": password_hash,
+        "org_id": org_id,
+        "api_key_hash": None
+    }).execute()
+
+    # generate API key (auto onboarding)
+    raw_key = f"saas_{uuid.uuid4().hex}"
+    api_hash = hash_key(raw_key)
+
+    supabase.table("users").update({
+        "api_key_hash": api_hash
+    }).eq("id", user_id).execute()
+
+    # init usage row
+    supabase.table("usage_metrics").insert({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "org_id": org_id,
+        "date": str(datetime.utcnow().date()),
+        "request_count": 0
+    }).execute()
+
+    token = create_jwt(user_id)
+
+    return {
+        "access_token": token,
+        "api_key": raw_key,
+        "user_id": user_id,
+        "org_id": org_id
+    }
+
+# =========================================================
+# LOGIN
+# =========================================================
+@app.post("/auth/login")
+def login(req: LoginRequest):
+    user_res = supabase.table("users").select("*").eq("email", req.email).execute()
+
+    if not user_res.data:
+        raise HTTPException(401, "Invalid credentials")
+
+    user = user_res.data[0]
+
+    if not verify_password(req.password, user["password_hash"]):
+        raise HTTPException(401, "Invalid credentials")
+
+    token = create_jwt(user["id"])
+
+    return {
+        "access_token": token,
+        "user_id": user["id"],
+        "org_id": user["org_id"]
+    }
+
+# =========================================================
+# API KEY GENERATION (manual rotation)
 # =========================================================
 @app.post("/auth/create-api-key")
 def create_api_key(user_id: str):
@@ -67,13 +175,10 @@ def create_api_key(user_id: str):
         "api_key_hash": hashed
     }).eq("id", user_id).execute()
 
-    return {
-        "api_key": raw_key
-    }
-
+    return {"api_key": raw_key}
 
 # =========================================================
-# USER AUTH + TENANT RESOLUTION
+# AUTH + TENANT RESOLUTION
 # =========================================================
 def get_user(
     authorization: str = Header(None),
@@ -110,9 +215,8 @@ def get_user(
         "org": org.data[0] if org.data else None
     }
 
-
 # =========================================================
-# USAGE TRACKING (REAL SAAS LIMITS)
+# USAGE TRACKING
 # =========================================================
 def track_usage(user_id: str, org_id: str):
     today = datetime.utcnow().date()
@@ -142,20 +246,16 @@ def track_usage(user_id: str, org_id: str):
 
     return 1
 
-
-# =========================================================
-# RATE LIMIT (ENTERPRISE DB VERSION)
-# =========================================================
 def check_limit(count: int, limit: int = 50):
     return count <= limit
 
-
 # =========================================================
-# MODELS
+# SECURITY ENGINE
 # =========================================================
-class AnalyzeRequest(BaseModel):
-    text: str
+def scan_vulnerabilities(text: str):
+    patterns = ["eval(", "exec(", "os.system", "pickle.loads", "curl", "wget"]
 
+    return [{"match": p} for p in patterns if p in text]
 
 # =========================================================
 # AI ENGINE
@@ -169,7 +269,7 @@ async def ai_enrich(text: str, findings):
 
     async with httpx.AsyncClient(timeout=30) as client:
         res = await client.post(
-            HF_MODEL_URL,
+            "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta",
             headers={"Authorization": f"Bearer {HF_API_KEY}"},
             json={
                 "inputs": f"""
@@ -179,10 +279,7 @@ Findings:
 {findings}
 
 Return JSON:
-{{
-  "explanation": "",
-  "fixes": []
-}}
+{{ "explanation": "", "fixes": [] }}
 
 Code:
 {text[:2000]}
@@ -192,31 +289,13 @@ Code:
 
     data = res.json()
 
-    try:
-        if isinstance(data, list):
-            return data[0]
-        return data
-    except:
-        return {
-            "explanation": "AI parsing failed",
-            "fixes": ["Manual review required"]
-        }
+    if isinstance(data, list):
+        return data[0]
 
+    return data
 
 # =========================================================
-# SECURITY ENGINE
-# =========================================================
-def scan_vulnerabilities(text: str):
-    patterns = ["eval(", "exec(", "os.system", "pickle.loads", "curl", "wget"]
-
-    return [
-        {"match": p}
-        for p in patterns if p in text
-    ]
-
-
-# =========================================================
-# MAIN ENTERPRISE ENDPOINT
+# MAIN ENDPOINT
 # =========================================================
 @app.post("/api/analyze")
 async def analyze(req: AnalyzeRequest, auth=Depends(get_user)):
@@ -252,9 +331,8 @@ async def analyze(req: AnalyzeRequest, auth=Depends(get_user)):
         "ai": ai
     }
 
-
 # =========================================================
-# USAGE DASHBOARD API
+# USAGE DASHBOARD
 # =========================================================
 @app.get("/api/usage")
 def usage(auth=Depends(get_user)):
@@ -267,8 +345,9 @@ def usage(auth=Depends(get_user)):
 
     return data.data
 
+# =========================================================
+# HEALTH CHECK
+# =========================================================
 @app.get("/")
 def home():
     return {"status": "SafeAIScan running on Hugging Face Spaces"}
-
-# IMPORTANT: HF uses port 7860 internally
