@@ -21,20 +21,31 @@
 </div>
 
 <script>
-async function login() {
-  const res = await fetch("https://rathious-safeaiscan.hf.space", {
+async function login(email, password) {
+  const res = await fetch("https://rathious-safeaiscan.hf.space/auth/login", {
     method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      email: document.getElementById("email").value,
-      password: document.getElementById("password").value
-    })
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ email, password })
   });
 
   const data = await res.json();
 
-  localStorage.setItem("token", data.access_token);
-  localStorage.setItem("api_key", data.api_key);
+  console.log("LOGIN RESPONSE:", data);
+
+  // 🔥 CRITICAL FIX
+  if (!data.access_token) {
+    alert("Login failed: No token returned");
+    return;
+  }
+
+  localStorage.setItem("access_token", data.access_token);
+
+  // ONLY set API key if exists
+  if (data.api_key) {
+    localStorage.setItem("api_key", data.api_key);
+  }
 
   window.location.href = "dashboard.html";
 }

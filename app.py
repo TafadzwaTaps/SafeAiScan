@@ -7,7 +7,6 @@ import httpx
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from jose import jwt, JWTError
 from passlib.context import CryptContext
 from auth import create_access_token, verify_token
 from supabase import create_client
@@ -49,15 +48,6 @@ def hash_password(password: str):
 
 def verify_password(plain, hashed):
     return pwd_context.verify(plain, hashed)
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-
-    payload = verify_token(token)
-    if payload is None:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    return payload
 
 # =========================================================
 # HELPERS
@@ -127,7 +117,7 @@ def register(req: RegisterRequest):
         "request_count": 0
     }).execute()
 
-    token = create_access_token({"sub": user["id"]})
+    token = create_access_token({"sub": user_id})
 
     return {
         "access_token": token,
@@ -155,7 +145,6 @@ def login(req: LoginRequest):
 
     return {
         "access_token": token,
-        "api_key": None,  # 👈 IMPORTANT (user must reuse saved one)
         "user_id": user["id"],
         "org_id": user["org_id"]
     }
@@ -200,16 +189,20 @@ def get_user(
     user = user_res.data[0]
 
     # OPTIONAL MODE: allow API key OR JWT (fixes your frontend pain)
-    if x_api_key:
+    if x_api_key and x_api_key != "undefined":
         if user["api_key_hash"] != hash_key(x_api_key):
             raise HTTPException(403, "Invalid API key")
 
     org = supabase.table("organizations").select("*").eq("id", user["org_id"]).execute()
+    print("AUTH HEADER:", authorization)
+    print("TOKEN:", token)
+    print("PAYLOAD:", payload)
 
     return {
         "user": user,
         "org": org.data[0] if org.data else None
     }
+
 
 # =========================================================
 # USAGE TRACKING
