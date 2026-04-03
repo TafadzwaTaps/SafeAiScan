@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "https://rathious-safeaiscan.hf.space";
 
 function headers() {
   return {

@@ -159,6 +159,7 @@ def login(req: LoginRequest):
 
     return {
         "access_token": token,
+        "api_key": None,  # 👈 IMPORTANT (user must reuse saved one)
         "user_id": user["id"],
         "org_id": user["org_id"]
     }
@@ -351,3 +352,16 @@ def usage(auth=Depends(get_user)):
 @app.get("/")
 def home():
     return {"status": "SafeAIScan running on Hugging Face Spaces"}
+
+@app.get("/api/history")
+def history(auth=Depends(get_user)):
+    user = auth["user"]
+
+    res = supabase.table("analysis_history") \
+        .select("*") \
+        .eq("user_id", user["id"]) \
+        .order("timestamp", desc=True) \
+        .limit(20) \
+        .execute()
+
+    return res.data
