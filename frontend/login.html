@@ -21,28 +21,33 @@
 </div>
 
 <script>
-async function login(email, password) {
+async function login() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
   const res = await fetch("https://rathious-safeaiscan.hf.space/auth/login", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({
+      email,
+      password
+    })
   });
 
   const data = await res.json();
 
   console.log("LOGIN RESPONSE:", data);
 
-  // 🔥 CRITICAL FIX
   if (!data.access_token) {
-    alert("Login failed: No token returned");
+    alert("Login failed");
     return;
   }
 
   localStorage.setItem("access_token", data.access_token);
 
-  // ONLY set API key if exists
+  // DO NOT overwrite API key
   if (data.api_key) {
     localStorage.setItem("api_key", data.api_key);
   }

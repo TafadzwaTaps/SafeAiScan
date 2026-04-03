@@ -182,6 +182,7 @@ body {
 
 <input id="email" class="form-control mt-2" placeholder="Email">
 <input id="password" type="password" class="form-control mt-2" placeholder="Password">
+<input id="org" class="form-control mt-2" placeholder="Organization Name">
 
 <button onclick="register()" class="btn btn-primary mt-3 w-100">
   Create Account
@@ -222,18 +223,34 @@ new Chart(ctx, {
 
 // REGISTER
 async function register() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const org_name = document.getElementById("org").value;
+
   const res = await fetch("https://rathious-safeaiscan.hf.space/auth/register", {
     method: "POST",
-    headers: {"Content-Type":"application/json"},
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify({
-      email: email.value,
-      password: password.value
+      email,
+      password,
+      org_name
     })
   });
 
   const data = await res.json();
+  console.log("REGISTER RESPONSE:", data);
 
-  alert("Account created!");
+  if (!data.access_token) {
+    alert("Register failed");
+    return;
+  }
+
+  localStorage.setItem("access_token", data.access_token);
+  localStorage.setItem("api_key", data.api_key);
+
+  window.location.href = "login.html";
 }
 </script>
 
