@@ -1,28 +1,19 @@
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, Field
-from typing import List, Dict
-import git, os, re, json, uuid, sqlite3, logging, hashlib
-from datetime import datetime, timedelta, timezone
+import os
+import uuid
+import hashlib
+from datetime import datetime, timezone
+
 import httpx
-import jwt
+from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from jose import jwt, JWTError
+from supabase import create_client
 
 # =========================================================
-# CONFIG
+# APP
 # =========================================================
-DB_PATH = "security_analysis.db"
-HF_API_KEY = os.environ.get("HF_API_KEY")
-
-HF_MODEL_URL = "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta"
-
-SECRET_KEY = "SUPER_SECRET_KEY"
-ALGORITHM = "HS256"
-
-# =========================================================
-# APP INIT
-# =========================================================
-app = FastAPI(title="SafeAIScan Enterprise Engine")
+app = FastAPI(title="SafeAIScan Enterprise SaaS Layer")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,274 +23,252 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+# =========================================================
+# ENV
+# =========================================================
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+HF_API_KEY = os.getenv("HF_API_KEY")
 
-USERS = {
-    "master": "Matrix123!"
-}
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
+ALGORITHM = "HS256"
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =========================================================
-# DATABASE
+# AI MODEL
 # =========================================================
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+HF_MODEL_URL = "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta"
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS analysis_history (
-        id TEXT PRIMARY KEY,
-        user TEXT,
-        input_text TEXT,
-        risk TEXT,
-        score REAL,
-        explanation TEXT,
-        fixes TEXT,
-        timestamp TEXT
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS api_keys (
-        id TEXT PRIMARY KEY,
-        user TEXT,
-        api_key TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-init_db()
 
 # =========================================================
 # AUTH
 # =========================================================
-def create_token(data: dict):
-    payload = data.copy()
-    payload["exp"] = datetime.utcnow() + timedelta(hours=12)
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-def verify_token(token: str = Depends(oauth2_scheme)):
+def verify_token(token: str):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload["sub"]
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        return jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+    except JWTError:
+        return None
+
+
+def hash_key(key: str):
+    return hashlib.sha256(key.encode()).hexdigest()
+
 
 # =========================================================
-# REQUEST MODEL
+# API KEY GENERATION (ENTERPRISE FEATURE)
+# =========================================================
+@app.post("/auth/create-api-key")
+def create_api_key(user_id: str):
+    raw_key = f"saas_{uuid.uuid4().hex}"
+    hashed = hash_key(raw_key)
+
+    supabase.table("users").update({
+        "api_key_hash": hashed
+    }).eq("id", user_id).execute()
+
+    return {
+        "api_key": raw_key
+    }
+
+
+# =========================================================
+# USER AUTH + TENANT RESOLUTION
+# =========================================================
+def get_user(
+    authorization: str = Header(None),
+    x_api_key: str = Header(None)
+):
+    if not authorization:
+        raise HTTPException(401, "Missing token")
+
+    token = authorization.replace("Bearer ", "")
+    payload = verify_token(token)
+
+    if not payload:
+        raise HTTPException(401, "Invalid token")
+
+    user_id = payload["sub"]
+
+    user_res = supabase.table("users").select("*").eq("id", user_id).execute()
+
+    if not user_res.data:
+        raise HTTPException(403, "User not found")
+
+    user = user_res.data[0]
+
+    if not x_api_key:
+        raise HTTPException(403, "Missing API key")
+
+    if user["api_key_hash"] != hash_key(x_api_key):
+        raise HTTPException(403, "Invalid API key")
+
+    org = supabase.table("organizations").select("*").eq("id", user["org_id"]).execute()
+
+    return {
+        "user": user,
+        "org": org.data[0] if org.data else None
+    }
+
+
+# =========================================================
+# USAGE TRACKING (REAL SAAS LIMITS)
+# =========================================================
+def track_usage(user_id: str, org_id: str):
+    today = datetime.utcnow().date()
+
+    record = supabase.table("usage_metrics") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .eq("date", str(today)) \
+        .execute()
+
+    if record.data:
+        count = record.data[0]["request_count"] + 1
+
+        supabase.table("usage_metrics").update({
+            "request_count": count
+        }).eq("id", record.data[0]["id"]).execute()
+
+        return count
+
+    supabase.table("usage_metrics").insert({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "org_id": org_id,
+        "date": str(today),
+        "request_count": 1
+    }).execute()
+
+    return 1
+
+
+# =========================================================
+# RATE LIMIT (ENTERPRISE DB VERSION)
+# =========================================================
+def check_limit(count: int, limit: int = 50):
+    return count <= limit
+
+
+# =========================================================
+# MODELS
 # =========================================================
 class AnalyzeRequest(BaseModel):
-    text: str = Field(..., min_length=5, max_length=20000)
+    text: str
+
 
 # =========================================================
-# SIGNATURE ENGINE
+# AI ENGINE
 # =========================================================
-SIGNATURES = {
-    "SQL Injection": (r"(SELECT .* FROM .* WHERE .*['\"]?\s*\+|\bOR\b\s+1=1|DROP TABLE)", 9),
-    "XSS": (r"(<script>|javascript:|onerror=|onload=|alert\()", 8),
-    "Command Injection": (r"(;|\|\||&&)\s*(rm|ls|cat|whoami|bash|sh)", 10),
-    "Path Traversal": (r"(\.\./|\.\.\\)", 7),
-    "Hardcoded Secrets": (r"(api_key|password|secret|token)\s*=\s*['\"]", 8),
-    "Insecure Deserialization": (r"(pickle\.loads|yaml\.load\(|marshal\.loads)", 9),
-}
-
-def scan_vulnerabilities(text: str):
-    findings = []
-    for name, (pattern, weight) in SIGNATURES.items():
-        if re.search(pattern, text, re.IGNORECASE):
-            findings.append({"type": name, "weight": weight})
-    return findings
-
-# =========================================================
-# RISK ENGINE
-# =========================================================
-def calculate_risk(findings):
-    if not findings:
-        return {"risk": "Low", "score": 0}
-
-    total = sum(f["weight"] for f in findings)
-    score = min(total, 10)
-
-    if total >= 18:
-        risk = "Critical"
-    elif total >= 12:
-        risk = "High"
-    elif total >= 6:
-        risk = "Medium"
-    else:
-        risk = "Low"
-
-    return {"risk": risk, "score": score}
-
-# =========================================================
-# AI ENRICHMENT (OPTIONAL FREE)
-# =========================================================
-async def ai_enrich(text, findings):
-
+async def ai_enrich(text: str, findings):
     if not HF_API_KEY:
         return {
-            "explanation": "AI disabled (no API key)",
-            "fixes": ["Use input validation", "Sanitize user input"]
+            "explanation": "AI disabled",
+            "fixes": ["Set HF_API_KEY"]
         }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        res = await client.post(
+            HF_MODEL_URL,
+            headers={"Authorization": f"Bearer {HF_API_KEY}"},
+            json={
+                "inputs": f"""
+You are a cybersecurity expert.
+
+Findings:
+{findings}
+
+Return JSON:
+{{
+  "explanation": "",
+  "fixes": []
+}}
+
+Code:
+{text[:2000]}
+"""
+            }
+        )
+
+    data = res.json()
 
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            res = await client.post(
-                HF_MODEL_URL,
-                headers={"Authorization": f"Bearer {HF_API_KEY}"},
-                json={"inputs": f"Explain vulnerabilities: {findings}"}
-            )
-
-        data = res.json()
-        output = data[0].get("generated_text", "") if isinstance(data, list) else str(data)
-
-        return {
-            "explanation": output,
-            "fixes": ["Sanitize input", "Use prepared statements"]
-        }
-
+        if isinstance(data, list):
+            return data[0]
+        return data
     except:
         return {
-            "explanation": "AI unavailable",
+            "explanation": "AI parsing failed",
             "fixes": ["Manual review required"]
         }
 
-# =========================================================
-# MAIN ENGINE (FIXED)
-# =========================================================
-async def analyze_engine(text):
-
-    findings = scan_vulnerabilities(text)
-    risk_data = calculate_risk(findings)
-    ai_data = await ai_enrich(text, findings)
-
-    confidence = min(len(findings) * 20, 100)
-
-    return {
-        "risk": risk_data["risk"],
-        "score": risk_data["score"],
-        "confidence": confidence,
-        "findings": findings,
-        "explanation": ai_data["explanation"],
-        "fixes": ai_data["fixes"]
-    }
 
 # =========================================================
-# ROUTES
+# SECURITY ENGINE
 # =========================================================
-@app.get("/")
-def root():
-    return {"status": "SafeAIScan Enterprise Running"}
+def scan_vulnerabilities(text: str):
+    patterns = ["eval(", "exec(", "os.system", "pickle.loads", "curl", "wget"]
 
-@app.post("/login")
-def login(username: str, password: str):
-    if USERS.get(username) != password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return [
+        {"match": p}
+        for p in patterns if p in text
+    ]
 
-    token = create_token({"sub": username})
-    return {"access_token": token}
 
 # =========================================================
-# ANALYZE
+# MAIN ENTERPRISE ENDPOINT
 # =========================================================
 @app.post("/api/analyze")
-async def analyze(req: AnalyzeRequest, user: str = Depends(verify_token)):
+async def analyze(req: AnalyzeRequest, auth=Depends(get_user)):
+    user = auth["user"]
+    org = auth["org"]
 
-    result = await analyze_engine(req.text)
+    usage_count = track_usage(user["id"], org["id"])
+
+    if not check_limit(usage_count):
+        raise HTTPException(429, "Usage limit exceeded")
+
+    findings = scan_vulnerabilities(req.text)
+    ai = await ai_enrich(req.text, findings)
 
     analysis_id = str(uuid.uuid4())
-    timestamp = datetime.now(timezone.utc).isoformat()
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO analysis_history
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        analysis_id,
-        user,
-        req.text,
-        result["risk"],
-        result["score"],
-        result["explanation"],
-        json.dumps(result["fixes"]),
-        timestamp
-    ))
-
-    conn.commit()
-    conn.close()
-
-    return result
-
-# =========================================================
-# FILE SCAN
-# =========================================================
-@app.post("/api/scan-file")
-async def scan_file(file: UploadFile = File(...), user: str = Depends(verify_token)):
-
-    content = await file.read()
-    text = content.decode(errors="ignore")
-
-    file_hash = hashlib.sha256(content).hexdigest()
-
-    result = await analyze_engine(text)
+    supabase.table("analysis_history").insert({
+        "id": analysis_id,
+        "user_id": user["id"],
+        "org_id": org["id"],
+        "input_text": req.text,
+        "risk": "AUTO",
+        "score": len(findings) * 20,
+        "explanation": ai.get("explanation"),
+        "fixes": ai.get("fixes"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }).execute()
 
     return {
-        "filename": file.filename,
-        "hash": file_hash,
-        **result
+        "id": analysis_id,
+        "usage_today": usage_count,
+        "findings": findings,
+        "ai": ai
     }
 
-# =========================================================
-# HASH LOOKUP
-# =========================================================
-@app.get("/api/hash/{file_hash}")
-def lookup_hash(file_hash: str):
-    return {
-        "hash": file_hash,
-        "status": "No known malware signatures",
-        "reputation": "Clean"
-    }
 
 # =========================================================
-# HISTORY (USER-BASED)
+# USAGE DASHBOARD API
 # =========================================================
-@app.get("/api/history")
-def history(user: str = Depends(verify_token)):
+@app.get("/api/usage")
+def usage(auth=Depends(get_user)):
+    user = auth["user"]
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    data = supabase.table("usage_metrics") \
+        .select("*") \
+        .eq("user_id", user["id"]) \
+        .execute()
 
-    cursor.execute("""
-        SELECT id, input_text, risk, score, timestamp
-        FROM analysis_history
-        WHERE user=?
-        ORDER BY timestamp DESC
-    """, (user,))
+    return data.data
 
-    rows = cursor.fetchall()
-    conn.close()
+@app.get("/")
+def home():
+    return {"status": "SafeAIScan running on Hugging Face Spaces"}
 
-    return rows
-
-# =========================================================
-# API KEY GENERATION
-# =========================================================
-@app.post("/api/generate-key")
-def generate_key(user: str = Depends(verify_token)):
-
-    key = str(uuid.uuid4())
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO api_keys VALUES (?, ?, ?)
-    """, (str(uuid.uuid4()), user, key))
-
-    conn.commit()
-    conn.close()
-
-    return {"api_key": key}
+# IMPORTANT: HF uses port 7860 internally

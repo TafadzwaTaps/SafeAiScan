@@ -1,0 +1,13 @@
+body {
+  font-family: Arial;
+}
+
+.card {
+  border-radius: 12px;
+}
+
+pre {
+  background: #111;
+  padding: 10px;
+  border-radius: 10px;
+}
