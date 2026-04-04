@@ -1,130 +1,101 @@
-async function scan() {
-  const code = document.getElementById("code").value;
+// =========================
+// CONFIG
+// =========================
+const BASE_URL = "https://rathious-safeaiscan.hf.space";
 
-  const res = await fetch(`${BASE_URL}/api/analyze`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + localStorage.getItem("access_token"),
-      "x-api-key": localStorage.getItem("api_key")
-    },
-    body: JSON.stringify({ text: code })
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text();
-    document.getElementById("result").innerText =
-      "❌ Error: " + errorText;
-
-    console.error("SCAN ERROR:", errorText);
-    return;
-  }
-
-  const data = await res.json();
-
-  document.getElementById("result").innerText =
-    JSON.stringify(data, null, 2);
+// =========================
+// TOKEN HELPERS
+// =========================
+function getToken() {
+  return localStorage.getItem("access_token");
 }
 
-async function loadUsage() {
-  try {
-    const data = await getUsage();
-
-    document.getElementById("usage").innerText =
-      data.length ? data[data.length - 1].request_count : 0;
-
-  } catch {
-    document.getElementById("usage").innerText = "Error";
-  }
+function getApiKey() {
+  return localStorage.getItem("api_key");
 }
 
-async function loadHistory() {
-  try {
-    const res = await fetch(`${BASE_URL}/api/history`, {
-      headers: {
-        "Authorization": "Bearer " + localStorage.getItem("access_token"),
-        "x-api-key": localStorage.getItem("api_key")
-      }
-    });
-
-    if (!res.ok) throw new Error("Failed");
-
-    const data = await res.json();
-
-    const historyList = document.getElementById("history");
-    historyList.innerHTML = "";
-
-    if (!Array.isArray(data)) {
-      historyList.innerHTML = "<li>No data</li>";
-      return;
-    }
-
-    data.forEach(item => {
-      const li = document.createElement("li");
-      li.innerText = item.risk + " - " + item.score;
-      historyList.appendChild(li);
-    });
-
-  } catch {
-    document.getElementById("history").innerHTML =
-      "<li>Error loading history</li>";
-  }
+function setToken(token) {
+  localStorage.setItem("access_token", token);
 }
 
-async function upgrade(plan) {
-  try {
-    const res = await createCheckout(plan);
-    window.location.href = res.checkout_url;
-  } catch {
-    alert("Upgrade failed");
-  }
-}
-
-function copyKey() {
-  navigator.clipboard.writeText(localStorage.getItem("api_key"));
-}
-
-function logout() {
+function clearAuth() {
   localStorage.clear();
   window.location.replace("login.html");
 }
 
-async function init() {
-  document.getElementById("apiKey").innerText =
-    localStorage.getItem("api_key") || "Not set";
+// =========================
+// CORE REQUEST WRAPPER
+// =========================
+async function apiRequest(endpoint, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + getToken(),
+    ...(getApiKey() && getApiKey() !== "undefined" && {
+      "x-api-key": getApiKey()
+    }),
+    ...(options.headers || {})
+  };
 
-  await loadUsage();
-  await loadHistory();
-  await loadChart();
-}
+  const res = await fetch(BASE_URL + endpoint, {
+    ...options,
+    headers
+  });
 
-async function loadChart() {
-  try {
-    const data = await getUsage();
-
-    if (!data || data.length === 0) return;
-
-    const labels = data.map(d => d.date);
-    const values = data.map(d => d.request_count);
-
-    const ctx = document.getElementById("usageChart");
-
-    new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: labels,
-        datasets: [{
-          label: "API Usage",
-          data: values,
-          tension: 0.4
-        }]
-      }
-    });
-
-  } catch {
-    console.log("Chart failed");
+  // 🔥 AUTO-LOGOUT ON 401
+  if (res.status === 401) {
+    console.warn("Session expired → logging out");
+    clearAuth();
+    return;
   }
+
+  return res;
 }
 
+// =========================
+// AUTH API
+// =========================
+async function login(email, password) {
+  const res = await fetch(`${BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ email, password })
+  });
 
-init();
+  const data = await res.json();
+
+  if (!data.access_token) {
+    throw new Error("Invalid login");
+  }
+
+  setToken(data.access_token);
+
+  if (data.api_key) {
+    localStorage.setItem("api_key", data.api_key);
+  }
+
+  return data;
+}
+
+// =========================
+// CORE FEATURES
+// =========================
+async function analyzeCode(text) {
+  const res = await apiRequest("/api/analyze", {
+    method: "POST",
+    body: JSON.stringify({ text })
+  });
+
+  return await res.json();
+}
+
+async function getUsage() {
+  const res = await apiRequest("/api/usage");
+  return await res.json();
+}
+
+async function getHistory() {
+  const res = await apiRequest("/api/history");
+  return await res.json();
+}

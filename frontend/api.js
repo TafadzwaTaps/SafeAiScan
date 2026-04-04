@@ -1,44 +1,74 @@
+// =========================
+// CONFIG
+// =========================
 const BASE_URL = "https://rathious-safeaiscan.hf.space";
 
-function headers() {
-  return {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer " + localStorage.getItem("access_token"),
-    "x-api-key": localStorage.getItem("api_key")
-  };
+// =========================
+// TOKEN HELPERS
+// =========================
+function getToken() {
+  return localStorage.getItem("access_token");
 }
 
+function getApiKey() {
+  return localStorage.getItem("api_key");
+}
+
+function setToken(token) {
+  localStorage.setItem("access_token", token);
+}
+
+function clearAuth() {
+  localStorage.clear();
+  window.location.replace("login.html");
+}
+
+// =========================
+// CORE REQUEST WRAPPER
+// =========================
+async function apiRequest(endpoint, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + getToken(),
+    ...(getApiKey() && getApiKey() !== "undefined" && {
+      "x-api-key": getApiKey()
+    }),
+    ...(options.headers || {})
+  };
+
+  const res = await fetch(BASE_URL + endpoint, {
+    ...options,
+    headers
+  });
+
+  // 🔥 AUTO-LOGOUT ON 401
+  if (res.status === 401) {
+    console.warn("Session expired → logging out");
+    clearAuth();
+    return;
+  }
+
+  return res;
+}
+
+// =========================
+// CORE FEATURES
+// =========================
 async function analyzeCode(text) {
-  const res = await fetch(`${BASE_URL}/api/analyze`, {
+  const res = await apiRequest("/api/analyze", {
     method: "POST",
-    headers: headers(),
     body: JSON.stringify({ text })
   });
 
   return await res.json();
 }
 
-async function getHistory() {
-  const res = await fetch(`${BASE_URL}/api/history`, {
-    headers: headers()
-  });
-
-  return await res.json();
-}
-
 async function getUsage() {
-  const res = await fetch(`${BASE_URL}/api/usage`, {
-    headers: headers()
-  });
-
+  const res = await apiRequest("/api/usage");
   return await res.json();
 }
 
-async function createCheckout(plan) {
-  const res = await fetch(`${BASE_URL}/billing/create-checkout?plan=${plan}`, {
-    method: "POST",
-    headers: headers()
-  });
-
+async function getHistory() {
+  const res = await apiRequest("/api/history");
   return await res.json();
 }
