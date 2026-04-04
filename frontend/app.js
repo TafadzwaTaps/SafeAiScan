@@ -1,7 +1,6 @@
 // =========================
 // CONFIG
 // =========================
-const BASE_URL = "https://rathious-safeaiscan.hf.space";
 
 // =========================
 // TOKEN HELPERS
