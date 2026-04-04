@@ -1,100 +1,92 @@
 // =========================
-// CONFIG
+// UI ACTIONS
 // =========================
 
-// =========================
-// TOKEN HELPERS
-// =========================
-function getToken() {
-  return localStorage.getItem("access_token");
+async function scan() {
+  const code = document.getElementById("code").value;
+
+  try {
+    const data = await analyzeCode(code);
+
+    document.getElementById("result").innerText =
+      JSON.stringify(data, null, 2);
+
+  } catch (err) {
+    console.error(err);
+    alert("Scan failed");
+  }
 }
 
-function getApiKey() {
-  return localStorage.getItem("api_key");
+async function loadUsage() {
+  try {
+    const data = await getUsage();
+
+    if (!data || data.length === 0) {
+      document.getElementById("usage").innerText = 0;
+      return;
+    }
+
+    const latest = data[data.length - 1];
+    document.getElementById("usage").innerText = latest.request_count;
+
+  } catch {
+    document.getElementById("usage").innerText = "Error";
+  }
 }
 
-function setToken(token) {
-  localStorage.setItem("access_token", token);
+async function loadHistory() {
+  try {
+    const data = await getHistory();
+
+    const historyList = document.getElementById("history");
+    historyList.innerHTML = "";
+
+    data.forEach(item => {
+      const li = document.createElement("li");
+      li.innerText = item.risk + " (" + item.score + ")";
+      historyList.appendChild(li);
+    });
+
+  } catch (err) {
+    console.error("History failed", err);
+  }
 }
 
-function clearAuth() {
+function copyKey() {
+  const key = localStorage.getItem("api_key");
+
+  if (!key) {
+    alert("No API key found");
+    return;
+  }
+
+  navigator.clipboard.writeText(key);
+  alert("API key copied!");
+}
+
+function logout() {
   localStorage.clear();
   window.location.replace("login.html");
 }
 
 // =========================
-// CORE REQUEST WRAPPER
+// INIT
 // =========================
-async function apiRequest(endpoint, options = {}) {
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer " + getToken(),
-    ...(getApiKey() && getApiKey() !== "undefined" && {
-      "x-api-key": getApiKey()
-    }),
-    ...(options.headers || {})
-  };
+async function init() {
+  // Show API key
+  const apiKey = localStorage.getItem("api_key");
+  document.getElementById("apiKey").innerText =
+    apiKey || "Not available";
 
-  const res = await fetch(BASE_URL + endpoint, {
-    ...options,
-    headers
-  });
-
-  // 🔥 AUTO-LOGOUT ON 401
-  if (res.status === 401) {
-    console.warn("Session expired → logging out");
-    clearAuth();
-    return;
-  }
-
-  return res;
+  await loadUsage();
+  await loadHistory();
 }
 
-// =========================
-// AUTH API
-// =========================
-async function login(email, password) {
-  const res = await fetch(`${BASE_URL}/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ email, password })
-  });
-
-  const data = await res.json();
-
-  if (!data.access_token) {
-    throw new Error("Invalid login");
-  }
-
-  setToken(data.access_token);
-
-  if (data.api_key) {
-    localStorage.setItem("api_key", data.api_key);
-  }
-
-  return data;
-}
+init();
 
 // =========================
-// CORE FEATURES
+// MAKE FUNCTIONS GLOBAL (IMPORTANT)
 // =========================
-async function analyzeCode(text) {
-  const res = await apiRequest("/api/analyze", {
-    method: "POST",
-    body: JSON.stringify({ text })
-  });
-
-  return await res.json();
-}
-
-async function getUsage() {
-  const res = await apiRequest("/api/usage");
-  return await res.json();
-}
-
-async function getHistory() {
-  const res = await apiRequest("/api/history");
-  return await res.json();
-}
+window.scan = scan;
+window.copyKey = copyKey;
+window.logout = logout;
