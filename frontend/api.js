@@ -52,7 +52,15 @@ async function analyzeCode(text) {
     method: "POST",
     body: JSON.stringify({ text })
   });
-  return res.json();
+
+  const raw = await res.text();
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.error("❌ NON-JSON RESPONSE:", raw);
+    throw new Error("Server error: " + raw);
+  }
 }
 
 async function getUsage() {

@@ -246,75 +246,138 @@ def scan_vulnerabilities(text: str):
 # AI ENGINE
 # =========================================================
 async def ai_enrich(text: str, findings):
+    # 🔒 No API key fallback
     if not HF_API_KEY:
         return {
             "explanation": "AI disabled",
             "fixes": ["Set HF_API_KEY"]
         }
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        res = await client.post(
-            "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta",
-            headers={"Authorization": f"Bearer {HF_API_KEY}"},
-            json={
-                "inputs": f"""
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta",
+                headers={"Authorization": f"Bearer {HF_API_KEY}"},
+                json={
+                    "inputs": f"""
 You are a cybersecurity expert.
 
 Findings:
 {findings}
 
-Return JSON:
+Return STRICT JSON ONLY:
 {{ "explanation": "", "fixes": [] }}
 
 Code:
 {text[:2000]}
 """
+                }
+            )
+
+        # 🔥 STEP 1: SAFE PARSE
+        try:
+            data = res.json()
+        except Exception as e:
+            print("🔥 AI JSON PARSE ERROR:", str(e))
+            print("RAW RESPONSE:", res.text)
+
+            return {
+                "explanation": "AI returned invalid response",
+                "fixes": []
             }
-        )
 
-    data = res.json()
+        # 🔥 STEP 2: HANDLE HF FORMAT
+        if isinstance(data, list):
+            data = data[0]
 
-    if isinstance(data, list):
-        return data[0]
+        # 🔥 STEP 3: HANDLE STRING OUTPUT (VERY COMMON)
+        if isinstance(data, dict) and "generated_text" in data:
+            text_output = data["generated_text"]
 
-    return data
+            try:
+                import json
+                parsed = json.loads(text_output)
+                return parsed
+            except:
+                return {
+                    "explanation": text_output,
+                    "fixes": []
+                }
+
+        # 🔥 STEP 4: VALID DICT
+        if isinstance(data, dict):
+            return data
+
+        # 🔥 STEP 5: FALLBACK
+        return {
+            "explanation": str(data),
+            "fixes": []
+        }
+
+    except Exception as e:
+        print("🔥 AI REQUEST ERROR:", str(e))
+
+        return {
+            "explanation": "AI request failed",
+            "fixes": []
+        }
 
 # =========================================================
 # MAIN ENDPOINT
 # =========================================================
 @app.post("/api/analyze")
 async def analyze(req: AnalyzeRequest, auth=Depends(get_user)):
-    user = auth["user"]
-    org = auth["org"]
+    try:
+        user = auth["user"]
+        org = auth["org"]
 
-    usage_count = track_usage(user["id"], org["id"])
+        if not org:
+            raise HTTPException(500, "Organization not found")
 
-    if not check_limit(usage_count):
-        raise HTTPException(429, "Usage limit exceeded")
+        usage_count = track_usage(user["id"], org["id"])
 
-    findings = scan_vulnerabilities(req.text)
-    ai = await ai_enrich(req.text, findings)
+        if not check_limit(usage_count):
+            raise HTTPException(429, "Usage limit exceeded")
 
-    analysis_id = str(uuid.uuid4())
+        findings = scan_vulnerabilities(req.text)
 
-    supabase.table("analysis_history").insert({
-        "id": analysis_id,
-        "user_id": user["id"],
-        "org_id": org["id"],
-        "input_text": req.text,
-        "risk": "AUTO",
-        "score": len(findings) * 20,
-        "explanation": ai.get("explanation"),
-        "fixes": ai.get("fixes"),
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }).execute()
+        # SAFE AI
+        ai_raw = await ai_enrich(req.text, findings)
 
-    return {
-        "id": analysis_id,
-        "usage_today": usage_count,
-        "findings": findings,
-        "ai": ai
-    }
+        if isinstance(ai_raw, dict):
+            ai = ai_raw
+        else:
+            ai = {
+                "explanation": str(ai_raw),
+                "fixes": []
+            }
+
+        analysis_id = str(uuid.uuid4())
+
+        result = supabase.table("analysis_history").insert({
+            "id": analysis_id,
+            "user_id": user["id"],
+            "org_id": org["id"],
+            "input_text": req.text,
+            "risk": "AUTO",
+            "score": len(findings) * 20,
+            "explanation": ai.get("explanation"),
+            "fixes": ai.get("fixes"),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }).execute()
+
+        print("INSERT RESULT:", result)
+
+        return {
+            "id": analysis_id,
+            "usage_today": usage_count,
+            "findings": findings,
+            "ai": ai
+        }
+
+    except Exception as e:
+        print("🔥 ANALYZE ERROR:", str(e))
+        raise HTTPException(500, str(e))
 
 # =========================================================
 # USAGE DASHBOARD
