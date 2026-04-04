@@ -10,59 +10,73 @@
 
 <style>
 /* =========================
-   GLOBAL THEME
+   SNYK-STYLE DARK SECURITY UI
 ========================= */
+
 body {
-    background: radial-gradient(circle at top, #0b0f1a, #05070d);
-    color: #e6e6e6;
-    font-family: "Segoe UI", sans-serif;
+    background: #0b0f17;
+    color: #e6edf3;
+    font-family: "Inter", "Segoe UI", sans-serif;
 }
 
 /* =========================
-   GLASS CARDS
-========================= */
-.glass {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-}
-
-/* =========================
-   HEADER
+   TOP BAR (SNYK STYLE)
 ========================= */
 .header {
-    padding: 18px 24px;
-    background: rgba(0,0,0,0.6);
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: 14px 22px;
+    background: #0f172a;
+    border-bottom: 1px solid #1f2937;
+}
+
+.header h5 {
+    font-weight: 600;
 }
 
 /* =========================
-   METRICS
+   GLASS PANEL (CLEANER)
+========================= */
+.glass {
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.35);
+}
+
+/* =========================
+   METRICS (SNYK CARDS)
 ========================= */
 .metric {
-    padding: 16px;
+    padding: 14px;
     border-radius: 12px;
-    background: rgba(255,255,255,0.05);
+    background: #0f172a;
+    border: 1px solid #1f2937;
     margin-bottom: 12px;
 }
 
 .metric h6 {
-    font-size: 12px;
-    opacity: 0.7;
+    font-size: 11px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
 }
 
 .metric h3 {
     margin: 0;
+    font-size: 20px;
 }
 
 /* =========================
-   BUTTONS
+   BUTTONS (SNYK STYLE)
 ========================= */
 .btn-primary {
-    background: linear-gradient(135deg, #4f46e5, #2563eb);
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
     border: none;
+    font-weight: 500;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #4f46e5, #4338ca);
 }
 
 .btn-warning {
@@ -70,39 +84,102 @@ body {
     border: none;
 }
 
-/* =========================
-   CODE OUTPUT
-========================= */
-pre {
-    background: rgba(0,0,0,0.4);
-    padding: 12px;
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.08);
-    max-height: 250px;
-    overflow: auto;
+.btn-danger {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border: none;
 }
 
 /* =========================
-   LIST STYLE
+   TEXTAREA (CODE INPUT)
+========================= */
+textarea {
+    background: #0b1220 !important;
+    border: 1px solid #1f2937 !important;
+    color: #e6edf3 !important;
+}
+
+textarea:focus {
+    box-shadow: none !important;
+    border-color: #6366f1 !important;
+}
+
+/* =========================
+   OUTPUT CONSOLE (SNYK STYLE)
+========================= */
+pre {
+    background: #0b1220;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid #1f2937;
+    max-height: 260px;
+    overflow: auto;
+    font-size: 12px;
+    color: #cbd5e1;
+}
+
+/* =========================
+   STATUS BADGE
+========================= */
+.badge-soft {
+    background: #1f2937;
+    color: #93c5fd;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    display: inline-block;
+}
+
+/* =========================
+   VULNERABILITY LIST (SNYK STYLE)
 ========================= */
 ul {
-    padding-left: 16px;
+    padding-left: 0;
+    list-style: none;
 }
 
 li {
+    background: #0f172a;
+    border: 1px solid #1f2937;
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 8px;
     font-size: 13px;
-    opacity: 0.85;
-    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 /* =========================
-   SMALL BADGE
+   SEVERITY BADGES
 ========================= */
-.badge-soft {
-    background: rgba(255,255,255,0.1);
+.badge {
+    font-size: 11px;
     padding: 4px 8px;
     border-radius: 8px;
-    font-size: 12px;
+}
+
+.badge-critical { background: #7f1d1d; color: #fecaca; }
+.badge-high     { background: #991b1b; color: #fee2e2; }
+.badge-medium   { background: #92400e; color: #fef3c7; }
+.badge-low      { background: #14532d; color: #bbf7d0; }
+
+/* =========================
+   SCROLLBAR (MODERN)
+========================= */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #1f2937;
+    border-radius: 10px;
+}
+
+/* =========================
+   PANEL SPACING IMPROVEMENT
+========================= */
+.container-fluid {
+    padding: 18px;
 }
 </style>
 
@@ -161,6 +238,11 @@ if (!token || token === "undefined") {
 
             <h5>AI Code Scanner</h5>
 
+            <div id="loader" style="display:none;" class="text-center mb-2">
+                  <div class="spinner-border text-primary"></div>
+                    <div>Scanning...</div>
+                </div>
+
             <textarea id="code" class="form-control mt-3"
                 rows="6"
                 placeholder="Paste code here..."></textarea>
@@ -176,6 +258,7 @@ if (!token || token === "undefined") {
             </div>
 
             <pre id="result" class="mt-3"></pre>
+            <div id="status" class="badge-soft mt-2"></div>
 
         </div>
 
@@ -197,7 +280,10 @@ if (!token || token === "undefined") {
         </div>
 
         <div class="glass p-3">
-            <h6>Risk History</h6>
+            <li>
+                 <span>SQL Injection detected</span>
+                  <span class="badge badge-critical">CRITICAL</span>
+                </li>
             <ul id="history"></ul>
 
             <button class="btn btn-danger w-100 mt-3" onclick="logout()">

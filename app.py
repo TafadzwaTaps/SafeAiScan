@@ -10,12 +10,11 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 from auth import create_access_token, verify_token
 from supabase import create_client
-from tasks import scan_repo_task
 from scanner import safe_clone, validate_repo, full_scan
-from celery.result import AsyncResult
-from tasks import celery
+from fastapi import BackgroundTasks
 
 
+tasks_store = {}
 # =========================================================
 # APP
 # =========================================================
@@ -422,11 +421,20 @@ def history(auth=Depends(get_user)):
     return res.data
 
 @app.post("/api/scan-repo")
-def scan_repo(req: RepoRequest, auth=Depends(get_user)):
+def scan_repo(req: RepoRequest, background_tasks: BackgroundTasks, auth=Depends(get_user)):
     user = auth["user"]
     org = auth["org"]
 
-    task = scan_repo_task.delay(
+    task_id = str(uuid.uuid4())
+
+    tasks_store[task_id] = {
+        "state": "QUEUED",
+        "result": None
+    }
+
+    background_tasks.add_task(
+        run_scan,
+        task_id,
         req.repo_url,
         user["id"],
         org["id"]
@@ -434,16 +442,10 @@ def scan_repo(req: RepoRequest, auth=Depends(get_user)):
 
     return {
         "status": "queued",
-        "task_id": task.id
+        "task_id": task_id
     }
 
 
 @app.get("/api/task/{task_id}")
 def get_task(task_id: str):
-    task = AsyncResult(task_id, app=celery)
-
-    return {
-        "task_id": task_id,
-        "state": task.state,
-        "result": task.result if task.ready() else None
-    }
+    return tasks_store.get(task_id, {"state": "NOT_FOUND"})

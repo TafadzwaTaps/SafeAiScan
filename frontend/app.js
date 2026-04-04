@@ -1,30 +1,41 @@
+// =========================
+// CODE SCAN
+// =========================
 async function scan() {
   const code = document.getElementById("code").value;
 
   try {
+    document.getElementById("loader")?.style && (document.getElementById("loader").style.display = "block");
+
     const data = await analyzeCode(code);
 
-    document.getElementById("result").innerText =
-      JSON.stringify(data, null, 2);
+    document.getElementById("loader")?.style && (document.getElementById("loader").style.display = "none");
 
-    // ✅ LIVE USAGE UPDATE
+    // 🔥 Better result formatting
+    const summary = {
+      issues: data.findings?.length || 0,
+      explanation: data.ai?.explanation || "No explanation",
+      fixes: data.ai?.fixes || []
+    };
+
+    document.getElementById("result").innerText =
+      JSON.stringify(summary, null, 2);
+
     if (data.usage_today !== undefined) {
       document.getElementById("usage").innerText = data.usage_today;
     }
 
   } catch (err) {
     console.error(err);
-    alert("Scan failed");
+    alert("Scan failed: " + err.message);
   }
 }
 
-
 // =========================
-// REPO SCAN (NEW FEATURE)
+// REPO SCAN
 // =========================
 async function scanRepo() {
   const repoUrl = prompt("Enter GitHub repo URL:");
-
   if (!repoUrl) return;
 
   try {
@@ -36,42 +47,54 @@ async function scanRepo() {
 
   } catch (err) {
     console.error(err);
-    alert("Repo scan failed");
+    alert("Repo scan failed: " + err.message);
   }
 }
 
 // =========================
-// TASK POLLING
+// FIXED POLLING (IMPORTANT)
 // =========================
 async function pollTask(taskId) {
   const interval = setInterval(async () => {
     try {
       const data = await getTaskStatus(taskId);
 
-      if (data.status === "SUCCESS") {
+      // 🔥 show live status in UI
+      document.getElementById("status") &&
+        (document.getElementById("status").innerText = "Status: " + data.state);
+
+      // show raw debug result
+      document.getElementById("result").innerText =
+        JSON.stringify(data, null, 2);
+
+      if (data.state === "DONE") {
         clearInterval(interval);
         alert("Repo scan complete!");
-        console.log("RESULT:", data.result);
+        console.log("FINAL RESULT:", data.result);
+      }
+
+      if (data.state === "FAILED") {
+        clearInterval(interval);
+        alert("Scan failed!");
       }
 
     } catch (err) {
       console.error("Polling error:", err);
       clearInterval(interval);
     }
-  }, 3000);
+  }, 2000);
 }
 
+// =========================
+// UI LOADERS
+// =========================
 async function loadUsage() {
   try {
     const data = await getUsage();
-
-    if (!data || data.length === 0) {
-      document.getElementById("usage").innerText = 0;
-      return;
-    }
-
     const latest = data[data.length - 1];
-    document.getElementById("usage").innerText = latest.request_count;
+
+    document.getElementById("usage").innerText =
+      latest?.request_count || 0;
 
   } catch {
     document.getElementById("usage").innerText = "Error";
@@ -87,7 +110,13 @@ async function loadHistory() {
 
     data.forEach(item => {
       const li = document.createElement("li");
-      li.innerText = item.risk + " (" + item.score + ")";
+
+      // 🔥 SaaS-style badge UI
+      li.innerHTML = `
+        <span class="badge bg-danger">${item.risk}</span>
+        Score: ${item.score}
+      `;
+
       list.appendChild(li);
     });
 
@@ -105,13 +134,13 @@ async function loadPlan() {
   }
 }
 
+// =========================
+// UTIL
+// =========================
 function copyKey() {
   const key = localStorage.getItem("api_key");
 
-  if (!key) {
-    alert("No API key");
-    return;
-  }
+  if (!key) return alert("No API key");
 
   navigator.clipboard.writeText(key);
   alert("Copied!");
@@ -122,7 +151,9 @@ function logout() {
   window.location.replace("login.html");
 }
 
+// =========================
 // INIT
+// =========================
 async function init() {
   document.getElementById("apiKey").innerText =
     localStorage.getItem("api_key") || "Not available";
@@ -134,7 +165,7 @@ async function init() {
 
 init();
 
-// 🔥 REQUIRED FOR BUTTONS
+// expose
 window.scan = scan;
 window.copyKey = copyKey;
 window.logout = logout;

@@ -26,26 +26,29 @@ async function apiRequest(endpoint, options = {}) {
     }
   });
 
-  if (res.status === 401) {
-    clearAuth();
-    return null;
+  // 🔥 FIX: proper error handling
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
   }
 
   return res;
 }
 
-// SAFE JSON PARSE
+// SAFE JSON
 async function safeJson(res) {
   const text = await res.text();
   try {
     return JSON.parse(text);
   } catch {
-    console.error("RAW ERROR:", text);
-    throw new Error("Server error: " + text);
+    console.error("RAW RESPONSE:", text);
+    throw new Error("Invalid JSON from server");
   }
 }
 
-// API CALLS
+// =========================
+// ANALYZE CODE
+// =========================
 async function analyzeCode(text) {
   const res = await apiRequest("/api/analyze", {
     method: "POST",
@@ -62,23 +65,8 @@ async function analyzeCode(text) {
   }
 }
 
-async function getUsage() {
-  const res = await apiRequest("/api/usage");
-  return safeJson(res);
-}
-
-async function getHistory() {
-  const res = await apiRequest("/api/history");
-  return safeJson(res);
-}
-
-async function getMe() {
-  const res = await apiRequest("/api/me");
-  return safeJson(res);
-}
-
 // =========================
-// REPO SCAN (FIXED)
+// REPO SCAN
 // =========================
 async function scanRepoAPI(repoUrl) {
   const res = await apiRequest("/api/scan-repo", {
@@ -94,5 +82,23 @@ async function scanRepoAPI(repoUrl) {
 // =========================
 async function getTaskStatus(taskId) {
   const res = await apiRequest("/api/task/" + taskId);
+  return safeJson(res);
+}
+
+// =========================
+// OTHER API CALLS
+// =========================
+async function getUsage() {
+  const res = await apiRequest("/api/usage");
+  return safeJson(res);
+}
+
+async function getHistory() {
+  const res = await apiRequest("/api/history");
+  return safeJson(res);
+}
+
+async function getMe() {
+  const res = await apiRequest("/api/me");
   return safeJson(res);
 }
