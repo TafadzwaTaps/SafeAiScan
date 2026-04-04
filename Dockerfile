@@ -30,4 +30,4 @@ COPY . .
 
 EXPOSE 7860
 
-CMD bash -c "celery -A tasks.celery worker --loglevel=info & uvicorn app:app --host 0.0.0.0 --port 7860"
+CMD ["sh", "-c", "celery -A tasks.celery worker --loglevel=info & uvicorn app:app --host 0.0.0.0 --port 7860"]
