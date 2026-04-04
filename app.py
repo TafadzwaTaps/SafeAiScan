@@ -246,7 +246,6 @@ def scan_vulnerabilities(text: str):
 # AI ENGINE
 # =========================================================
 async def ai_enrich(text: str, findings):
-    # 🔒 No API key fallback
     if not HF_API_KEY:
         return {
             "explanation": "AI disabled",
@@ -262,19 +261,24 @@ async def ai_enrich(text: str, findings):
                     "inputs": f"""
 You are a cybersecurity expert.
 
+Analyze this code and return ONLY valid JSON.
+
+Format:
+{{ "explanation": "string", "fixes": ["string"] }}
+
+Do not include markdown.
+Do not include text outside JSON.
+
 Findings:
 {findings}
 
-Return STRICT JSON ONLY:
-{{ "explanation": "", "fixes": [] }}
-
 Code:
-{text[:2000]}
+{text[:1500]}
 """
                 }
             )
 
-        # 🔥 STEP 1: SAFE PARSE
+        # SAFE PARSE
         try:
             data = res.json()
         except Exception as e:
@@ -282,15 +286,15 @@ Code:
             print("RAW RESPONSE:", res.text)
 
             return {
-                "explanation": "AI returned invalid response",
+                "explanation": res.text[:500],
                 "fixes": []
             }
 
-        # 🔥 STEP 2: HANDLE HF FORMAT
+        # HANDLE HF FORMAT
         if isinstance(data, list):
             data = data[0]
 
-        # 🔥 STEP 3: HANDLE STRING OUTPUT (VERY COMMON)
+        # HANDLE GENERATED TEXT
         if isinstance(data, dict) and "generated_text" in data:
             text_output = data["generated_text"]
 
@@ -300,15 +304,13 @@ Code:
                 return parsed
             except:
                 return {
-                    "explanation": text_output,
+                    "explanation": text_output[:500],
                     "fixes": []
                 }
 
-        # 🔥 STEP 4: VALID DICT
         if isinstance(data, dict):
             return data
 
-        # 🔥 STEP 5: FALLBACK
         return {
             "explanation": str(data),
             "fixes": []
@@ -316,7 +318,6 @@ Code:
 
     except Exception as e:
         print("🔥 AI REQUEST ERROR:", str(e))
-
         return {
             "explanation": "AI request failed",
             "fixes": []
@@ -341,16 +342,7 @@ async def analyze(req: AnalyzeRequest, auth=Depends(get_user)):
 
         findings = scan_vulnerabilities(req.text)
 
-        # SAFE AI
-        ai_raw = await ai_enrich(req.text, findings)
-
-        if isinstance(ai_raw, dict):
-            ai = ai_raw
-        else:
-            ai = {
-                "explanation": str(ai_raw),
-                "fixes": []
-            }
+        ai = await ai_enrich(req.text, findings)
 
         analysis_id = str(uuid.uuid4())
 
@@ -399,6 +391,14 @@ def usage(auth=Depends(get_user)):
 @app.get("/")
 def home():
     return {"status": "SafeAIScan running on Hugging Face Spaces"}
+
+@app.get("/api/me")
+def get_me(auth=Depends(get_user)):
+    user = auth["user"]
+
+    return {
+        "plan": user.get("plan", "free")
+    }
 
 @app.get("/api/history")
 def history(auth=Depends(get_user)):

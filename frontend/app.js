@@ -1,7 +1,3 @@
-// =========================
-// UI ACTIONS
-// =========================
-
 async function scan() {
   const code = document.getElementById("code").value;
 
@@ -10,6 +6,11 @@ async function scan() {
 
     document.getElementById("result").innerText =
       JSON.stringify(data, null, 2);
+
+    // ✅ LIVE USAGE UPDATE
+    if (data.usage_today !== undefined) {
+      document.getElementById("usage").innerText = data.usage_today;
+    }
 
   } catch (err) {
     console.error(err);
@@ -38,17 +39,26 @@ async function loadHistory() {
   try {
     const data = await getHistory();
 
-    const historyList = document.getElementById("history");
-    historyList.innerHTML = "";
+    const list = document.getElementById("history");
+    list.innerHTML = "";
 
     data.forEach(item => {
       const li = document.createElement("li");
       li.innerText = item.risk + " (" + item.score + ")";
-      historyList.appendChild(li);
+      list.appendChild(li);
     });
 
   } catch (err) {
-    console.error("History failed", err);
+    console.error(err);
+  }
+}
+
+async function loadPlan() {
+  try {
+    const data = await getMe();
+    document.getElementById("plan").innerText = data.plan;
+  } catch {
+    document.getElementById("plan").innerText = "Free";
   }
 }
 
@@ -56,12 +66,12 @@ function copyKey() {
   const key = localStorage.getItem("api_key");
 
   if (!key) {
-    alert("No API key found");
+    alert("No API key");
     return;
   }
 
   navigator.clipboard.writeText(key);
-  alert("API key copied!");
+  alert("Copied!");
 }
 
 function logout() {
@@ -69,24 +79,19 @@ function logout() {
   window.location.replace("login.html");
 }
 
-// =========================
 // INIT
-// =========================
 async function init() {
-  // Show API key
-  const apiKey = localStorage.getItem("api_key");
   document.getElementById("apiKey").innerText =
-    apiKey || "Not available";
+    localStorage.getItem("api_key") || "Not available";
 
   await loadUsage();
   await loadHistory();
+  await loadPlan();
 }
 
 init();
 
-// =========================
-// MAKE FUNCTIONS GLOBAL (IMPORTANT)
-// =========================
+// 🔥 REQUIRED FOR BUTTONS
 window.scan = scan;
 window.copyKey = copyKey;
 window.logout = logout;

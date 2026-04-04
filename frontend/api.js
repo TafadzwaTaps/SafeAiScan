@@ -1,11 +1,5 @@
-// =========================
-// CONFIG
-// =========================
 const BASE_URL = "https://rathious-safeaiscan.hf.space";
 
-// =========================
-// TOKEN HELPERS
-// =========================
 function getToken() {
   return localStorage.getItem("access_token");
 }
@@ -19,9 +13,6 @@ function clearAuth() {
   window.location.replace("login.html");
 }
 
-// =========================
-// CORE REQUEST WRAPPER
-// =========================
 async function apiRequest(endpoint, options = {}) {
   const res = await fetch(BASE_URL + endpoint, {
     ...options,
@@ -36,7 +27,6 @@ async function apiRequest(endpoint, options = {}) {
   });
 
   if (res.status === 401) {
-    console.warn("Session expired");
     clearAuth();
     return null;
   }
@@ -44,9 +34,18 @@ async function apiRequest(endpoint, options = {}) {
   return res;
 }
 
-// =========================
-// API FUNCTIONS
-// =========================
+// SAFE JSON PARSE
+async function safeJson(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    console.error("RAW ERROR:", text);
+    throw new Error("Server error: " + text);
+  }
+}
+
+// API CALLS
 async function analyzeCode(text) {
   const res = await apiRequest("/api/analyze", {
     method: "POST",
@@ -65,10 +64,15 @@ async function analyzeCode(text) {
 
 async function getUsage() {
   const res = await apiRequest("/api/usage");
-  return res.json();
+  return safeJson(res);
 }
 
 async function getHistory() {
   const res = await apiRequest("/api/history");
-  return res.json();
+  return safeJson(res);
+}
+
+async function getMe() {
+  const res = await apiRequest("/api/me");
+  return safeJson(res);
 }
