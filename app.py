@@ -431,6 +431,6 @@ def scan_repo(req: RepoRequest, auth=Depends(get_user)):
     )
 
     return {
-        "status": "queued",
-        "task_id": task.id
-    }
+    "status": "queued",
+    "task_id": task.id
+}
