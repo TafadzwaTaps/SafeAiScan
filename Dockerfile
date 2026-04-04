@@ -2,34 +2,29 @@ FROM python:3.10
 
 WORKDIR /app
 
-# -------------------------------------------------
-# SYSTEM DEPENDENCIES (VERY IMPORTANT)
-# -------------------------------------------------
+# System deps
 RUN apt-get update && apt-get install -y \
     git \
     wget \
     curl \
+    gnupg \
+    lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
-# -------------------------------------------------
-# INSTALL TRIVY (CVE SCANNER)
-# -------------------------------------------------
-RUN apt-get update && apt-get install -y wget gnupg lsb-release
-
-RUN wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apt-key add - \
-    && echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/trivy.list \
+# Install Trivy (fixed)
+RUN mkdir -p /etc/apt/keyrings \
+    && wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+    | gpg --dearmor -o /etc/apt/keyrings/trivy.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" \
+    | tee /etc/apt/sources.list.d/trivy.list \
     && apt-get update \
     && apt-get install -y trivy
 
-# -------------------------------------------------
-# PYTHON DEPENDENCIES
-# -------------------------------------------------
+# Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# -------------------------------------------------
-# APP CODE
-# -------------------------------------------------
+# App
 COPY . .
 
 EXPOSE 7860
