@@ -12,6 +12,7 @@ from auth import create_access_token, verify_token
 from supabase import create_client
 from tasks import scan_repo_task
 
+
 # =========================================================
 # APP
 # =========================================================
@@ -70,6 +71,9 @@ class LoginRequest(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     text: str
+
+class RepoRequest(BaseModel):
+    repo_url: str
 
 # =========================================================
 # REGISTER (FULL ONBOARDING)
