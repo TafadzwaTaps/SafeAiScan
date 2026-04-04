@@ -1,59 +1,172 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SafeAIScan Login</title>
+
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+  <style>
+    body {
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #1f2937, #0b1220);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+
+    .glass-card {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+
+    .form-control {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #fff;
+    }
+
+    .form-control:focus {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      box-shadow: none;
+      border-color: #3b82f6;
+    }
+
+    .input-group-text {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #cbd5e1;
+    }
+
+    .btn-primary {
+      background: #3b82f6;
+      border: none;
+      font-weight: 600;
+    }
+
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+
+    .title {
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .muted {
+      color: #94a3b8;
+      font-size: 0.9rem;
+    }
+  </style>
 </head>
 
-<body class="bg-dark text-light">
+<body>
 
-<div class="container mt-5">
-  <div class="card bg-secondary p-4">
-    <h3 class="text-center">SafeAIScan Login</h3>
+<div class="glass-card">
 
-    <input id="email" class="form-control mt-3" placeholder="Email">
-    <input id="password" type="password" class="form-control mt-2" placeholder="Password">
+  <div class="text-center mb-4">
+    <h3 class="title">SafeAIScan</h3>
+    <p class="muted">Secure AI Vulnerability Scanner</p>
+  </div>
 
-    <button class="btn btn-primary mt-3 w-100" onclick="login()">
-      Login
+  <!-- Email -->
+  <div class="input-group mb-3">
+    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+    <input id="email" type="email" class="form-control" placeholder="Email">
+  </div>
+
+  <!-- Password -->
+  <div class="input-group mb-3">
+    <span class="input-group-text"><i class="bi bi-lock"></i></span>
+    <input id="password" type="password" class="form-control" placeholder="Password">
+    <button class="btn btn-outline-light" type="button" onclick="togglePassword()">
+      <i class="bi bi-eye"></i>
     </button>
   </div>
+
+  <!-- Login Button -->
+  <button id="loginBtn" class="btn btn-primary w-100" onclick="login()">
+    Login
+  </button>
+
+  <div id="alertBox" class="alert mt-3 d-none" role="alert"></div>
+
 </div>
 
 <script>
+function showAlert(message, type="danger") {
+  const box = document.getElementById("alertBox");
+  box.className = `alert alert-${type} mt-3`;
+  box.innerText = message;
+  box.classList.remove("d-none");
+}
+
+function setLoading(state) {
+  const btn = document.getElementById("loginBtn");
+  btn.disabled = state;
+  btn.innerHTML = state
+    ? `<span class="spinner-border spinner-border-sm"></span> Logging in...`
+    : `Login`;
+}
+
+function togglePassword() {
+  const input = document.getElementById("password");
+  input.type = input.type === "password" ? "text" : "password";
+}
+
 async function login() {
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
 
-  const res = await fetch("https://rathious-safeaiscan.hf.space/auth/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      email,
-      password
-    })
-  });
-
-  const data = await res.json();
-
-  console.log("LOGIN RESPONSE:", data);
-
-  if (!data.access_token) {
-    alert("Login failed");
+  if (!email || !password) {
+    showAlert("Please fill in all fields");
     return;
   }
-  
 
-  localStorage.setItem("access_token", data.access_token);
+  setLoading(true);
 
-  // DO NOT overwrite API key
-  if (data.api_key) {
-    localStorage.setItem("api_key", data.api_key);
+  try {
+    const res = await fetch("https://rathious-safeaiscan.hf.space/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json();
+
+    if (!data.access_token) {
+      showAlert("Invalid credentials or login failed");
+      setLoading(false);
+      return;
+    }
+
+    localStorage.setItem("access_token", data.access_token);
+
+    if (data.api_key) {
+      localStorage.setItem("api_key", data.api_key);
+    }
+
+    showAlert("Login successful! Redirecting...", "success");
+
+    setTimeout(() => {
+      window.location.href = "dashboard.html";
+    }, 800);
+
+  } catch (err) {
+    showAlert("Network error. Please try again.");
   }
 
-  window.location.href = "dashboard.html";
+  setLoading(false);
 }
 </script>
 

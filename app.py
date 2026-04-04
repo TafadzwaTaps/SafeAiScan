@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 from auth import create_access_token, verify_token
 from supabase import create_client
+from tasks import scan_repo_task
 
 # =========================================================
 # APP
@@ -412,3 +413,20 @@ def history(auth=Depends(get_user)):
         .execute()
 
     return res.data
+
+@app.post("/api/scan-repo")
+def scan_repo(req: RepoRequest, auth=Depends(get_user)):
+    user = auth["user"]
+    org = auth["org"]
+
+    # ⚡ FIRE AND FORGET (NO WAIT)
+    task = scan_repo_task.delay(
+        req.repo_url,
+        user["id"],
+        org["id"]
+    )
+
+    return {
+        "status": "queued",
+        "task_id": task.id
+    }

@@ -18,6 +18,49 @@ async function scan() {
   }
 }
 
+
+// =========================
+// REPO SCAN (NEW FEATURE)
+// =========================
+async function scanRepo() {
+  const repoUrl = prompt("Enter GitHub repo URL:");
+
+  if (!repoUrl) return;
+
+  try {
+    const data = await scanRepoAPI(repoUrl);
+
+    alert("Scan queued. Task ID: " + data.task_id);
+
+    pollTask(data.task_id);
+
+  } catch (err) {
+    console.error(err);
+    alert("Repo scan failed");
+  }
+}
+
+// =========================
+// TASK POLLING
+// =========================
+async function pollTask(taskId) {
+  const interval = setInterval(async () => {
+    try {
+      const data = await getTaskStatus(taskId);
+
+      if (data.status === "SUCCESS") {
+        clearInterval(interval);
+        alert("Repo scan complete!");
+        console.log("RESULT:", data.result);
+      }
+
+    } catch (err) {
+      console.error("Polling error:", err);
+      clearInterval(interval);
+    }
+  }, 3000);
+}
+
 async function loadUsage() {
   try {
     const data = await getUsage();

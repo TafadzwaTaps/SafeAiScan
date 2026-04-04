@@ -76,3 +76,23 @@ async function getMe() {
   const res = await apiRequest("/api/me");
   return safeJson(res);
 }
+
+// =========================
+// REPO SCAN (FIXED)
+// =========================
+async function scanRepoAPI(repoUrl) {
+  const res = await apiRequest("/api/scan-repo", {
+    method: "POST",
+    body: JSON.stringify({ repo_url: repoUrl })
+  });
+
+  return safeJson(res);
+}
+
+// =========================
+// TASK STATUS
+// =========================
+async function getTaskStatus(taskId) {
+  const res = await apiRequest("/api/task/" + taskId);
+  return safeJson(res);
+}
