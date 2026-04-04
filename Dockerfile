@@ -14,8 +14,12 @@ RUN apt-get update && apt-get install -y \
 # -------------------------------------------------
 # INSTALL TRIVY (CVE SCANNER)
 # -------------------------------------------------
-RUN wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.deb \
-    && dpkg -i trivy_0.50.0_Linux-64bit.deb
+RUN apt-get update && apt-get install -y wget gnupg lsb-release
+
+RUN wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apt-key add - \
+    && echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/trivy.list \
+    && apt-get update \
+    && apt-get install -y trivy
 
 # -------------------------------------------------
 # PYTHON DEPENDENCIES
