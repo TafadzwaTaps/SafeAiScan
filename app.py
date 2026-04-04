@@ -11,6 +11,9 @@ from passlib.context import CryptContext
 from auth import create_access_token, verify_token
 from supabase import create_client
 from tasks import scan_repo_task
+from scanner import safe_clone, validate_repo, full_scan
+from celery.result import AsyncResult
+from tasks import celery
 
 
 # =========================================================
@@ -423,7 +426,6 @@ def scan_repo(req: RepoRequest, auth=Depends(get_user)):
     user = auth["user"]
     org = auth["org"]
 
-    # ⚡ FIRE AND FORGET (NO WAIT)
     task = scan_repo_task.delay(
         req.repo_url,
         user["id"],
@@ -431,6 +433,17 @@ def scan_repo(req: RepoRequest, auth=Depends(get_user)):
     )
 
     return {
-    "status": "queued",
-    "task_id": task.id
-}
+        "status": "queued",
+        "task_id": task.id
+    }
+
+
+@app.get("/api/task/{task_id}")
+def get_task(task_id: str):
+    task = AsyncResult(task_id, app=celery)
+
+    return {
+        "task_id": task_id,
+        "state": task.state,
+        "result": task.result if task.ready() else None
+    }

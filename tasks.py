@@ -1,38 +1,36 @@
-from celery_worker import celery
-from datetime import datetime, timezone
-import uuid
+from celery import Celery
+from scanner import safe_clone, validate_repo, full_scan
 
-@celery.task
-def scan_repo_task(repo_url, user_id, org_id):
-    import requests
+celery = Celery(
+    "scanner",
+    broker="redis://localhost:6379/0",
+    backend="redis://localhost:6379/0"
+)
 
-    # ⚠️ SAFE IMPORT INSIDE TASK (prevents circular imports)
-    from your_scanner import scan_vulnerabilities
-    from your_ai import ai_enrich
-    from your_db import supabase
 
-    code = f"Repo scan placeholder: {repo_url}"
+# =========================================================
+# MAIN SCAN TASK
+# =========================================================
+@celery.task(bind=True)
+def scan_repo_task(self, repo_url, user_id, org_id):
 
-    findings = scan_vulnerabilities(code)
-
-    ai = None
     try:
-        ai = ai_enrich(code, findings)
+        self.update_state(state="CLONING")
+        path = safe_clone(repo_url)
+
+        self.update_state(state="VALIDATING")
+        validate_repo(path)
+
+        self.update_state(state="SCANNING")
+        results = full_scan(path)
+
+        return {
+            "status": "done",
+            "results": results
+        }
+
     except Exception as e:
-        ai = {"explanation": str(e), "fixes": []}
-
-    result_id = str(uuid.uuid4())
-
-    supabase.table("analysis_history").insert({
-        "id": result_id,
-        "user_id": user_id,
-        "org_id": org_id,
-        "input_text": repo_url,
-        "risk": "REPO_SCAN",
-        "score": len(findings) * 25,
-        "explanation": ai.get("explanation"),
-        "fixes": ai.get("fixes"),
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }).execute()
-
-    return {"id": result_id}
+        return {
+            "status": "failed",
+            "error": str(e)
+        }
