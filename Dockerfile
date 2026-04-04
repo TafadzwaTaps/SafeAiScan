@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.10-slim-bookworm
 
 WORKDIR /app
 
@@ -8,14 +8,13 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     gnupg \
-    lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Trivy (fixed)
 RUN mkdir -p /etc/apt/keyrings \
     && wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
     | gpg --dearmor -o /etc/apt/keyrings/trivy.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" \
+    && echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb bookworm main" \
     | tee /etc/apt/sources.list.d/trivy.list \
     && apt-get update \
     && apt-get install -y trivy
