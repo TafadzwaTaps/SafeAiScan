@@ -75,56 +75,73 @@ class AnalyzeRequest(BaseModel):
 # =========================================================
 @app.post("/auth/register")
 def register(req: RegisterRequest):
-    existing = supabase.table("users").select("*").eq("email", req.email).execute()
+    try:
+        print("STEP 1: checking user")
 
-    if existing.data:
-        raise HTTPException(400, "User already exists")
+        existing = supabase.table("users").select("*").eq("email", req.email).execute()
 
-    user_id = str(uuid.uuid4())
-    org_id = str(uuid.uuid4())
+        if existing.data:
+            raise HTTPException(400, "User already exists")
 
-    # create org
-    supabase.table("organizations").insert({
-        "id": org_id,
-        "name": req.org_name
-    }).execute()
+        user_id = str(uuid.uuid4())
+        org_id = str(uuid.uuid4())
 
-    # create user
-    password_hash = hash_password(req.password)
+        print("STEP 2: creating org")
 
-    supabase.table("users").insert({
-        "id": user_id,
-        "email": req.email,
-        "password_hash": password_hash,
-        "org_id": org_id,
-        "api_key_hash": None
-    }).execute()
+        org_res = supabase.table("organizations").insert({
+            "id": org_id,
+            "name": req.org_name
+        }).execute()
 
-    # generate API key (auto onboarding)
-    raw_key = f"saas_{uuid.uuid4().hex}"
-    api_hash = hash_key(raw_key)
+        print("ORG RESULT:", org_res.data)
 
-    supabase.table("users").update({
-        "api_key_hash": api_hash
-    }).eq("id", user_id).execute()
+        print("STEP 3: creating user")
 
-    # init usage row
-    supabase.table("usage_metrics").insert({
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "org_id": org_id,
-        "date": str(datetime.utcnow().date()),
-        "request_count": 0
-    }).execute()
+        password_hash = hash_password(req.password)
 
-    token = create_access_token({"sub": user_id})
+        user_res = supabase.table("users").insert({
+            "id": user_id,
+            "email": req.email,
+            "password_hash": password_hash,
+            "org_id": org_id,
+            "api_key_hash": None
+        }).execute()
 
-    return {
-        "access_token": token,
-        "api_key": raw_key,
-        "user_id": user_id,
-        "org_id": org_id
-    }
+        print("USER RESULT:", user_res.data)
+
+        print("STEP 4: API KEY")
+
+        raw_key = f"saas_{uuid.uuid4().hex}"
+        api_hash = hash_key(raw_key)
+
+        supabase.table("users").update({
+            "api_key_hash": api_hash
+        }).eq("id", user_id).execute()
+
+        print("STEP 5: usage row")
+
+        supabase.table("usage_metrics").insert({
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "org_id": org_id,
+            "date": str(datetime.utcnow().date()),
+            "request_count": 0
+        }).execute()
+
+        print("STEP 6: token")
+
+        token = create_access_token({"sub": user_id})
+
+        return {
+            "access_token": token,
+            "api_key": raw_key,
+            "user_id": user_id,
+            "org_id": org_id
+        }
+
+    except Exception as e:
+        print("🔥 REGISTER ERROR:", str(e))
+        raise HTTPException(500, str(e))
 
 # =========================================================
 # LOGIN
