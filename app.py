@@ -76,26 +76,21 @@ class AnalyzeRequest(BaseModel):
 @app.post("/auth/register")
 def register(req: RegisterRequest):
     try:
-        print("STEP 1: checking user")
-
-        existing = supabase.table("users").select("*").eq("email", req.email).execute()
-
-        if existing.data:
-            raise HTTPException(400, "User already exists")
+        print("Incoming request:", req)
 
         user_id = str(uuid.uuid4())
         org_id = str(uuid.uuid4())
 
-        print("STEP 2: creating org")
+        print("Creating org...")
 
         org_res = supabase.table("organizations").insert({
             "id": org_id,
             "name": req.org_name
         }).execute()
 
-        print("ORG RESULT:", org_res.data)
+        print("ORG RESULT:", org_res)
 
-        print("STEP 3: creating user")
+        print("Creating user...")
 
         password_hash = hash_password(req.password)
 
@@ -107,9 +102,7 @@ def register(req: RegisterRequest):
             "api_key_hash": None
         }).execute()
 
-        print("USER RESULT:", user_res.data)
-
-        print("STEP 4: API KEY")
+        print("USER RESULT:", user_res)
 
         raw_key = f"saas_{uuid.uuid4().hex}"
         api_hash = hash_key(raw_key)
@@ -118,25 +111,11 @@ def register(req: RegisterRequest):
             "api_key_hash": api_hash
         }).eq("id", user_id).execute()
 
-        print("STEP 5: usage row")
-
-        supabase.table("usage_metrics").insert({
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "org_id": org_id,
-            "date": str(datetime.utcnow().date()),
-            "request_count": 0
-        }).execute()
-
-        print("STEP 6: token")
-
         token = create_access_token({"sub": user_id})
 
         return {
             "access_token": token,
-            "api_key": raw_key,
-            "user_id": user_id,
-            "org_id": org_id
+            "api_key": raw_key
         }
 
     except Exception as e:
