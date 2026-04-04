@@ -6,6 +6,10 @@ const token = localStorage.getItem("access_token");
 
 if (!token || token === "undefined") {
   window.location.replace("login.html");
+} else {
+  document.addEventListener("DOMContentLoaded", () => {
+    document.body.style.display = "block";
+  });
 }
 </script>
 
