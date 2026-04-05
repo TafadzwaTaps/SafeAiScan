@@ -14,8 +14,9 @@ from scanner import safe_clone, validate_repo, full_scan
 from fastapi import BackgroundTasks
 import asyncio 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from tasks import run_scan
+from store import tasks_store
 
-tasks_store = {}
 # =========================================================
 # APP
 # =========================================================
@@ -263,27 +264,22 @@ async def ai_enrich(text: str, findings):
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
-                "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta",
-                headers={"Authorization": f"Bearer {HF_API_KEY}"},
-                json={
-                    "inputs": f"""
-You are a cybersecurity expert.
-
-Analyze this code and return ONLY valid JSON.
+    "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+    headers={
+        "Authorization": f"Bearer {HF_API_KEY}",
+        "Content-Type": "application/json"
+    },
+    json={
+        "inputs": f"""
+Return ONLY JSON.
 
 Format:
 {{ "explanation": "string", "fixes": ["string"] }}
 
-Do not include markdown.
-Do not include text outside JSON.
-
-Findings:
-{findings}
-
 Code:
 {text[:1500]}
 """
-                }
+    }
             )
 
         # SAFE PARSE
@@ -338,7 +334,7 @@ Code:
 async def analyze(req: AnalyzeRequest, auth=Depends(get_user)):
     try:
         user = auth["user"]
-        org = auth["org"]
+        org = auth.get("org")
 
         if not org:
             raise HTTPException(500, "Organization not found")

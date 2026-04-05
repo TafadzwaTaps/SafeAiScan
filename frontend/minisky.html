@@ -295,7 +295,8 @@ if (!token) window.location.replace("login.html");
 let ws;
 
 function connectWS() {
-    ws = new WebSocket("ws://localhost:8000/ws");
+    const WS_URL = location.origin.replace("http", "ws") + "/ws";
+    ws = new WebSocket(WS_URL);
 
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
