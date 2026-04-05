@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi.security import HTTPBearer , HTTPAuthorizationCredentials
 import httpx
 from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -12,10 +13,12 @@ from auth import create_access_token, verify_token
 from supabase import create_client
 from scanner import safe_clone, validate_repo, full_scan
 from fastapi import BackgroundTasks
-import asyncio 
+from github import Github
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from tasks import run_scan
 from store import tasks_store
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
 
 # =========================================================
 # APP
@@ -39,7 +42,7 @@ app.add_middleware(
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
-
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 security = HTTPBearer()
@@ -78,6 +81,10 @@ class AnalyzeRequest(BaseModel):
 
 class RepoRequest(BaseModel):
     repo_url: str
+
+class AIExplainRequest(BaseModel):
+    question: str
+    context: str
 
 # =========================================================
 # REGISTER (FULL ONBOARDING)
@@ -460,3 +467,65 @@ async def websocket_endpoint(ws: WebSocket):
             })
     except WebSocketDisconnect:
         print("Client disconnected")
+
+
+@app.get("/api/repo/tree")
+def get_repo_tree(repo_url: str, auth=Depends(get_user)):
+    try:
+        g = Github(GITHUB_TOKEN)
+
+        repo_name = repo_url.replace("https://github.com/", "")
+        repo = g.get_repo(repo_name)
+
+        contents = repo.get_contents("")
+
+        def build_tree(contents):
+            tree = []
+            for file in contents:
+                node = {
+                    "name": file.name,
+                    "path": file.path,
+                    "type": file.type
+                }
+
+                if file.type == "dir":
+                    node["children"] = build_tree(repo.get_contents(file.path))
+
+                tree.append(node)
+            return tree
+
+        return build_tree(contents)
+
+    except Exception as e:
+        raise HTTPException(500, str(e))
+    
+@app.post("/api/ai/explain")
+async def ai_explain(req: AIExplainRequest, auth=Depends(get_user)):
+    result = await ai_enrich(req.context + "\n\nQuestion: " + req.question, [])
+    return result
+
+@app.post("/api/report/pdf")
+def generate_pdf(data: dict, auth=Depends(get_user)):
+    file_path = f"/tmp/report_{uuid.uuid4()}.pdf"
+
+    doc = SimpleDocTemplate(file_path)
+    styles = getSampleStyleSheet()
+
+    content = []
+
+    content.append(Paragraph("SafeAIScan Report", styles["Title"]))
+
+    for f in data.get("findings", []):
+        content.append(Paragraph(f"{f.get('match')} - {f.get('severity','HIGH')}", styles["Normal"]))
+
+    doc.build(content)
+
+    return FileResponse(file_path, filename="report.pdf")
+
+@app.get("/api/org/users")
+def get_org_users(auth=Depends(get_user)):
+    org_id = auth["org"]["id"]
+
+    res = supabase.table("users").select("email").eq("org_id", org_id).execute()
+
+    return res.data

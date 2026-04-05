@@ -51,8 +51,10 @@ async function scanRepo() {
 
   try {
     const data = await scanRepoAPI(repoUrl);
+    loadRepoTree(repo_url);
 
     alert("Scan queued. Task ID: " + data.task_id);
+
 
     pollTask(data.task_id);
 
@@ -236,6 +238,7 @@ async function init() {
   if (document.getElementById("usage")) await loadUsage();
   if (document.getElementById("history")) await loadHistory();
   if (document.getElementById("plan")) await loadPlan();
+  if (document.getElementById("teamList")) await loadTeam();
 }
 
 init();
@@ -424,4 +427,95 @@ function renderMinisky(data) {
   renderMiniskyPanel(data);
   renderCVEPanel(data);
   renderFixDiff(data);
+}
+
+async function loadRepoTree(url) {
+    const res = await apiRequest(`/api/repo/tree?repo_url=${encodeURIComponent(url)}`);
+    const data = await res.json();
+
+    const container = document.getElementById("fileTree");
+    container.innerHTML = renderTree(data);
+}
+
+function renderTree(nodes) {
+    return nodes.map(n => `
+        <div style="margin-left:10px">
+            ${n.type === "dir" ? "📁" : "📄"} ${n.name}
+            ${n.children ? renderTree(n.children) : ""}
+        </div>
+    `).join("");
+}
+
+let currentContext = "";
+
+function openSide(v){
+    currentContext = JSON.stringify(v);
+
+    document.getElementById("side").classList.add("open");
+    document.getElementById("title").innerText = v.match || v.title;
+
+    document.getElementById("desc").innerHTML = `
+        <p>${v.description || ""}</p>
+        <pre>${v.fix || ""}</pre>
+    `;
+}
+
+async function askAI(){
+    const q = document.getElementById("aiInput").value;
+
+    const res = await apiRequest("/api/ai/explain", {
+        method: "POST",
+        body: JSON.stringify({
+            question: q,
+            context: currentContext
+        })
+    });
+
+    const data = await res.json();
+
+    const chat = document.getElementById("aiChat");
+
+    chat.innerHTML += `
+        <div><b>You:</b> ${q}</div>
+        <div class="text-success"><b>AI:</b> ${data.explanation}</div>
+        <hr/>
+    `;
+}
+
+async function exportPDF(){
+    const res = await apiRequest("/api/report/pdf", {
+        method: "POST",
+        body: JSON.stringify({ findings })
+    });
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "report.pdf";
+    a.click();
+}
+
+async function loadTeam(){
+    const list = document.getElementById("teamList");
+    if (!list) return;
+
+    list.innerHTML = "<li>Loading...</li>";
+
+    try {
+        const res = await apiRequest("/api/org/users");
+        const data = await res.json();
+
+        list.innerHTML = "";
+
+        data.forEach(u=>{
+            const li = document.createElement("li");
+            li.innerText = u.email;
+            list.appendChild(li);
+        });
+
+    } catch (e) {
+        list.innerHTML = "<li class='text-danger'>Failed to load team</li>";
+    }
 }
