@@ -1,461 +1,352 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>SafeAIScan Pro</title>
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
 
 <style>
-
-/* =========================
-   GLOBAL
-========================= */
 body {
-    background: radial-gradient(circle at top, #0b0f17, #05070d);
+    background: #0b0f17;
     color: #e6edf3;
-    font-family: Inter, Segoe UI, sans-serif;
-    letter-spacing: 0.2px;
+    font-family: Inter, sans-serif;
 }
 
-.container-fluid {
-    padding: 24px;
-}
-
-/* =========================
-   PANELS (DEPTH + GLASS)
-========================= */
 .panel {
-    background: rgba(17,24,39,0.85);
-    border: 1px solid rgba(255,255,255,0.05);
-    border-radius: 16px;
-    padding: 18px;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 15px 40px rgba(0,0,0,0.4);
-    transition: all 0.25s ease;
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    padding: 14px;
 }
 
-.panel:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+/* TIMELINE */
+.timeline {
+    max-height: 420px;
+    overflow-y: auto;
+    font-size: 12px;
+}
+.timeline-item {
+    background: #0b1220;
+    border-left: 2px solid #6366f1;
+    padding: 6px;
+    margin-bottom: 6px;
+    border-radius: 6px;
 }
 
-/* =========================
-   TEXTAREA
-========================= */
-textarea {
-    background: #0b1220 !important;
-    color: #e6edf3 !important;
-    border: 1px solid #1f2937 !important;
-    border-radius: 12px;
-    padding: 12px;
-    transition: 0.2s;
+/* SEVERITY */
+.tab {
+    cursor: pointer;
+    padding: 6px 10px;
+    margin-right: 6px;
+    background: #1f2937;
+    border-radius: 8px;
+    font-size: 12px;
 }
+.tab.active { background: #6366f1; }
 
-textarea:focus {
-    border-color: #6366f1 !important;
-    box-shadow: 0 0 0 1px #6366f1;
-}
-
-/* =========================
-   BUTTONS
-========================= */
-.btn {
-    border-radius: 10px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-}
-
-.btn-primary {
-    background: linear-gradient(135deg,#6366f1,#4f46e5);
-    border: none;
-}
-
-.btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 20px rgba(99,102,241,0.4);
-}
-
-.btn-success:hover,
-.btn-light:hover {
-    transform: translateY(-1px);
-}
-
-/* =========================
-   VULN CARD (ANIMATED)
-========================= */
-.vuln-card {
+/* VULN */
+.vuln {
     background: #0f172a;
     border: 1px solid #1f2937;
-    border-radius: 12px;
-    padding: 14px;
-    margin-bottom: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 8px;
     cursor: pointer;
-    transition: all 0.25s ease;
-    opacity: 0;
-    transform: translateY(10px);
-    animation: fadeIn 0.3s forwards;
 }
 
-.vuln-card:hover {
-    border-color: #6366f1;
-    transform: translateY(-2px) scale(1.01);
-}
-
-@keyframes fadeIn {
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* =========================
-   SEVERITY BADGES
-========================= */
-.badge-sev {
-    padding: 4px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-
-.critical { background:#7f1d1d; color:#fecaca; }
-.high     { background:#991b1b; color:#fee2e2; }
-.medium   { background:#92400e; color:#fef3c7; }
-.low      { background:#14532d; color:#bbf7d0; }
-
-/* =========================
-   PROGRESS BAR (SMOOTH)
-========================= */
-.progress-bar-container {
-    height: 8px;
-    background: #1f2937;
-    border-radius: 999px;
-    overflow: hidden;
-}
-
-.progress-bar {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg,#6366f1,#22c55e);
-    transition: width 0.4s ease;
-}
-
-/* =========================
-   HEATMAP (GLOW EFFECT)
-========================= */
-.heatmap {
-    display: grid;
-    grid-template-columns: repeat(10,1fr);
-    gap: 5px;
-}
-
-.heat-cell {
-    height: 12px;
-    border-radius: 4px;
-    opacity: 0.85;
-    transition: transform 0.2s;
-}
-
-.heat-cell:hover {
-    transform: scale(1.2);
-}
-
-/* =========================
-   SIDE PANEL (SMOOTH SLIDE)
-========================= */
-.side-panel {
+/* SIDE PANEL */
+.side {
     position: fixed;
-    top: 0;
     right: -420px;
+    top: 0;
     width: 420px;
     height: 100%;
     background: #0b1220;
     border-left: 1px solid #1f2937;
-    transition: all 0.35s ease;
+    transition: 0.3s;
+    padding: 16px;
     z-index: 9999;
-    box-shadow: -10px 0 40px rgba(0,0,0,0.6);
+}
+.side.open { right: 0; }
+
+/* DIFF */
+.diff {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.codebox {
+    background: #0a0f1c;
+    border: 1px solid #1f2937;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: pre-wrap;
 }
 
-.side-panel.open {
-    right: 0;
+/* HEATMAP */
+.heatmap {
+    display: grid;
+    grid-template-columns: repeat(10,1fr);
+    gap: 4px;
 }
-
-/* =========================
-   PANEL CONTENT SPACING
-========================= */
-#panel h5 {
-    margin-bottom: 10px;
+.heat-cell {
+    height: 10px;
+    border-radius: 3px;
 }
-
-#panel p {
-    font-size: 13px;
-    color: #cbd5e1;
-}
+.high { background: #ef4444; }
+.medium { background: #f59e0b; }
+.low { background: #22c55e; }
+.critical { background: #b91c1c; }
 
 </style>
-
-<script>
-const token = localStorage.getItem("access_token");
-if (!token) window.location.replace("login.html");
-</script>
-
 </head>
 
 <body>
 
 <div class="container-fluid">
-<div class="row g-4">
-<div id="miniskyPanel"></div>
+<div class="row g-3">
+
 <!-- LEFT -->
 <div class="col-md-3 panel">
+    <h6>🔥 Live Timeline</h6>
+    <div id="timeline" class="timeline"></div>
 
-    <h6 class="mb-2">Scan Progress</h6>
+    <hr/>
 
-    <div class="progress-bar-container mb-2">
-        <div id="progressBar" class="progress-bar"></div>
-    </div>
+    <h6>🌐 Repo Scan</h6>
+    <input id="repoUrl" class="form-control form-control-sm" placeholder="GitHub repo URL"/>
+    <button class="btn btn-primary btn-sm w-100 mt-2" onclick="scanRepo()">Scan Repo</button>
 
-    <div id="status" class="text-muted small">Idle</div>
+    <hr/>
 
-    <h6 class="mt-4">Severity Heatmap</h6>
-    <div id="heatmap" class="heatmap mt-2"></div>
-    <div class="mt-3">
-  <h6>🔥 Severity Heatmap</h6>
+    <h6>🧠 CVE Lookup</h6>
+    <input id="cveInput" class="form-control form-control-sm" placeholder="e.g. log4j"/>
+    <button class="btn btn-warning btn-sm w-100 mt-2" onclick="fetchCVE()">Fetch CVEs</button>
 
-  <div class="d-flex gap-2">
-    <div class="badge bg-danger">HIGH: ${heat.HIGH || 0}</div>
-    <div class="badge bg-warning">MED: ${heat.MEDIUM || 0}</div>
-    <div class="badge bg-success">LOW: ${heat.LOW || 0}</div>
-  </div>
-</div>
-
-    <button class="btn btn-success w-100 mt-4" onclick="aiFixAll()">
-        🤖 AI Auto Fix All
-    </button>
-
-    <button class="btn btn-light w-100 mt-2" onclick="exportPDF()">
-        📄 Export Report
-    </button>
-
-</div>
-
-<div id="snykPanel" class="snyk-panel">
-  <div class="snyk-header">
-    <h5>🔐 Security Insight</h5>
-    <button onclick="closeSnyk()">✖</button>
-  </div>
-
-  <div id="snykContent"></div>
+    <div id="cvePanel" class="mt-2 small"></div>
 </div>
 
 <!-- CENTER -->
 <div class="col-md-6 panel">
 
-    <h5 class="mb-3">SafeAIScan Pro Engine</h5>
+    <h5>SafeAIScan Engine</h5>
 
-    <textarea id="code" rows="6" class="form-control"
-        placeholder="Paste code..."></textarea>
+    <textarea id="code" class="form-control" rows="6" placeholder="Paste code..."></textarea>
 
-    <button class="btn btn-primary w-100 mt-3" onclick="runScan()">
-        Run Scan
-    </button>
+    <button class="btn btn-success w-100 mt-2" onclick="runScan()">Run Scan</button>
 
-    <div id="results" class="mt-4"></div>
+    <hr/>
+
+    <!-- TABS -->
+    <div class="mb-2">
+        <span class="tab active" onclick="setFilter('ALL')">ALL</span>
+        <span class="tab" onclick="setFilter('CRITICAL')">CRITICAL</span>
+        <span class="tab" onclick="setFilter('HIGH')">HIGH</span>
+        <span class="tab" onclick="setFilter('MEDIUM')">MEDIUM</span>
+        <span class="tab" onclick="setFilter('LOW')">LOW</span>
+    </div>
+
+    <div id="results"></div>
 
 </div>
 
 <!-- RIGHT -->
 <div class="col-md-3 panel">
-
-    <h6>System</h6>
+    <h6>📊 System</h6>
     <div class="text-success">● AI Scanner Online</div>
 
+    <hr/>
+
+    <h6>📡 Heatmap</h6>
+    <div id="heatmap" class="heatmap"></div>
 </div>
 
 </div>
 </div>
 
 <!-- SIDE PANEL -->
-<div id="panel" class="side-panel p-4">
+<div id="side" class="side">
+    <h5 id="title"></h5>
+    <p id="desc"></p>
 
-    <h5 id="p-title"></h5>
+    <h6>🔍 Fix Diff</h6>
+    <div class="diff">
+        <div class="codebox" id="before"></div>
+        <div class="codebox" id="after"></div>
+    </div>
 
-    <div id="p-sev" class="badge-sev mb-2"></div>
-
-    <div id="p-cve" class="small"></div>
-    <div id="p-cvss" class="small mb-2"></div>
-
-    <p id="p-desc"></p>
-
-    <div id="p-fix" class="mb-2"></div>
-
-    <button class="btn btn-primary w-100 mt-2" onclick="aiFixSingle()">
-        🤖 Generate Fix
-    </button>
-
-    <button class="btn btn-danger w-100 mt-2" onclick="closePanel()">
-        Close
-    </button>
-
+    <button class="btn btn-danger w-100 mt-3" onclick="closeSide()">Close</button>
 </div>
 
-<script src="api.js"></script>
+<script src="app.js"></script>
 
 <script>
-
-/* =========================
-   WEBSOCKET
-========================= */
+let findings = [];
+let filter = "ALL";
 let ws;
 
+/* =====================
+   TIMELINE (WS READY)
+===================== */
+function log(msg) {
+    const div = document.createElement("div");
+    div.className = "timeline-item";
+    div.innerText = msg;
+    document.getElementById("timeline").prepend(div);
+}
+
+/* =====================
+   WS CONNECTION
+===================== */
 function connectWS() {
-    const WS_URL = location.origin.replace("http", "ws") + "/ws";
-    ws = new WebSocket(WS_URL);
+    try {
+        ws = new WebSocket(`ws://${location.host}/ws`);
 
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
 
-        if (data.type === "progress") {
-            updateProgress(data.value, data.message);
-        }
+            if (data.type === "timeline") log(data.message);
+            if (data.type === "progress") log("Progress: " + data.value + "%");
+            if (data.type === "result") {
+                findings = data.findings || [];
+                render();
+            }
+        };
 
-        if (data.type === "result") {
-            render(data.data);
-        }
-    };
-
-    ws.onclose = () => setTimeout(connectWS, 2000);
+        ws.onclose = () => setTimeout(connectWS, 2000);
+    } catch (e) {
+        setTimeout(connectWS, 3000);
+    }
 }
 
 connectWS();
 
-/* =========================
-   PROGRESS
-========================= */
-function updateProgress(val, msg) {
-    document.getElementById("progressBar").style.width = val + "%";
-    document.getElementById("status").innerText = msg;
-}
-
-/* =========================
-   SCAN
-========================= */
+/* =====================
+   SCAN CODE
+===================== */
 async function runScan() {
+    log("Sending code to backend...");
+
     const code = document.getElementById("code").value;
 
-    updateProgress(10, "Scanning...");
+    const res = await fetch("/scan", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ code })
+    });
 
-    const res = await analyzeCode(code);
-
-    updateProgress(100, "Complete");
-
-    render(res);
-}
-
-/* =========================
-   RENDER
-========================= */
-let findings = [];
-
-function render(data) {
-    const container = document.getElementById("results");
-    container.innerHTML = "";
-
+    const data = await res.json();
     findings = data.findings || [];
 
-    findings.forEach((v, i) => {
-        const div = document.createElement("div");
-        div.className = "vuln-card";
-        div.style.animationDelay = (i * 0.05) + "s";
+    render();
+    log("Scan complete");
+}
 
-        const sev = (v.severity || "low").toLowerCase();
+/* =====================
+   REPO SCAN
+===================== */
+async function scanRepo() {
+    const repo_url = document.getElementById("repoUrl").value;
+
+    log("Scanning repo...");
+
+    const res = await fetch("/scan/repo", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ repo_url })
+    });
+
+    const data = await res.json();
+    findings = data.findings || [];
+
+    render();
+}
+
+/* =====================
+   CVE LOOKUP
+===================== */
+async function fetchCVE() {
+    const q = document.getElementById("cveInput").value;
+
+    const res = await fetch(`/cve?query=${encodeURIComponent(q)}`);
+    const data = await res.json();
+
+    document.getElementById("cvePanel").innerHTML =
+        (data.cves || [])
+        .map(c => `🔴 ${c.id} (${c.severity})`)
+        .join("<br/>");
+}
+
+/* =====================
+   FILTER
+===================== */
+function setFilter(f) {
+    filter = f;
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    event.target.classList.add("active");
+    render();
+}
+
+/* =====================
+   RENDER
+===================== */
+function render() {
+    const box = document.getElementById("results");
+    box.innerHTML = "";
+
+    const filtered = findings.filter(f =>
+        filter === "ALL" ? true : f.severity === filter
+    );
+
+    filtered.forEach(v => {
+        const div = document.createElement("div");
+        div.className = "vuln";
 
         div.innerHTML = `
-            <div class="d-flex justify-content-between">
-                <b>${v.title || "Issue"}</b>
-                <span class="badge-sev ${sev}">${sev}</span>
-            </div>
+            <b>${v.title}</b><br/>
+            <small>${v.severity}</small>
         `;
 
-        div.onclick = () => openPanel(v);
-
-        container.appendChild(div);
+        div.onclick = () => openSide(v);
+        box.appendChild(div);
     });
 
     renderHeatmap();
 }
 
-/* =========================
-   PANEL
-========================= */
-function openPanel(v) {
-    document.getElementById("panel").classList.add("open");
+/* =====================
+   SIDE PANEL
+===================== */
+function openSide(v) {
+    document.getElementById("side").classList.add("open");
 
-    document.getElementById("p-title").innerText = v.title;
-    document.getElementById("p-desc").innerText = v.description;
-    document.getElementById("p-fix").innerText = v.fix || "No fix";
+    document.getElementById("title").innerText = v.title;
+    document.getElementById("desc").innerText = v.description;
 
-    document.getElementById("p-cve").innerText = "CVE: " + (v.cve || "N/A");
-    document.getElementById("p-cvss").innerText = "CVSS: " + (v.cvss || "N/A");
-
-    const sev = (v.severity || "low").toLowerCase();
-    document.getElementById("p-sev").className = "badge-sev " + sev;
-    document.getElementById("p-sev").innerText = sev;
+    document.getElementById("before").innerText = v.before || "";
+    document.getElementById("after").innerText = v.after || "";
 }
 
-function closePanel() {
-    document.getElementById("panel").classList.remove("open");
+function closeSide() {
+    document.getElementById("side").classList.remove("open");
 }
 
-/* =========================
+/* =====================
    HEATMAP
-========================= */
+===================== */
 function renderHeatmap() {
     const map = document.getElementById("heatmap");
     map.innerHTML = "";
 
     findings.forEach(v => {
         const cell = document.createElement("div");
-        const sev = (v.severity || "low").toLowerCase();
-        cell.className = "heat-cell " + sev;
+        cell.className = "heat-cell " + (v.severity || "low").toLowerCase();
         map.appendChild(cell);
     });
 }
-
-/* =========================
-   AI FIX
-========================= */
-function aiFixSingle() {
-    alert("Connect to /ai/fix endpoint");
-}
-
-function aiFixAll() {
-    alert("Batch AI fix triggered");
-}
-
-/* =========================
-   PDF
-========================= */
-function exportPDF() {
-    let html = "<h1>SafeAIScan Report</h1>";
-
-    findings.forEach(v => {
-        html += `
-            <h3>${v.title}</h3>
-            <p>${v.description}</p>
-            <hr/>
-        `;
-    });
-
-    const win = window.open("", "", "width=900,height=700");
-    win.document.write(html);
-    win.print();
-}
-
 </script>
 
 </body>
