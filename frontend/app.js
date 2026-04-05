@@ -203,50 +203,7 @@ function toggleDetails(index) {
 // =========================
 // MINISKY PANEL (ADD HERE)
 // =========================
-function renderMiniskyPanel(data) {
-  const panel = document.getElementById("miniskyPanel");
-  if (!panel) return;
 
-  const findings = data.findings || [];
-
-  const total = findings.length;
-  const high = findings.filter(v => v.severity === "HIGH").length;
-  const medium = findings.filter(v => v.severity === "MEDIUM").length;
-  const low = findings.filter(v => v.severity === "LOW").length;
-
-  panel.innerHTML = `
-    <div class="card shadow-lg border-0">
-      <div class="card-header bg-dark text-white">
-        🔐 Minisky Security Panel
-      </div>
-
-      <div class="card-body">
-        <p><strong>Total Vulnerabilities:</strong> ${total}</p>
-
-        <div class="row text-center">
-          <div class="col text-danger">HIGH: ${high}</div>
-          <div class="col text-warning">MED: ${medium}</div>
-          <div class="col text-success">LOW: ${low}</div>
-        </div>
-
-        <hr/>
-
-        <div>
-          <span class="badge bg-danger">HIGH ${high}</span>
-          <span class="badge bg-warning">MED ${medium}</span>
-          <span class="badge bg-success">LOW ${low}</span>
-        </div>
-
-        <hr/>
-
-        <button class="btn btn-outline-primary btn-sm"
-          onclick="exportReport()">
-          Export Report
-        </button>
-      </div>
-    </div>
-  `;
-}
 
 
 // =========================
