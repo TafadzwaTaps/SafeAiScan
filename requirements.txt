@@ -12,3 +12,4 @@ redis
 bandit
 semgrep
 PyGithub
+reportlab
