@@ -11,3 +11,4 @@ celery
 redis
 bandit
 semgrep
+PyGithub

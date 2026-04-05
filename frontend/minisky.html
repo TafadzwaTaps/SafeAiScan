@@ -297,6 +297,10 @@ function closeSide(){
     document.getElementById("side").classList.remove("open");
 }
 
+window.renderMinisky = function(data){
+    findings = data.findings || [];
+    render();
+};
 
 </script>
 

@@ -51,7 +51,7 @@ async function scanRepo() {
 
   try {
     const data = await scanRepoAPI(repoUrl);
-    loadRepoTree(repo_url);
+    loadRepoTree(repoUrl); // ✅ correct variable
 
     alert("Scan queued. Task ID: " + data.task_id);
 
@@ -72,22 +72,48 @@ async function pollTask(taskId) {
     try {
       const data = await getTaskStatus(taskId);
 
-      // 🔥 show live status in UI
-      document.getElementById("status") &&
-        (document.getElementById("status").innerText = "Status: " + data.state);
+      // Update status UI
+      const statusEl = document.getElementById("status");
+      if (statusEl) statusEl.innerText = "Status: " + data.state;
 
-      // show raw debug result
-      renderMinisky(data);
+      console.log("TASK UPDATE:", data);
 
+      // 🔥 IMPORTANT FIX
       if (data.state === "DONE") {
         clearInterval(interval);
+
+        const result = data.result || {};
+
+        console.log("FINAL RESULT:", result);
+
+        // ✅ normalize findings
+        let findings = [];
+
+        if (Array.isArray(result)) {
+          findings = result;
+        } else if (result.findings) {
+          findings = result.findings;
+        } else if (result.vulnerabilities) {
+          findings = result.vulnerabilities;
+        }
+
+        // ✅ feed into BOTH dashboards
+        renderMinisky({
+          findings: findings,
+          ai: result.ai || {}
+        });
+
+        renderVulnerabilities({
+          findings: findings
+        });
+
         alert("Repo scan complete!");
-        console.log("FINAL RESULT:", data.result);
       }
 
       if (data.state === "FAILED") {
         clearInterval(interval);
         alert("Scan failed!");
+        console.error("FAILED RESULT:", data.result);
       }
 
     } catch (err) {
