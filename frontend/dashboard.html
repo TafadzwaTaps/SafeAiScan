@@ -385,6 +385,15 @@ if (!token || token === "undefined") {
 
 </div>
 
+<div class="mt-2">
+  <div id="scanProgressText">Idle</div>
+  <div class="progress">
+    <div id="scanProgressBar"
+         class="progress-bar"
+         style="width: 0%"></div>
+  </div>
+</div>
+
 <!-- CHART SECTION -->
 <div class="glass mt-4 p-4">
     <h5>Usage Analytics</h5>
@@ -396,38 +405,6 @@ if (!token || token === "undefined") {
 <script src="api.js"></script>
 <script src="app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    function renderVulnerabilities(data) {
-    const container = document.getElementById("result");
-    if (!container) return;
-
-    const findings = data.findings || [];
-
-    container.innerHTML = `
-      <div class="vuln-container">
-        ${findings.map(v => `
-          <div class="vuln-card" onclick="openVuln(this)">
-              <div class="vuln-header">
-                  <span class="vuln-title">${v.title}</span>
-                  <span class="sev-badge sev-${v.severity}">${v.severity}</span>
-              </div>
-
-              <div class="vuln-details">
-                  <div><b>CVE:</b> ${v.cve}</div>
-                  <div><b>CVSS:</b> ${v.cvss}</div>
-                  <div><b>File:</b> ${v.file || "N/A"}</div>
-                  <div class="fix-box">${v.fix}</div>
-              </div>
-          </div>
-        `).join("")}
-      </div>
-    `;
-}
-
-function openVuln(el) {
-    el.classList.toggle("active");
-}
-</script>
 
 </body>
 </html>

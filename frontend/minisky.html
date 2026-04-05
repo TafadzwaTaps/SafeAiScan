@@ -209,7 +209,7 @@ if (!token) window.location.replace("login.html");
 
 <div class="container-fluid">
 <div class="row g-4">
-
+<div id="miniskyPanel"></div>
 <!-- LEFT -->
 <div class="col-md-3 panel">
 
@@ -223,6 +223,15 @@ if (!token) window.location.replace("login.html");
 
     <h6 class="mt-4">Severity Heatmap</h6>
     <div id="heatmap" class="heatmap mt-2"></div>
+    <div class="mt-3">
+  <h6>🔥 Severity Heatmap</h6>
+
+  <div class="d-flex gap-2">
+    <div class="badge bg-danger">HIGH: ${heat.HIGH || 0}</div>
+    <div class="badge bg-warning">MED: ${heat.MEDIUM || 0}</div>
+    <div class="badge bg-success">LOW: ${heat.LOW || 0}</div>
+  </div>
+</div>
 
     <button class="btn btn-success w-100 mt-4" onclick="aiFixAll()">
         🤖 AI Auto Fix All
@@ -232,6 +241,15 @@ if (!token) window.location.replace("login.html");
         📄 Export Report
     </button>
 
+</div>
+
+<div id="snykPanel" class="snyk-panel">
+  <div class="snyk-header">
+    <h5>🔐 Security Insight</h5>
+    <button onclick="closeSnyk()">✖</button>
+  </div>
+
+  <div id="snykContent"></div>
 </div>
 
 <!-- CENTER -->
