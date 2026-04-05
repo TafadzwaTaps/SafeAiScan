@@ -181,6 +181,92 @@ li {
 .container-fluid {
     padding: 18px;
 }
+
+/* =========================
+   VULNERABILITY CARDS (SNYK STYLE)
+========================= */
+
+.vuln-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.vuln-card {
+    background: #0f172a;
+    border: 1px solid #1f2937;
+    border-radius: 12px;
+    padding: 12px;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.vuln-card:hover {
+    border-color: #6366f1;
+    transform: translateY(-1px);
+}
+
+.vuln-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.vuln-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.vuln-meta {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+/* SEVERITY */
+.sev-critical { background: #7f1d1d; color: #fecaca; }
+.sev-high     { background: #991b1b; color: #fee2e2; }
+.sev-medium   { background: #92400e; color: #fef3c7; }
+.sev-low      { background: #14532d; color: #bbf7d0; }
+
+.sev-badge {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 999px;
+}
+
+/* EXPANDABLE CONTENT */
+.vuln-details {
+    display: none;
+    margin-top: 10px;
+    border-top: 1px solid #1f2937;
+    padding-top: 10px;
+    font-size: 12px;
+    color: #cbd5e1;
+}
+
+.vuln-card.active .vuln-details {
+    display: block;
+}
+
+/* FIX BOX */
+.fix-box {
+    margin-top: 8px;
+    background: #0b1220;
+    border: 1px solid #1f2937;
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 12px;
+}
+
+/* FILE LINE */
+.file-path {
+    color: #60a5fa;
+    font-size: 12px;
+}
+
+
 </style>
 
 <script>
@@ -228,6 +314,14 @@ if (!token || token === "undefined") {
                 Enterprise
             </button>
         </div>
+        
+        <div class="glass mt-3">
+        <h6>Advanced Scanner</h6>
+        <button class="btn btn-primary w-100"
+            onclick="window.location='minisky.html'">
+            Open Snyk Mode →
+        </button>
+    </div>
 
     </div>
 
@@ -280,10 +374,6 @@ if (!token || token === "undefined") {
         </div>
 
         <div class="glass p-3">
-            <li>
-                 <span>SQL Injection detected</span>
-                  <span class="badge badge-critical">CRITICAL</span>
-                </li>
             <ul id="history"></ul>
 
             <button class="btn btn-danger w-100 mt-3" onclick="logout()">
@@ -305,6 +395,8 @@ if (!token || token === "undefined") {
 
 <script src="api.js"></script>
 <script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 
 </body>
 </html>

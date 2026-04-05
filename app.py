@@ -12,6 +12,7 @@ from auth import create_access_token, verify_token
 from supabase import create_client
 from scanner import safe_clone, validate_repo, full_scan
 from fastapi import BackgroundTasks
+import asyncio 
 
 
 tasks_store = {}
@@ -449,3 +450,15 @@ def scan_repo(req: RepoRequest, background_tasks: BackgroundTasks, auth=Depends(
 @app.get("/api/task/{task_id}")
 def get_task(task_id: str):
     return tasks_store.get(task_id, {"state": "NOT_FOUND"})
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await ws.accept()
+
+    for i in range(0, 101, 10):
+        await ws.send_json({
+            "type": "progress",
+            "value": i,
+            "message": f"Scanning... {i}%"
+        })
+        await asyncio.sleep(0.5)

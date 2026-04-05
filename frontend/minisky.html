@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>SafeAIScan Pro</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+
+/* =========================
+   GLOBAL
+========================= */
+body {
+    background: radial-gradient(circle at top, #0b0f17, #05070d);
+    color: #e6edf3;
+    font-family: Inter, Segoe UI, sans-serif;
+    letter-spacing: 0.2px;
+}
+
+.container-fluid {
+    padding: 24px;
+}
+
+/* =========================
+   PANELS (DEPTH + GLASS)
+========================= */
+.panel {
+    background: rgba(17,24,39,0.85);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 18px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+    transition: all 0.25s ease;
+}
+
+.panel:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+}
+
+/* =========================
+   TEXTAREA
+========================= */
+textarea {
+    background: #0b1220 !important;
+    color: #e6edf3 !important;
+    border: 1px solid #1f2937 !important;
+    border-radius: 12px;
+    padding: 12px;
+    transition: 0.2s;
+}
+
+textarea:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 1px #6366f1;
+}
+
+/* =========================
+   BUTTONS
+========================= */
+.btn {
+    border-radius: 10px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg,#6366f1,#4f46e5);
+    border: none;
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 20px rgba(99,102,241,0.4);
+}
+
+.btn-success:hover,
+.btn-light:hover {
+    transform: translateY(-1px);
+}
+
+/* =========================
+   VULN CARD (ANIMATED)
+========================= */
+.vuln-card {
+    background: #0f172a;
+    border: 1px solid #1f2937;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: fadeIn 0.3s forwards;
+}
+
+.vuln-card:hover {
+    border-color: #6366f1;
+    transform: translateY(-2px) scale(1.01);
+}
+
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* =========================
+   SEVERITY BADGES
+========================= */
+.badge-sev {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.critical { background:#7f1d1d; color:#fecaca; }
+.high     { background:#991b1b; color:#fee2e2; }
+.medium   { background:#92400e; color:#fef3c7; }
+.low      { background:#14532d; color:#bbf7d0; }
+
+/* =========================
+   PROGRESS BAR (SMOOTH)
+========================= */
+.progress-bar-container {
+    height: 8px;
+    background: #1f2937;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg,#6366f1,#22c55e);
+    transition: width 0.4s ease;
+}
+
+/* =========================
+   HEATMAP (GLOW EFFECT)
+========================= */
+.heatmap {
+    display: grid;
+    grid-template-columns: repeat(10,1fr);
+    gap: 5px;
+}
+
+.heat-cell {
+    height: 12px;
+    border-radius: 4px;
+    opacity: 0.85;
+    transition: transform 0.2s;
+}
+
+.heat-cell:hover {
+    transform: scale(1.2);
+}
+
+/* =========================
+   SIDE PANEL (SMOOTH SLIDE)
+========================= */
+.side-panel {
+    position: fixed;
+    top: 0;
+    right: -420px;
+    width: 420px;
+    height: 100%;
+    background: #0b1220;
+    border-left: 1px solid #1f2937;
+    transition: all 0.35s ease;
+    z-index: 9999;
+    box-shadow: -10px 0 40px rgba(0,0,0,0.6);
+}
+
+.side-panel.open {
+    right: 0;
+}
+
+/* =========================
+   PANEL CONTENT SPACING
+========================= */
+#panel h5 {
+    margin-bottom: 10px;
+}
+
+#panel p {
+    font-size: 13px;
+    color: #cbd5e1;
+}
+
+</style>
+
+<script>
+const token = localStorage.getItem("access_token");
+if (!token) window.location.replace("login.html");
+</script>
+
+</head>
+
+<body>
+
+<div class="container-fluid">
+<div class="row g-4">
+
+<!-- LEFT -->
+<div class="col-md-3 panel">
+
+    <h6 class="mb-2">Scan Progress</h6>
+
+    <div class="progress-bar-container mb-2">
+        <div id="progressBar" class="progress-bar"></div>
+    </div>
+
+    <div id="status" class="text-muted small">Idle</div>
+
+    <h6 class="mt-4">Severity Heatmap</h6>
+    <div id="heatmap" class="heatmap mt-2"></div>
+
+    <button class="btn btn-success w-100 mt-4" onclick="aiFixAll()">
+        🤖 AI Auto Fix All
+    </button>
+
+    <button class="btn btn-light w-100 mt-2" onclick="exportPDF()">
+        📄 Export Report
+    </button>
+
+</div>
+
+<!-- CENTER -->
+<div class="col-md-6 panel">
+
+    <h5 class="mb-3">SafeAIScan Pro Engine</h5>
+
+    <textarea id="code" rows="6" class="form-control"
+        placeholder="Paste code..."></textarea>
+
+    <button class="btn btn-primary w-100 mt-3" onclick="runScan()">
+        Run Scan
+    </button>
+
+    <div id="results" class="mt-4"></div>
+
+</div>
+
+<!-- RIGHT -->
+<div class="col-md-3 panel">
+
+    <h6>System</h6>
+    <div class="text-success">● AI Scanner Online</div>
+
+</div>
+
+</div>
+</div>
+
+<!-- SIDE PANEL -->
+<div id="panel" class="side-panel p-4">
+
+    <h5 id="p-title"></h5>
+
+    <div id="p-sev" class="badge-sev mb-2"></div>
+
+    <div id="p-cve" class="small"></div>
+    <div id="p-cvss" class="small mb-2"></div>
+
+    <p id="p-desc"></p>
+
+    <div id="p-fix" class="mb-2"></div>
+
+    <button class="btn btn-primary w-100 mt-2" onclick="aiFixSingle()">
+        🤖 Generate Fix
+    </button>
+
+    <button class="btn btn-danger w-100 mt-2" onclick="closePanel()">
+        Close
+    </button>
+
+</div>
+
+<script src="api.js"></script>
+
+<script>
+
+/* =========================
+   WEBSOCKET
+========================= */
+let ws;
+
+function connectWS() {
+    ws = new WebSocket("ws://localhost:8000/ws");
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "progress") {
+            updateProgress(data.value, data.message);
+        }
+
+        if (data.type === "result") {
+            render(data.data);
+        }
+    };
+
+    ws.onclose = () => setTimeout(connectWS, 2000);
+}
+
+connectWS();
+
+/* =========================
+   PROGRESS
+========================= */
+function updateProgress(val, msg) {
+    document.getElementById("progressBar").style.width = val + "%";
+    document.getElementById("status").innerText = msg;
+}
+
+/* =========================
+   SCAN
+========================= */
+async function runScan() {
+    const code = document.getElementById("code").value;
+
+    updateProgress(10, "Scanning...");
+
+    const res = await analyzeCode(code);
+
+    updateProgress(100, "Complete");
+
+    render(res);
+}
+
+/* =========================
+   RENDER
+========================= */
+let findings = [];
+
+function render(data) {
+    const container = document.getElementById("results");
+    container.innerHTML = "";
+
+    findings = data.findings || [];
+
+    findings.forEach((v, i) => {
+        const div = document.createElement("div");
+        div.className = "vuln-card";
+        div.style.animationDelay = (i * 0.05) + "s";
+
+        const sev = (v.severity || "low").toLowerCase();
+
+        div.innerHTML = `
+            <div class="d-flex justify-content-between">
+                <b>${v.title || "Issue"}</b>
+                <span class="badge-sev ${sev}">${sev}</span>
+            </div>
+        `;
+
+        div.onclick = () => openPanel(v);
+
+        container.appendChild(div);
+    });
+
+    renderHeatmap();
+}
+
+/* =========================
+   PANEL
+========================= */
+function openPanel(v) {
+    document.getElementById("panel").classList.add("open");
+
+    document.getElementById("p-title").innerText = v.title;
+    document.getElementById("p-desc").innerText = v.description;
+    document.getElementById("p-fix").innerText = v.fix || "No fix";
+
+    document.getElementById("p-cve").innerText = "CVE: " + (v.cve || "N/A");
+    document.getElementById("p-cvss").innerText = "CVSS: " + (v.cvss || "N/A");
+
+    const sev = (v.severity || "low").toLowerCase();
+    document.getElementById("p-sev").className = "badge-sev " + sev;
+    document.getElementById("p-sev").innerText = sev;
+}
+
+function closePanel() {
+    document.getElementById("panel").classList.remove("open");
+}
+
+/* =========================
+   HEATMAP
+========================= */
+function renderHeatmap() {
+    const map = document.getElementById("heatmap");
+    map.innerHTML = "";
+
+    findings.forEach(v => {
+        const cell = document.createElement("div");
+        const sev = (v.severity || "low").toLowerCase();
+        cell.className = "heat-cell " + sev;
+        map.appendChild(cell);
+    });
+}
+
+/* =========================
+   AI FIX
+========================= */
+function aiFixSingle() {
+    alert("Connect to /ai/fix endpoint");
+}
+
+function aiFixAll() {
+    alert("Batch AI fix triggered");
+}
+
+/* =========================
+   PDF
+========================= */
+function exportPDF() {
+    let html = "<h1>SafeAIScan Report</h1>";
+
+    findings.forEach(v => {
+        html += `
+            <h3>${v.title}</h3>
+            <p>${v.description}</p>
+            <hr/>
+        `;
+    });
+
+    const win = window.open("", "", "width=900,height=700");
+    win.document.write(html);
+    win.print();
+}
+
+</script>
+
+</body>
+</html>

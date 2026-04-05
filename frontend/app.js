@@ -18,8 +18,7 @@ async function scan() {
       fixes: data.ai?.fixes || []
     };
 
-    document.getElementById("result").innerText =
-      JSON.stringify(summary, null, 2);
+    renderVulnerabilities(data);
 
     if (data.usage_today !== undefined) {
       document.getElementById("usage").innerText = data.usage_today;
