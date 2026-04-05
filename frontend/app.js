@@ -74,8 +74,7 @@ async function pollTask(taskId) {
         (document.getElementById("status").innerText = "Status: " + data.state);
 
       // show raw debug result
-      document.getElementById("result").innerText =
-        JSON.stringify(data, null, 2);
+      renderMinisky(data);
 
       if (data.state === "DONE") {
         clearInterval(interval);
@@ -333,4 +332,92 @@ async function enrichCVE(findings) {
       console.error(err);
     }
   });
+}
+
+function renderTimeline(data) {
+  const el = document.getElementById("timeline");
+  if (!el) return;
+
+  const steps = data.timeline || [
+    "Code received",
+    "Scanning syntax",
+    "Running AI analysis",
+    "Checking CVEs",
+    "Finalizing report"
+  ];
+
+  el.innerHTML = steps.map(step => `
+    <div class="timeline-step">🧠 ${step}</div>
+  `).join("");
+}
+
+function renderSeverityTabs(data) {
+  const el = document.getElementById("severityTabs");
+  if (!el) return;
+
+  const findings = data.findings || [];
+
+  const groups = {
+    CRITICAL: findings.filter(f => f.severity === "CRITICAL"),
+    HIGH: findings.filter(f => f.severity === "HIGH"),
+    MEDIUM: findings.filter(f => f.severity === "MEDIUM"),
+    LOW: findings.filter(f => f.severity === "LOW")
+  };
+
+  el.innerHTML = `
+    <div class="d-flex gap-2 flex-wrap">
+      <span class="badge sev-critical">CRITICAL ${groups.CRITICAL.length}</span>
+      <span class="badge sev-high">HIGH ${groups.HIGH.length}</span>
+      <span class="badge sev-medium">MEDIUM ${groups.MEDIUM.length}</span>
+      <span class="badge sev-low">LOW ${groups.LOW.length}</span>
+    </div>
+  `;
+}
+
+function renderCVEPanel(data) {
+  const el = document.getElementById("cvePanel");
+  if (!el) return;
+
+  const cves = data.cves || data.findings?.map(f => f.cve).filter(Boolean) || [];
+
+  el.innerHTML = `
+    <div class="card glass p-3">
+      <h6>🧬 CVE Enrichment</h6>
+
+      ${cves.length === 0 ? `
+        <p class="text-muted">No CVEs detected</p>
+      ` : cves.map(cve => `
+        <div class="fix-box">
+          <strong>${cve.id}</strong><br/>
+          CVSS: ${cve.cvss || "N/A"}<br/>
+          ${cve.description || ""}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderFixDiff(data) {
+  const el = document.getElementById("fixDiff");
+  if (!el) return;
+
+  const fixes = data.ai?.fixes || [];
+
+  el.innerHTML = fixes.map(fix => `
+    <div class="fix-box">
+      <div><strong>❌ Before</strong></div>
+      <pre>${fix.before || ""}</pre>
+
+      <div><strong>✅ After</strong></div>
+      <pre>${fix.after || ""}</pre>
+    </div>
+  `).join("");
+}
+
+function renderMinisky(data) {
+  renderTimeline(data);
+  renderSeverityTabs(data);
+  renderMiniskyPanel(data);
+  renderCVEPanel(data);
+  renderFixDiff(data);
 }
