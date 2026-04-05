@@ -13,7 +13,7 @@ from supabase import create_client
 from scanner import safe_clone, validate_repo, full_scan
 from fastapi import BackgroundTasks
 import asyncio 
-
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 tasks_store = {}
 # =========================================================
@@ -455,10 +455,12 @@ def get_task(task_id: str):
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
 
-    for i in range(0, 101, 10):
-        await ws.send_json({
-            "type": "progress",
-            "value": i,
-            "message": f"Scanning... {i}%"
-        })
-        await asyncio.sleep(0.5)
+    try:
+        while True:
+            await ws.send_json({
+                "type": "progress",
+                "value": 50,
+                "message": "Scanning..."
+            })
+    except WebSocketDisconnect:
+        print("Client disconnected")
