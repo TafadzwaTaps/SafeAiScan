@@ -228,12 +228,14 @@ function logout() {
 // INIT
 // =========================
 async function init() {
-  document.getElementById("apiKey").innerText =
-    localStorage.getItem("api_key") || "Not available";
+  const apiKeyEl = document.getElementById("apiKey");
+  if (apiKeyEl) {
+    apiKeyEl.innerText = localStorage.getItem("api_key") || "Not available";
+  }
 
-  await loadUsage();
-  await loadHistory();
-  await loadPlan();
+  if (document.getElementById("usage")) await loadUsage();
+  if (document.getElementById("history")) await loadHistory();
+  if (document.getElementById("plan")) await loadPlan();
 }
 
 init();
