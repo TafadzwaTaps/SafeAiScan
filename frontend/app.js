@@ -31,7 +31,8 @@ async function scan() {
     }
 
     if (data.usage_today !== undefined) {
-      document.getElementById("usage").innerText = data.usage_today;
+      const el = document.getElementById("usage");
+      if (el) el.innerText = data.usage_today;
     }
 
   } catch (err) {
@@ -102,11 +103,12 @@ async function loadUsage() {
     const data = await getUsage();
     const latest = data[data.length - 1];
 
-    document.getElementById("usage").innerText =
-      latest?.request_count || 0;
-
+    const el = document.getElementById("usage");
+    if (el) el.innerText = data.usage_today;
+    
   } catch {
-    document.getElementById("usage").innerText = "Error";
+    const el = document.getElementById("usage");
+    if (el) el.innerText = "Error";
   }
 }
 

@@ -167,7 +167,7 @@ body {
 </div>
 </div>
 
-<div id="timeline"></div>
+<div id="timeline" class="timeline"></div>
 
 <div id="severityTabs" class="mt-2"></div>
 
@@ -194,43 +194,43 @@ body {
 <script>
 let findings = [];
 let filter = "ALL";
-let ws;
+// let ws;
 
-/* =====================
-   TIMELINE (WS READY)
-===================== */
-function log(msg) {
-    const div = document.createElement("div");
-    div.className = "timeline-item";
-    div.innerText = msg;
-    document.getElementById("timeline").prepend(div);
-}
+// /* =====================
+//    TIMELINE (WS READY)
+// ===================== */
+// function log(msg) {
+//     const div = document.createElement("div");
+//     div.className = "timeline-item";
+//     div.innerText = msg;
+//     document.getElementById("timeline").prepend(div);
+// }
 
-/* =====================
-   WS CONNECTION
-===================== */
-function connectWS() {
-    try {
-        ws = new WebSocket(`ws://${location.host}/ws`);
+// /* =====================
+//    WS CONNECTION
+// ===================== */
+// function connectWS() {
+//     try {
+//         ws = new WebSocket(`ws://${location.host}/ws`);
 
-        ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
+//         ws.onmessage = (e) => {
+//             const data = JSON.parse(e.data);
 
-            if (data.type === "timeline") log(data.message);
-            if (data.type === "progress") log("Progress: " + data.value + "%");
-            if (data.type === "result") {
-                findings = data.findings || [];
-                render();
-            }
-        };
+//             if (data.type === "timeline") log(data.message);
+//             if (data.type === "progress") log("Progress: " + data.value + "%");
+//             if (data.type === "result") {
+//                 findings = data.findings || [];
+//                 render();
+//             }
+//         };
 
-        ws.onclose = () => setTimeout(connectWS, 2000);
-    } catch (e) {
-        setTimeout(connectWS, 3000);
-    }
-}
+//         ws.onclose = () => setTimeout(connectWS, 2000);
+//     } catch (e) {
+//         setTimeout(connectWS, 3000);
+//     }
+// }
 
-connectWS();
+// connectWS();
 
 /* =====================
    SCAN CODE
@@ -240,15 +240,23 @@ async function runScan() {
 
     const code = document.getElementById("code").value;
 
-    const res = await fetch("/scan", {
+    const res = await fetch("/api/analyze", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ code })
     });
 
-    const data = await res.json();
-    findings = data.findings || [];
+    const text = await res.text();
 
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        log("Scan failed: invalid response");
+        return;
+    }
+
+    findings = data.findings || [];
     render();
     log("Scan complete");
 }
@@ -261,15 +269,23 @@ async function scanRepo() {
 
     log("Scanning repo...");
 
-    const res = await fetch("/scan/repo", {
+    const res = await fetch("/api/repo-scan", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ repo_url })
     });
 
-    const data = await res.json();
-    findings = data.findings || [];
+    const text = await res.text();
 
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        log("Repo scan failed");
+        return;
+    }
+
+    findings = data.findings || [];
     render();
 }
 
