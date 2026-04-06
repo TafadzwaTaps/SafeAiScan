@@ -254,9 +254,28 @@ def check_limit(count: int, limit: int = 50):
 # SECURITY ENGINE
 # =========================================================
 def scan_vulnerabilities(text: str):
-    patterns = ["eval(", "exec(", "os.system", "pickle.loads", "curl", "wget"]
+    patterns = [
+        ("eval(", "HIGH"),
+        ("exec(", "HIGH"),
+        ("os.system", "HIGH"),
+        ("pickle.loads", "CRITICAL"),
+        ("curl", "MEDIUM"),
+        ("wget", "MEDIUM"),
+    ]
 
-    return [{"match": p} for p in patterns if p in text]
+    findings = []
+
+    for p, severity in patterns:
+        if p in text:
+            findings.append({
+                "title": f"Insecure usage of {p}",
+                "match": p,
+                "severity": severity,
+                "description": f"{p} can lead to security vulnerabilities.",
+                "fix": "Avoid using this or sanitize input properly."
+            })
+
+    return findings
 
 # =========================================================
 # AI ENGINE

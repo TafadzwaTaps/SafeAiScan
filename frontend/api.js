@@ -55,14 +55,7 @@ async function analyzeCode(text) {
     body: JSON.stringify({ text })
   });
 
-  const raw = await res.text();
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    console.error("❌ NON-JSON RESPONSE:", raw);
-    throw new Error("Server error: " + raw);
-  }
+  return safeJson(res); // reuse your helper
 }
 
 // =========================

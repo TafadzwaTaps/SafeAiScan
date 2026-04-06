@@ -11,6 +11,7 @@ async function scan() {
     startLiveProgress();
 
     const data = await analyzeCode(code);
+    console.log("🔥 SCAN RESULT:", data); // ADD THIS
 
     stopLiveProgress();
 
@@ -125,7 +126,7 @@ async function loadUsage() {
     const latest = data[data.length - 1];
 
     const el = document.getElementById("usage");
-    if (el) el.innerText = data.usage_today;
+    if (el && latest) el.innerText = latest.request_count;
     
   } catch {
     const el = document.getElementById("usage");
