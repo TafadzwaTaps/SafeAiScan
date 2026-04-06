@@ -36,7 +36,9 @@ def run_scan(task_id, repo_url, user_id, org_id, ws=None):
         push("ENRICHING", "Adding CVE intelligence...", 80)
 
         tasks_store[task_id]["state"] = "DONE"
-        tasks_store[task_id]["result"] = results
+        tasks_store[task_id]["result"] = {
+             "findings": results if isinstance(results, list) else results.get("findings", [])
+             }
 
         push("DONE", "Scan complete", 100)
 

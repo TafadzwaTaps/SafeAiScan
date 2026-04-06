@@ -72,48 +72,41 @@ async function pollTask(taskId) {
     try {
       const data = await getTaskStatus(taskId);
 
-      // Update status UI
+      // show status
       const statusEl = document.getElementById("status");
-      if (statusEl) statusEl.innerText = "Status: " + data.state;
+      if (statusEl) {
+        statusEl.innerText = "Status: " + data.state;
+      }
 
-      console.log("TASK UPDATE:", data);
+      // 🔥 DEBUG (you NEED this)
+      console.log("POLL DATA:", data);
 
-      // 🔥 IMPORTANT FIX
+      // =========================
+      // ✅ FIX: HANDLE RESULT
+      // =========================
       if (data.state === "DONE") {
         clearInterval(interval);
 
-        const result = data.result || {};
+        console.log("FINAL RESULT:", data.result);
 
-        console.log("FINAL RESULT:", result);
-
-        // ✅ normalize findings
-        let findings = [];
-
-        if (Array.isArray(result)) {
-          findings = result;
-        } else if (result.findings) {
-          findings = result.findings;
-        } else if (result.vulnerabilities) {
-          findings = result.vulnerabilities;
+        if (!data.result) {
+          alert("Scan finished but no results returned");
+          return;
         }
 
-        // ✅ feed into BOTH dashboards
-        renderMinisky({
-          findings: findings,
-          ai: result.ai || {}
-        });
+        // 🔥 THIS IS THE FIX
+        findings = data.result.findings || data.result;
 
-        renderVulnerabilities({
-          findings: findings
-        });
+        // render everywhere
+        render();
+        renderMinisky(data.result);
 
         alert("Repo scan complete!");
       }
 
       if (data.state === "FAILED") {
         clearInterval(interval);
-        alert("Scan failed!");
-        console.error("FAILED RESULT:", data.result);
+        alert("Scan failed: " + data.result);
       }
 
     } catch (err) {
