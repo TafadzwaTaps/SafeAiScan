@@ -290,7 +290,7 @@ async def ai_enrich(text: str, findings):
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
-    "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+    "https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.2",
     headers={
         "Authorization": f"Bearer {HF_API_KEY}",
         "Content-Type": "application/json"
