@@ -289,14 +289,14 @@ async def ai_enrich(text: str, findings):
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-           res = await client.post(
+        res = await client.post(
     "https://router.huggingface.co/v1/chat/completions",
     headers={
         "Authorization": f"Bearer {HF_API_KEY}",
         "Content-Type": "application/json"
     },
     json={
-        "model": "mistralai/Mistral-7B-Instruct-v0.2",
+        "model": "HuggingFaceH4/zephyr-7b-beta",
         "messages": [
             {
                 "role": "user",
