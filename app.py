@@ -289,14 +289,18 @@ async def ai_enrich(text: str, findings):
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            res = await client.post(
-    "https://router.huggingface.co/hf-inference/models/mistralai/Mistral-7B-Instruct-v0.2",
+           res = await client.post(
+    "https://router.huggingface.co/v1/chat/completions",
     headers={
         "Authorization": f"Bearer {HF_API_KEY}",
         "Content-Type": "application/json"
     },
     json={
-        "inputs": f"""
+        "model": "mistralai/Mistral-7B-Instruct-v0.2",
+        "messages": [
+            {
+                "role": "user",
+                "content": f"""
 Return ONLY JSON.
 
 Format:
@@ -305,12 +309,27 @@ Format:
 Code:
 {text[:1500]}
 """
+            }
+        ]
     }
+
             )
 
         # SAFE PARSE
         try:
             data = res.json()
+            if "choices" in data:
+                content = data["choices"][0]["message"]["content"]
+                
+                try:
+                    import json
+                    return json.loads(content)
+                except:
+                    return {
+                           "explanation": content,
+                               "fixes": []
+                                 }
+
         except Exception as e:
             print("🔥 AI JSON PARSE ERROR:", str(e))
             print("RAW RESPONSE:", res.text)
