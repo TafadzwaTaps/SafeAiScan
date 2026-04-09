@@ -254,6 +254,7 @@ def check_limit(count: int, limit: int = 50):
 # SECURITY ENGINE
 # =========================================================
 def scan_vulnerabilities(text: str):
+    print("🔥 SCAN INPUT:", text)
     patterns = [
         ("eval(", "HIGH"),
         ("exec(", "HIGH"),
@@ -284,91 +285,45 @@ async def ai_enrich(text: str, findings):
     if not HF_API_KEY:
         return {
             "explanation": "AI disabled",
-            "fixes": ["Set HF_API_KEY"]
+            "fixes": []
         }
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
-                  "https://router.huggingface.co/v1/chat/completions",
-                  headers={
-                         "Authorization": f"Bearer {HF_API_KEY}",
-                           "Content-Type": "application/json"
-                           },
-                           json={
-                                 "model": "HuggingFaceH4/zephyr-7b-beta",
-                                 "messages": [
-                                      {
-                                            "role": "user",
-                                              "content": f"""
-                                              Return ONLY JSON.
-                                              Format:
-                                              {{ "explanation": "string", "fixes": ["string"] }}
+                "https://api-inference.huggingface.co/models/google/flan-t5-large",
+                headers={
+                    "Authorization": f"Bearer {HF_API_KEY}"
+                },
+                json={
+                    "inputs": f"""
+Explain security issues and suggest fixes.
 
-                                              Code:
-                                              {text[:1500]}
+Code:
+{text[:1000]}
 """
-          }
-        ]
-    }
-
+                }
             )
 
-        # SAFE PARSE
-        try:
-            data = res.json()
-            if "choices" in data:
-                content = data["choices"][0]["message"]["content"]
-                
-                try:
-                    import json
-                    return json.loads(content)
-                except:
-                    return {
-                           "explanation": content,
-                               "fixes": []
-                                 }
+        data = res.json()
 
-        except Exception as e:
-            print("🔥 AI JSON PARSE ERROR:", str(e))
-            print("RAW RESPONSE:", res.text)
-
-            return {
-                "explanation": res.text[:500],
-                "fixes": []
-            }
-
-        # HANDLE HF FORMAT
+        # HF returns list sometimes
         if isinstance(data, list):
-            data = data[0]
+            output = data[0].get("generated_text", "")
+        else:
+            output = str(data)
 
-        # HANDLE GENERATED TEXT
-        if isinstance(data, dict) and "generated_text" in data:
-            text_output = data["generated_text"]
-
-            try:
-                import json
-                parsed = json.loads(text_output)
-                return parsed
-            except:
-                return {
-                    "explanation": text_output[:500],
-                    "fixes": []
-                }
-
-        if isinstance(data, dict) and "error" in data:
-            return {
-                  "explanation": data["error"],
-                      "fixes": []
-                        }
-
-    except Exception as e:
-        print("🔥 AI REQUEST ERROR:", str(e))
         return {
-            "explanation": "AI request failed",
+            "explanation": output,
             "fixes": []
         }
 
+    except Exception as e:
+        print("🔥 AI ERROR:", e)
+        return {
+            "explanation": "AI failed",
+            "fixes": []
+        }
 # =========================================================
 # MAIN ENDPOINT
 # =========================================================
