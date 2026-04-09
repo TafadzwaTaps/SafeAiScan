@@ -539,3 +539,7 @@ async function loadTeam(){
         list.innerHTML = "<li class='text-danger'>Failed to load team</li>";
     }
 }
+
+function exportReport() {
+  exportPDF();
+}

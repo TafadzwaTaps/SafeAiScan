@@ -288,6 +288,38 @@ async def ai_enrich(text: str, findings):
             "fixes": []
         }
 
+    def parse_ai_output(content: str):
+        issues = []
+        fixes = []
+
+        try:
+            # Split sections
+            if "FIXES:" in content:
+                parts = content.split("FIXES:")
+                issues_part = parts[0]
+                fixes_part = parts[1]
+
+                # Extract issues
+                for line in issues_part.split("\n"):
+                    line = line.strip()
+                    if line.startswith("-"):
+                        issues.append(line.replace("-", "").strip())
+
+                # Extract fixes
+                for line in fixes_part.split("\n"):
+                    line = line.strip()
+                    if line.startswith("-"):
+                        fixes.append(line.replace("-", "").strip())
+
+                return "\n".join(issues), fixes
+
+            # fallback (no structure)
+            return content, []
+
+        except Exception as e:
+            print("🔥 PARSE ERROR:", str(e))
+            return content, []
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
@@ -302,27 +334,42 @@ async def ai_enrich(text: str, findings):
                         {
                             "role": "user",
                             "content": f"""
-Explain security issues in this code and suggest fixes.
+Return structured output ONLY.
+
+Format:
+SECURITY_ISSUES:
+- issue 1
+- issue 2
+
+FIXES:
+- fix 1
+- fix 2
 
 Code:
 {text[:1000]}
 """
                         }
-                    ]
+                    ],
+                    "temperature": 0.3
                 }
             )
 
+        print("🔥 HF RAW:", res.text[:500])  # debug (KEEP THIS)
+
         data = res.json()
 
-        # ✅ SAFE PARSE
+        # ✅ Proper parsing
         if "choices" in data:
             content = data["choices"][0]["message"]["content"]
 
+            explanation, fixes = parse_ai_output(content)
+
             return {
-                "explanation": content,
-                "fixes": []
+                "explanation": explanation,
+                "fixes": fixes
             }
 
+        # HF error handling
         if "error" in data:
             return {
                 "explanation": str(data["error"]),
