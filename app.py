@@ -291,35 +291,51 @@ async def ai_enrich(text: str, findings):
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
-                "https://router.huggingface.co/models/google/flan-t5-large",
+                "https://router.huggingface.co/v1/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {HF_API_KEY}"
+                    "Authorization": f"Bearer {HF_API_KEY}",
+                    "Content-Type": "application/json"
                 },
                 json={
-                    "inputs": f"""
-Explain security issues and suggest fixes.
+                    "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": f"""
+Explain security issues in this code and suggest fixes.
 
 Code:
 {text[:1000]}
 """
+                        }
+                    ]
                 }
             )
 
         data = res.json()
 
-        # HF returns list sometimes
-        if isinstance(data, list):
-            output = data[0].get("generated_text", "")
-        else:
-            output = str(data)
+        # ✅ SAFE PARSE
+        if "choices" in data:
+            content = data["choices"][0]["message"]["content"]
+
+            return {
+                "explanation": content,
+                "fixes": []
+            }
+
+        if "error" in data:
+            return {
+                "explanation": str(data["error"]),
+                "fixes": []
+            }
 
         return {
-            "explanation": output,
+            "explanation": str(data),
             "fixes": []
         }
 
     except Exception as e:
-        print("🔥 AI ERROR:", e)
+        print("🔥 AI ERROR:", str(e))
         return {
             "explanation": "AI failed",
             "fixes": []
