@@ -291,7 +291,7 @@ async def ai_enrich(text: str, findings):
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
-                "https://api-inference.huggingface.co/models/google/flan-t5-large",
+                "https://router.huggingface.co/models/google/flan-t5-large",
                 headers={
                     "Authorization": f"Bearer {HF_API_KEY}"
                 },
