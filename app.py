@@ -338,13 +338,11 @@ Code:
                     "fixes": []
                 }
 
-        if isinstance(data, dict):
-            return data
-
-        return {
-            "explanation": str(data),
-            "fixes": []
-        }
+        if isinstance(data, dict) and "error" in data:
+            return {
+                  "explanation": data["error"],
+                      "fixes": []
+                        }
 
     except Exception as e:
         print("🔥 AI REQUEST ERROR:", str(e))
