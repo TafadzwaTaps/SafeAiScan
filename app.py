@@ -289,27 +289,26 @@ async def ai_enrich(text: str, findings):
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-        res = await client.post(
-    "https://router.huggingface.co/v1/chat/completions",
-    headers={
-        "Authorization": f"Bearer {HF_API_KEY}",
-        "Content-Type": "application/json"
-    },
-    json={
-        "model": "HuggingFaceH4/zephyr-7b-beta",
-        "messages": [
-            {
-                "role": "user",
-                "content": f"""
-Return ONLY JSON.
+            res = await client.post(
+                  "https://router.huggingface.co/v1/chat/completions",
+                  headers={
+                         "Authorization": f"Bearer {HF_API_KEY}",
+                           "Content-Type": "application/json"
+                           },
+                           json={
+                                 "model": "HuggingFaceH4/zephyr-7b-beta",
+                                 "messages": [
+                                      {
+                                            "role": "user",
+                                              "content": f"""
+                                              Return ONLY JSON.
+                                              Format:
+                                              {{ "explanation": "string", "fixes": ["string"] }}
 
-Format:
-{{ "explanation": "string", "fixes": ["string"] }}
-
-Code:
-{text[:1500]}
+                                              Code:
+                                              {text[:1500]}
 """
-            }
+          }
         ]
     }
 
