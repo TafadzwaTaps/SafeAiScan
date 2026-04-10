@@ -43,6 +43,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+CVE_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 security = HTTPBearer()

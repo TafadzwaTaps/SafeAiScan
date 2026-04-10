@@ -415,7 +415,7 @@ function renderCVEPanel(data) {
   const el = document.getElementById("cvePanel");
   if (!el) return;
 
-  const cves = data.cves || data.findings?.map(f => f.cve).filter(Boolean) || [];
+  const cves = data.cves || [];
 
   el.innerHTML = `
     <div class="card glass p-3">
