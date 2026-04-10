@@ -153,7 +153,7 @@ button:active { transform: scale(0.97); }
 
     <textarea id="code" class="form-control mt-3"
                 rows="6"
-                placeholder="eval("print('hello')")"></textarea>
+                placeholder='eval("print(\"hello\")")'></textarea>
 
     <button class="btn btn-success w-100 mt-2" onclick="runScan()">Run Scan</button>
 
@@ -222,29 +222,55 @@ async function runScan(){
     startLiveProgress();
 
     try{
-        const data = await analyzeCode(document.getElementById("code").value);
+        const data = await analyzeCode(
+            document.getElementById("code").value
+        );
 
         console.log("🔥 SCAN RESULT:", data);
 
-        findings = data.findings || [];
-
-        // ✅ NEW: store AI result globally
+        // ✅ STORE GLOBAL
         window.aiResult = data.ai || null;
 
-        // ✅ FALLBACK: if no findings but AI exists
-        if(findings.length === 0 && window.aiResult){
-            findings = [{
-                title: "AI Detected Issues",
-                description: window.aiResult.explanation || "AI found potential issues",
-                severity: "HIGH",
-                fix: (window.aiResult.fixes || []).join("\n") || "Review code manually"
-            }];
+        // =========================
+        // ✅ MAIN FINDINGS
+        // =========================
+        findings = data.findings || [];
+
+        // =========================
+        // 🧠 FALLBACK SYSTEM
+        // =========================
+        if(findings.length === 0){
+
+            // 1. If AI exists → create smart finding
+            if(window.aiResult?.explanation){
+                findings = [{
+                    title: "AI Detected Issues",
+                    description: window.aiResult.explanation,
+                    severity: "HIGH",
+                    fix: (window.aiResult.fixes || []).join("\n") 
+                        || "Review code manually"
+                }];
+            }
+
+            // 2. If NO AI → hard fallback
+            else{
+                findings = [{
+                    title: "No Issues Detected",
+                    description: "Scanner did not detect vulnerabilities. Try more complex input.",
+                    severity: "LOW",
+                    fix: "N/A"
+                }];
+            }
         }
 
-        render();
-        renderAI(); // 👈 NEW
-        stopLiveProgress();
+        // =========================
+        // 🎯 RENDER EVERYTHING
+        // =========================
+        render();              // cards
+        renderAI();            // AI panel
+        renderMinisky(data);   // advanced UI (timeline, CVE, etc)
 
+        stopLiveProgress();
         log("Scan complete");
 
     }catch(e){
@@ -282,26 +308,27 @@ function render(){
 }
 
 function renderAI(){
-    const aiBox = document.getElementById("aiChat");
-    if(!aiBox) return;
+    const box = document.getElementById("aiChat");
+    if(!box) return;
 
-    aiBox.innerHTML = "";
+    box.innerHTML = "";
 
     if(!window.aiResult){
-        aiBox.innerHTML = "<div class='text-muted'>No AI response</div>";
+        box.innerHTML = "<div class='text-muted'>No AI response</div>";
         return;
     }
 
-    const exp = window.aiResult.explanation || "No explanation";
-    const fixes = window.aiResult.fixes || [];
-
-    aiBox.innerHTML = `
+    box.innerHTML = `
         <div class="mb-2"><b>Explanation:</b></div>
-        <div class="small mb-3">${exp}</div>
+        <div class="small mb-3">
+            ${window.aiResult.explanation || "No explanation"}
+        </div>
 
         <div><b>Fixes:</b></div>
         <ul class="small">
-            ${fixes.map(f => `<li>${f}</li>`).join("")}
+            ${(window.aiResult.fixes || [])
+                .map(f => `<li>${f}</li>`)
+                .join("")}
         </ul>
     `;
 }
