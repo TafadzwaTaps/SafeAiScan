@@ -357,7 +357,7 @@ async function enrichCVE(findings) {
         box.innerHTML = `
           <div class="alert alert-secondary p-2">
             <strong>${top.id}</strong><br/>
-            CVSS: ${top.cvss}<br/>
+            CVSS: ${top.cvss || "N/A"}<br/>
             <small>${top.description}</small>
           </div>
         `;

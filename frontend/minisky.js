@@ -99,6 +99,7 @@ async function runScan(){
 
         stopProgress();
         log("Scan complete");
+        time.sleep(0.2)
 
     }catch(e){
         stopProgress();

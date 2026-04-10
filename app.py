@@ -18,6 +18,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from tasks import run_scan
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
+import httpx
 
 # =========================================================
 # APP
@@ -603,3 +604,45 @@ def get_org_users(auth=Depends(get_user)):
     res = supabase.table("users").select("email").eq("org_id", org_id).execute()
 
     return res.data
+
+@app.get("/api/cve/search")
+async def cve_search(query: str, auth=Depends(get_user)):
+    # 1. check cache first
+    cached = supabase.table("cve_cache") \
+        .select("*") \
+        .eq("query", query) \
+        .execute()
+
+    if cached.data:
+        return cached.data[0]["result"]
+
+    # 2. fetch from NVD API
+    async with httpx.AsyncClient(timeout=20) as client:
+        res = await client.get(CVE_API, params={
+            "keywordSearch": query,
+            "resultsPerPage": 3
+        })
+
+    data = res.json()
+
+    cves = []
+
+    for item in data.get("vulnerabilities", []):
+        cve = item.get("cve", {})
+
+        cves.append({
+            "id": cve.get("id"),
+            "description": cve.get("descriptions", [{}])[0].get("value", ""),
+            "cvss": cve.get("metrics", {}).get("cvssMetricV31", [{}])[0]
+                     .get("cvssData", {}).get("baseScore", "N/A")
+        })
+
+    result = {"cves": cves}
+
+    # 3. store cache
+    supabase.table("cve_cache").insert({
+        "query": query,
+        "result": result
+    }).execute()
+
+    return result
