@@ -1,91 +1,102 @@
 import os
 import shutil
+import traceback
 from scanner import safe_clone, validate_repo, full_scan
 from supabase import create_client
 
-# =========================================================
-# SUPABASE SETUP
-# =========================================================
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise Exception("Missing Supabase credentials")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-TABLE = "scan_tasks"   # 🔥 SINGLE SOURCE OF TRUTH
+TABLE = "scan_tasks"
 
 
-# =========================================================
-# UPDATE TASK (CLEAN VERSION)
-# =========================================================
-def update_task(task_id, **kwargs):
-    supabase.table(TABLE).update(kwargs).eq("id", task_id).execute()
+# =========================
+# SAFE UPDATE (CRITICAL FIX)
+# =========================
+def update_task(task_id: str, payload: dict):
+    try:
+        supabase.table(TABLE).update(payload).eq("id", task_id).execute()
+    except Exception as e:
+        print("🔥 SUPABASE UPDATE FAILED:", str(e))
+        traceback.print_exc()
 
 
-# =========================================================
-# MAIN SCAN WORKER (SUPABASE-BASED)
-# =========================================================
+# =========================
+# SCAN WORKER
+# =========================
 def run_scan(task_id, repo_url, user_id, org_id):
     path = None
 
     try:
-        # 🔹 Step 1: Clone
-        update_task(
-            task_id,
-            state="CLONING",
-            message="Cloning repository...",
-            progress=10
-        )
+        update_task(task_id, {
+            "state": "CLONING",
+            "message": "Cloning repository...",
+            "progress": 10
+        })
 
         path = safe_clone(repo_url)
 
-        # 🔹 Step 2: Validate
-        update_task(
-            task_id,
-            state="VALIDATING",
-            message="Validating repository...",
-            progress=30
-        )
+        update_task(task_id, {
+            "state": "VALIDATING",
+            "message": "Validating repository...",
+            "progress": 30
+        })
 
         validate_repo(path)
 
-        # 🔹 Step 3: Scan
-        update_task(
-            task_id,
-            state="SCANNING",
-            message="Running security scanners...",
-            progress=60
-        )
+        update_task(task_id, {
+            "state": "SCANNING",
+            "message": "Running security scan...",
+            "progress": 60
+        })
 
         results = full_scan(path)
 
-        # 🔹 Step 4: Finalize
-        update_task(
-            task_id,
-            state="FINALIZING",
-            message="Saving results...",
-            progress=90
-        )
+        update_task(task_id, {
+            "state": "FINALIZING",
+            "message": "Preparing results...",
+            "progress": 90
+        })
 
-        # 🔥 IMPORTANT: normalize result
-        findings = results.get("findings", []) if isinstance(results, dict) else results
+        # ✅ FORCE NORMALIZED FORMAT (IMPORTANT FIX)
+        findings = []
 
-        # 🔹 Final state (ONLY ONCE — no duplicate updates)
-        update_task(
-            task_id,
-            state="DONE",
-            message="Scan complete",
-            progress=100,
-            result={"findings": findings}
-        )
+        if isinstance(results, dict):
+            findings = results.get("findings", [])
+        elif isinstance(results, list):
+            findings = results
+        else:
+            findings = []
+
+        update_task(task_id, {
+            "state": "DONE",
+            "message": "Scan complete",
+            "progress": 100,
+            "result": {
+                "findings": findings
+            }
+        })
+
+        print(f"✅ SCAN DONE: {task_id}")
 
     except Exception as e:
-        # 🔥 Proper error structure
-        update_task(
-            task_id,
-            state="FAILED",
-            message="Scan failed",
-            result={"error": str(e)}
-        )
+        error = str(e)
+
+        print("🔥 SCAN ERROR:", error)
+        traceback.print_exc()
+
+        update_task(task_id, {
+            "state": "FAILED",
+            "message": "Scan failed",
+            "result": {
+                "error": error
+            }
+        })
 
     finally:
         if path and os.path.exists(path):

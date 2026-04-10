@@ -497,7 +497,9 @@ def scan_repo(req: RepoRequest, background_tasks: BackgroundTasks, auth=Depends(
     "repo_url": req.repo_url,
     "state": "QUEUED",
     "progress": 0
-}).execute()
+    }).execute()
+    
+    print("🔥 INSERT TASK:", res)
 
     background_tasks.add_task(
         run_scan,
