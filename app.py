@@ -499,7 +499,7 @@ def scan_repo(req: RepoRequest, background_tasks: BackgroundTasks, auth=Depends(
     "progress": 0
     }).execute()
     
-    print("🔥 INSERT TASK:", res)
+    print("🔥 INSERT TASK:", supabase)
 
     background_tasks.add_task(
         run_scan,
