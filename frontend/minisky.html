@@ -224,11 +224,29 @@ async function runScan(){
     try{
         const data = await analyzeCode(document.getElementById("code").value);
 
+        console.log("🔥 SCAN RESULT:", data);
+
         findings = data.findings || [];
+
+        // ✅ NEW: store AI result globally
+        window.aiResult = data.ai || null;
+
+        // ✅ FALLBACK: if no findings but AI exists
+        if(findings.length === 0 && window.aiResult){
+            findings = [{
+                title: "AI Detected Issues",
+                description: window.aiResult.explanation || "AI found potential issues",
+                severity: "HIGH",
+                fix: (window.aiResult.fixes || []).join("\n") || "Review code manually"
+            }];
+        }
+
         render();
+        renderAI(); // 👈 NEW
         stopLiveProgress();
 
         log("Scan complete");
+
     }catch(e){
         stopLiveProgress();
         log("Error: "+e.message);
@@ -247,7 +265,9 @@ function render(){
         <div class="d-flex justify-content-between">
             <div>
                 <b>${v.match || v.title}</b>
-                <div class="text-muted small">${v.description||""}</div>
+                <div class="text-muted small">
+                    ${(v.description || "").substring(0,120)}...
+                    </div>
             </div>
             <span class="badge bg-danger">${v.severity||"HIGH"}</span>
         </div>`;
@@ -259,6 +279,31 @@ function render(){
     updateSummary();
     updateBars();
     renderHeatmap();
+}
+
+function renderAI(){
+    const aiBox = document.getElementById("aiChat");
+    if(!aiBox) return;
+
+    aiBox.innerHTML = "";
+
+    if(!window.aiResult){
+        aiBox.innerHTML = "<div class='text-muted'>No AI response</div>";
+        return;
+    }
+
+    const exp = window.aiResult.explanation || "No explanation";
+    const fixes = window.aiResult.fixes || [];
+
+    aiBox.innerHTML = `
+        <div class="mb-2"><b>Explanation:</b></div>
+        <div class="small mb-3">${exp}</div>
+
+        <div><b>Fixes:</b></div>
+        <ul class="small">
+            ${fixes.map(f => `<li>${f}</li>`).join("")}
+        </ul>
+    `;
 }
 
 function updateSummary(){
