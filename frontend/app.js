@@ -12,6 +12,9 @@ async function scan() {
 
     const data = await analyzeCode(code);
     console.log("🔥 SCAN RESULT:", data); // ADD THIS
+    renderAIInsights(data);
+renderVulnerabilities(data);
+renderMiniskyPanel(data);
 
     stopLiveProgress();
 
@@ -21,7 +24,8 @@ async function scan() {
     const summary = {
       issues: data.findings?.length || 0,
       explanation: data.ai?.explanation || "No explanation",
-      fixes: data.ai?.fixes || []
+      fixes: data.ai?.fixes || [],
+
     };
 
     renderVulnerabilities(data);
@@ -204,6 +208,13 @@ function renderVulnerabilities(data) {
           <hr/>
           <p><strong>Description:</strong> ${vuln.description || "No description"}</p>
           <p><strong>Fix:</strong> ${vuln.fix || "No fix provided"}</p>
+
+${data.ai?.explanation ? `
+  <div class="mt-2 p-2" style="background:#0b1220;border-radius:8px;">
+    <small class="text-info">AI Insight:</small>
+    <div style="font-size:12px;">${data.ai.explanation}</div>
+  </div>
+` : ""}
 
           <div id="cve-${index}" class="mt-2 text-muted">
             Loading CVE enrichment...
@@ -538,6 +549,50 @@ async function loadTeam(){
     } catch (e) {
         list.innerHTML = "<li class='text-danger'>Failed to load team</li>";
     }
+}
+
+function renderAIInsights(data) {
+  const container = document.getElementById("aiInsights");
+
+  if (!container) return;
+
+  const ai = data.ai || {};
+
+  // 🔥 FALLBACK SYSTEM (VERY IMPORTANT)
+  let explanation = ai.explanation || "No AI explanation available.";
+  let fixes = ai.fixes || [];
+
+  if (!fixes.length) {
+    fixes = [
+      "Validate and sanitize all inputs",
+      "Use parameterized queries to prevent SQL injection",
+      "Store secrets in environment variables",
+      "Apply authentication & authorization",
+      "Keep dependencies updated"
+    ];
+  }
+
+  container.innerHTML = `
+    <div class="glass p-3 mt-3">
+      <h6>🧠 AI Security Insights</h6>
+
+      <div class="mb-2 text-muted small">
+        AI-powered explanation of detected risks
+      </div>
+
+      <div class="mb-3">
+        <strong>Explanation:</strong>
+        <div class="mt-1">${explanation}</div>
+      </div>
+
+      <div>
+        <strong>Recommended Fixes:</strong>
+        <ul class="mt-2">
+          ${fixes.map(f => `<li>✅ ${f}</li>`).join("")}
+        </ul>
+      </div>
+    </div>
+  `;
 }
 
 function exportReport() {

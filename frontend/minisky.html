@@ -205,9 +205,17 @@ button:active { transform: scale(0.97); }
 <script src="api.js"></script>
 <script src="app.js"></script>
 
+<script src="api.js"></script>
+<script src="app.js"></script>
+
 <script>
 let findings = [];
+let scanProgressInterval = null;
+window.aiResult = null;
 
+// =========================
+// LOG TIMELINE
+// =========================
 function log(msg){
     const el = document.getElementById("timeline");
     if(!el) return;
@@ -217,9 +225,53 @@ function log(msg){
     el.prepend(d);
 }
 
+// =========================
+// 🚀 PIPELINE PROGRESS
+// =========================
+function startPipeline(){
+    const steps = [
+        "Parsing code...",
+        "Running static analysis...",
+        "Checking vulnerabilities...",
+        "AI risk modeling...",
+        "Mapping CVEs...",
+        "Finalizing report..."
+    ];
+
+    const text = document.getElementById("scanProgressText");
+    const bar = document.getElementById("scanProgressBar");
+
+    let i = 0;
+
+    clearInterval(scanProgressInterval);
+
+    scanProgressInterval = setInterval(()=>{
+        if(i >= steps.length){
+            clearInterval(scanProgressInterval);
+            return;
+        }
+
+        const percent = ((i+1)/steps.length)*100;
+
+        text.innerText = steps[i];
+        bar.style.width = percent + "%";
+
+        i++;
+    }, 700);
+}
+
+function stopProgress(){
+    clearInterval(scanProgressInterval);
+    document.getElementById("scanProgressBar").style.width = "100%";
+    document.getElementById("scanProgressText").innerText = "Scan Complete";
+}
+
+// =========================
+// 🔥 MAIN SCAN (FIXED)
+// =========================
 async function runScan(){
     log("Scanning...");
-    startLiveProgress();
+    startPipeline();
 
     try{
         const data = await analyzeCode(
@@ -228,154 +280,149 @@ async function runScan(){
 
         console.log("🔥 SCAN RESULT:", data);
 
-        // ✅ STORE GLOBAL
         window.aiResult = data.ai || null;
 
-        // =========================
-        // ✅ MAIN FINDINGS
-        // =========================
         findings = data.findings || [];
 
-        // =========================
-        // 🧠 FALLBACK SYSTEM
-        // =========================
+        // ✅ FALLBACK SYSTEM
         if(findings.length === 0){
-
-            // 1. If AI exists → create smart finding
             if(window.aiResult?.explanation){
                 findings = [{
                     title: "AI Detected Issues",
                     description: window.aiResult.explanation,
                     severity: "HIGH",
-                    fix: (window.aiResult.fixes || []).join("\n") 
-                        || "Review code manually"
+                    fix: (window.aiResult.fixes || []).join("\n")
                 }];
-            }
-
-            // 2. If NO AI → hard fallback
-            else{
+            } else {
                 findings = [{
                     title: "No Issues Detected",
-                    description: "Scanner did not detect vulnerabilities. Try more complex input.",
+                    description: "Scanner found nothing.",
                     severity: "LOW",
                     fix: "N/A"
                 }];
             }
         }
 
-        // =========================
-        // 🎯 RENDER EVERYTHING
-        // =========================
-        render();              // cards
-        renderAI();            // AI panel
-        renderMinisky(data);   // advanced UI (timeline, CVE, etc)
+        renderOverview(data);
+        render();
+        renderAI();
+        renderHeatmap();
 
-        stopLiveProgress();
+        stopProgress();
         log("Scan complete");
 
     }catch(e){
-        stopLiveProgress();
+        stopProgress();
         log("Error: "+e.message);
     }
 }
 
+// =========================
+// 📊 OVERVIEW PANEL
+// =========================
+function renderOverview(data){
+    const el = document.getElementById("totalIssues");
+
+    const score = Math.max(0, 100 - findings.length * 10);
+
+    document.getElementById("totalIssues").innerText = findings.length;
+    document.getElementById("riskScore").innerText = score;
+    document.getElementById("criticalCount").innerText =
+        findings.filter(f=>f.severity==="HIGH").length;
+}
+
+// =========================
+// 🧬 RENDER VULNS
+// =========================
 function render(){
     const box = document.getElementById("results");
     box.innerHTML="";
 
+    const order = {CRITICAL:4,HIGH:3,MEDIUM:2,LOW:1};
+
+    findings.sort((a,b)=>(order[b.severity]||0)-(order[a.severity]||0));
+
     findings.forEach(v=>{
+        const color =
+            v.severity==="HIGH" ? "danger" :
+            v.severity==="MEDIUM" ? "warning" :
+            "success";
+
         const div=document.createElement("div");
         div.className="vuln";
 
         div.innerHTML=`
         <div class="d-flex justify-content-between">
             <div>
-                <b>${v.match || v.title}</b>
-                <div class="text-muted small">
-                    ${(v.description || "").substring(0,120)}...
-                    </div>
+                <b>${v.title}</b>
+                <div class="text-muted small">${v.description}</div>
             </div>
-            <span class="badge bg-danger">${v.severity||"HIGH"}</span>
+            <span class="badge bg-${color}">
+                ${v.severity}
+            </span>
         </div>`;
 
         div.onclick=()=>openSide(v);
         box.appendChild(div);
     });
-
-    updateSummary();
-    updateBars();
-    renderHeatmap();
 }
 
+// =========================
+// 🤖 AI PANEL
+// =========================
 function renderAI(){
     const box = document.getElementById("aiChat");
     if(!box) return;
 
-    box.innerHTML = "";
-
     if(!window.aiResult){
-        box.innerHTML = "<div class='text-muted'>No AI response</div>";
+        box.innerHTML = "No AI response";
         return;
     }
 
     box.innerHTML = `
-        <div class="mb-2"><b>Explanation:</b></div>
-        <div class="small mb-3">
-            ${window.aiResult.explanation || "No explanation"}
+        <div><b>AI Analysis:</b></div>
+        <div class="small mb-2">
+            ${window.aiResult.explanation}
         </div>
 
-        <div><b>Fixes:</b></div>
         <ul class="small">
-            ${(window.aiResult.fixes || [])
-                .map(f => `<li>${f}</li>`)
-                .join("")}
+            ${(window.aiResult.fixes||[])
+                .map(f=>`<li>${f}</li>`).join("")}
         </ul>
     `;
 }
 
-function updateSummary(){
-    const total=findings.length;
-    const critical=findings.length;
-
-    document.getElementById("totalIssues").innerText=total;
-    document.getElementById("criticalCount").innerText=critical;
-    document.getElementById("riskScore").innerText=total*20;
-}
-
-function updateBars(){
-    const total=findings.length||1;
-    document.getElementById("barCritical").style.width=(findings.length/total*100)+"%";
-}
-
+// =========================
+// 🔥 HEATMAP
+// =========================
 function renderHeatmap(){
     const map=document.getElementById("heatmap");
     map.innerHTML="";
-    findings.forEach(()=>{
+
+    findings.forEach(v=>{
         const c=document.createElement("div");
-        c.className="heat-cell high";
+        c.className="heat-cell " + (v.severity?.toLowerCase() || "low");
         map.appendChild(c);
     });
 }
 
+// =========================
+// SIDE PANEL
+// =========================
 function openSide(v){
     document.getElementById("side").classList.add("open");
-    document.getElementById("title").innerText=v.match||v.title;
+
+    document.getElementById("title").innerText=v.title;
 
     document.getElementById("desc").innerHTML=`
-    <div class="alert alert-warning">High Risk</div>
-    <p>${v.description||"Potential vulnerability detected."}</p>
-    <pre>${v.fix||"Sanitize inputs / avoid unsafe execution."}</pre>`;
+        <p>${v.description}</p>
+        <pre>${v.fix}</pre>
+    `;
 }
 
 function closeSide(){
     document.getElementById("side").classList.remove("open");
 }
-
-window.renderMinisky = function(data){
-    findings = data.findings || [];
-    render();
-};
-
 </script>
 
 </body>
