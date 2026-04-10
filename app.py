@@ -334,16 +334,23 @@ async def ai_enrich(text: str, findings):
                         {
                             "role": "user",
                             "content": f"""
-Return structured output ONLY.
+You are a cybersecurity expert.
 
-Format:
+ONLY analyze REAL vulnerabilities.
+
+Known detected issues:
+{findings}
+
+If no real vulnerabilities exist, say:
+"No critical vulnerabilities found."
+
+Return format:
+
 SECURITY_ISSUES:
-- issue 1
-- issue 2
+- short bullet points
 
 FIXES:
-- fix 1
-- fix 2
+- actionable fixes
 
 Code:
 {text[:1000]}
