@@ -16,7 +16,6 @@ from fastapi import BackgroundTasks
 from github import Github
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from tasks import run_scan
-from store import tasks_store
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 
@@ -491,10 +490,14 @@ def scan_repo(req: RepoRequest, background_tasks: BackgroundTasks, auth=Depends(
 
     task_id = str(uuid.uuid4())
 
-    tasks_store[task_id] = {
-        "state": "QUEUED",
-        "result": None
-    }
+    supabase.table("scan_tasks").insert({
+    "id": task_id,
+    "user_id": user["id"],
+    "org_id": org["id"],
+    "repo_url": req.repo_url,
+    "state": "QUEUED",
+    "progress": 0
+}).execute()
 
     background_tasks.add_task(
         run_scan,
@@ -509,10 +512,19 @@ def scan_repo(req: RepoRequest, background_tasks: BackgroundTasks, auth=Depends(
         "task_id": task_id
     }
 
-
 @app.get("/api/task/{task_id}")
-def get_task(task_id: str):
-    return tasks_store.get(task_id, {"state": "NOT_FOUND"})
+def get_task(task_id: str, auth=Depends(get_user)):
+
+    res = supabase.table("scan_tasks") \
+        .select("*") \
+        .eq("id", task_id) \
+        .single() \
+        .execute()
+
+    if not res.data:
+        raise HTTPException(404, "Task not found")
+
+    return res.data
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
