@@ -97,16 +97,18 @@ async function getMe() {
 }
 
 async function fetchCVE() {
-  const input = document.getElementById("cveInput").value;
+  const input =
+  document.getElementById("cveInput").value ||
+  (findings[0]?.match || findings[0]?.title || "");
   if (!input) return alert("Enter a CVE or keyword");
 
   const panel = document.getElementById("cvePanel");
   panel.innerHTML = "Loading...";
 
   try {
-    const res = await fetch(
-      `${BASE_URL}/api/cve/search?query=${encodeURIComponent(input)}`
-    );
+    const res = await apiRequest(
+  `/api/cve/search?query=${encodeURIComponent(input)}`
+);
 
     const text = await res.text();
 

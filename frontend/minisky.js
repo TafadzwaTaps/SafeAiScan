@@ -58,7 +58,7 @@ function stopProgress(){
 // 🔥 MAIN SCAN (FIXED)
 // =========================
 async function runScan(){
-    print("🔥 RUN_SCAN STARTED:", task_id)
+    console.log("🔥 RUN_SCAN STARTED");
     log("Scanning...");
     startPipeline();
 
@@ -99,7 +99,6 @@ async function runScan(){
 
         stopProgress();
         log("Scan complete");
-        time.sleep(0.2)
 
     }catch(e){
         stopProgress();
