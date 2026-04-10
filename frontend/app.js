@@ -1,3 +1,4 @@
+let findings = [];
 // =========================
 // CODE SCAN
 // =========================
@@ -13,8 +14,6 @@ async function scan() {
     const data = await analyzeCode(code);
     console.log("🔥 SCAN RESULT:", data); // ADD THIS
     renderAIInsights(data);
-renderVulnerabilities(data);
-renderMiniskyPanel(data);
 
     stopLiveProgress();
 
@@ -30,6 +29,7 @@ renderMiniskyPanel(data);
 
     renderVulnerabilities(data);
     renderMiniskyPanel(data);
+    updateStatus(data.findings);
 
     if (data.findings?.length > 0) {
       enrichCVE(data.findings);
@@ -595,34 +595,21 @@ function renderAIInsights(data) {
   `;
 }
 
-async function fetchCVE() {
-  const input = document.getElementById("cveInput").value;
-  if (!input) return alert("Enter a CVE or keyword");
+function updateStatus(findings) {
+  const statusEl = document.getElementById("statusText");
+  if (!statusEl) return;
 
-  const panel = document.getElementById("cvePanel");
-  panel.innerHTML = "Loading...";
+  const hasCritical = findings.some(f => f.severity === "HIGH" || f.severity === "CRITICAL");
 
-  try {
-    const res = await fetch(`/api/cve/search?query=${encodeURIComponent(input)}`);
-    const data = await res.json();
+  statusEl.innerText = hasCritical ? "Vulnerable" : "Secure";
+  statusEl.className = hasCritical ? "status-risk" : "status-safe";
+}
 
-    if (!data.cves || data.cves.length === 0) {
-      panel.innerHTML = "<p>No CVEs found</p>";
-      return;
-    }
-
-    panel.innerHTML = data.cves.map(cve => `
-      <div class="panel mb-2">
-        <strong>${cve.id}</strong><br/>
-        CVSS: ${cve.cvss || "N/A"}<br/>
-        <small>${cve.description || ""}</small>
-      </div>
-    `).join("");
-
-  } catch (err) {
-    console.error(err);
-    panel.innerHTML = "<p class='text-danger'>Error fetching CVEs</p>";
-  }
+function renderMiniskyPanel(data) {
+  renderTimeline(data);
+  renderSeverityTabs(data);
+  renderCVEPanel(data);
+  renderFixDiff(data);
 }
 
 function exportReport() {

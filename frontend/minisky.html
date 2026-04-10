@@ -21,6 +21,10 @@ body {
     border-radius: 14px;
     padding: 14px;
     backdrop-filter: blur(10px);
+    transition: 0.2s;
+}
+.panel:hover {
+    transform: translateY(-2px);
 }
 
 /* TIMELINE */
@@ -41,6 +45,7 @@ body {
 .vuln {
     background: #0f172a;
     border: 1px solid #1f2937;
+    border-left: 4px solid #6366f1;
     padding: 12px;
     border-radius: 10px;
     margin-bottom: 10px;
@@ -71,17 +76,25 @@ body {
 /* HEATMAP */
 .heatmap {
     display: grid;
-    grid-template-columns: repeat(10,1fr);
-    gap: 4px;
+    grid-template-columns: repeat(8,1fr);
+    gap: 6px;
 }
 .heat-cell {
-    height: 10px;
-    border-radius: 3px;
+    height: 16px;
+    border-radius: 4px;
 }
 .high { background: #ef4444; }
 .medium { background: #f59e0b; }
 .low { background: #22c55e; }
 .critical { background: #b91c1c; }
+
+/* STATUS COLORS */
+.status-safe {
+    color: #22c55e;
+}
+.status-risk {
+    color: #ef4444;
+}
 
 button:active { transform: scale(0.97); }
 </style>
@@ -94,19 +107,23 @@ button:active { transform: scale(0.97); }
   <div class="row g-3">
 
     <div class="col-md-3"><div class="panel text-center">
-      <h6>Total Issues</h6><h3 id="totalIssues">0</h3>
+      <h6>Total Issues</h6>
+      <h3 id="totalIssues">0</h3>
     </div></div>
 
     <div class="col-md-3"><div class="panel text-center">
-      <h6>Critical</h6><h3 class="text-danger" id="criticalCount">0</h3>
+      <h6>Critical</h6>
+      <h3 class="text-danger" id="criticalCount">0</h3>
     </div></div>
 
     <div class="col-md-3"><div class="panel text-center">
-      <h6>Risk Score</h6><h3 id="riskScore">0</h3>
+      <h6>Risk Score</h6>
+      <h3 id="riskScore">0</h3>
     </div></div>
 
     <div class="col-md-3"><div class="panel text-center">
-      <h6>Status</h6><h6 class="text-success">Secure</h6>
+      <h6>Status</h6>
+      <h6 id="statusText" class="status-safe">Secure</h6>
     </div></div>
 
   </div>
@@ -129,7 +146,8 @@ button:active { transform: scale(0.97); }
     <hr/>
 
     <h6>🧠 CVE Lookup</h6>
-    <input id="cveInput" class="form-control form-control-sm"/>
+    <input id="cveInput" class="form-control form-control-sm"
+           placeholder="e.g. CVE-2026-1340"/>
     <button class="btn btn-warning btn-sm w-100 mt-2" onclick="fetchCVE()">Fetch CVEs</button>
 
     <div id="cvePanel" class="mt-2 small"></div>
@@ -177,12 +195,13 @@ button:active { transform: scale(0.97); }
       <div id="barHigh" class="progress-bar bg-warning"></div>
       <div id="barLow" class="progress-bar bg-success"></div>
     </div>
+
     <div class="panel mt-3">
-        
         <h6>🧠 AI Explain</h6>
         <div id="aiChat" style="max-height:200px;overflow:auto;"></div>
-        
-        <input id="aiInput" class="form-control mt-2" placeholder="Ask about this vulnerability..."/>
+
+        <input id="aiInput" class="form-control mt-2"
+               placeholder="Ask about this vulnerability..."/>
         <button class="btn btn-sm btn-primary mt-2 w-100" onclick="askAI()">Ask AI</button>
     </div>
 

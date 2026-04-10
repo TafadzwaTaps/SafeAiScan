@@ -95,3 +95,44 @@ async function getMe() {
   const res = await apiRequest("/api/me");
   return safeJson(res);
 }
+
+async function fetchCVE() {
+  const input = document.getElementById("cveInput").value;
+  if (!input) return alert("Enter a CVE or keyword");
+
+  const panel = document.getElementById("cvePanel");
+  panel.innerHTML = "Loading...";
+
+  try {
+    const res = await fetch(
+      `${BASE_URL}/api/cve/search?query=${encodeURIComponent(input)}`
+    );
+
+    const text = await res.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.error("RAW RESPONSE:", text);
+      throw new Error("Invalid JSON (probably wrong endpoint)");
+    }
+
+    if (!data.cves || data.cves.length === 0) {
+      panel.innerHTML = "<p>No CVEs found</p>";
+      return;
+    }
+
+    panel.innerHTML = data.cves.map(cve => `
+      <div class="panel mb-2">
+        <strong>${cve.id}</strong><br/>
+        CVSS: ${cve.cvss || "N/A"}<br/>
+        <small>${cve.description || ""}</small>
+      </div>
+    `).join("");
+
+  } catch (err) {
+    console.error(err);
+    panel.innerHTML = "<p class='text-danger'>Error fetching CVEs</p>";
+  }
+}
