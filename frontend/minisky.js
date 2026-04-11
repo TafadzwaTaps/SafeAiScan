@@ -140,16 +140,22 @@ function render(){
         const div=document.createElement("div");
         div.className="vuln";
 
-        div.innerHTML=`
-        <div class="d-flex justify-content-between">
-            <div>
-                <b>${v.title}</b>
-                <div class="text-muted small">${v.description}</div>
-            </div>
-            <span class="badge bg-${color}">
-                ${v.severity}
-            </span>
-        </div>`;
+        div.innerHTML = `
+<div class="d-flex justify-content-between">
+    <div>
+        <b>${v.title}</b>
+        <div class="text-muted small">${v.description}</div>
+
+        ${renderCVEBadges(v)}
+    </div>
+
+    <span class="badge bg-${color}">
+        ${v.severity}
+    </span>
+</div>
+
+${renderRiskBar(v)}
+`;
 
         div.onclick=()=>openSide(v);
         box.appendChild(div);
@@ -211,6 +217,88 @@ function openSide(v){
 
 function closeSide(){
     document.getElementById("side").classList.remove("open");
+}
+
+function renderCVEBadges(v){
+    if(!v.cves || v.cves.length === 0){
+        return `<div class="text-muted small">No CVEs</div>`;
+    }
+
+    return `
+        <div class="mt-2 d-flex flex-wrap gap-1">
+            ${v.cves.map(cve => `
+                <span class="badge ${getCVSSColor(cve.cvss)} border"
+                      style="cursor:pointer"
+                      onclick="openCVE('${cve.id}')">
+                    🧬 ${cve.id}
+                </span>
+            `).join("")}
+        </div>
+    `;
+}
+
+function openCVE(id){
+    const vuln = findings.find(f =>
+        f.cves?.some(c => c.id === id)
+    );
+
+    const cve = vuln?.cves.find(c => c.id === id);
+
+    if(!cve) return;
+
+    document.getElementById("side").classList.add("open");
+
+    document.getElementById("title").innerText = id;
+
+    document.getElementById("desc").innerHTML = `
+        <p><b>CVSS:</b> ${cve.cvss || "N/A"}</p>
+        <p>${cve.description}</p>
+    `;
+}
+
+function renderRiskBar(v){
+    const max = Math.max(...(v.cves || []).map(c=>c.score || 0), 0);
+
+    if(max === 0){
+        return `<div class="small text-muted">Low risk</div>`;
+    }
+
+    const percent = Math.min(100, max);
+
+    const color =
+        percent > 70 ? "#ef4444" :
+        percent > 40 ? "#f59e0b" :
+        "#22c55e";
+
+    return `
+        <div class="mt-2">
+            <div style="
+                height:6px;
+                background:#1f2937;
+                border-radius:6px;
+                overflow:hidden;">
+                
+                <div style="
+                    width:${percent}%;
+                    height:100%;
+                    background:${color};
+                    transition:0.3s;">
+                </div>
+            </div>
+
+            <div class="small text-muted">
+                Exploit Risk: ${Math.round(percent)}%
+            </div>
+        </div>
+    `;
+}
+
+function getCVSSColor(score){
+    if(!score) return "bg-secondary";
+    if(score >= 9) return "bg-danger";
+    if(score >= 7) return "bg-warning";
+    if(score >= 4) return "bg-info";
+    return "bg-success";
 }
 
 window.runScan = runScan;
