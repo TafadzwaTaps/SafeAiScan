@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("safeaiscan.auth")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_THIS_IN_PRODUCTION_MUST_BE_LONG_AND_RANDOM")
+SECRET_KEY = os.getenv("SECRET_KEY", "!Safe_Ai_Scan@2026")
 ALGORITHM  = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 90  # 1.5 hours
 

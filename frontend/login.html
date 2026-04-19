@@ -298,22 +298,28 @@
         body: JSON.stringify({ email, password })
       });
 
-      const data = await res.json();
+      const raw = await res.json();
+      const data = raw.data; // 👈 IMPORTANT FIX
+     
+      // 
+      if (!res.ok || !data?.access_token) {
+          showAlert('loginAlert', raw.detail || 'Invalid credentials');
+            return;
+          }
+          
+          localStorage.setItem('access_token', data.access_token);
+          localStorage.setItem('user_id', data.user_id);
+          localStorage.setItem('org_id', data.org_id);
+          localStorage.setItem('user_plan', data.plan);
+          
+          if (data.api_key) localStorage.setItem('api_key', data.api_key);
 
-      if (!res.ok || !data.access_token) {
-        showAlert('loginAlert', data.detail || 'Invalid credentials');
-        return;
-      }
+               showAlert('loginAlert', 'Login successful! Redirecting…', 'success');
+               setTimeout(() => window.location.href = 'dashboard.html', 800);
 
-      localStorage.setItem('access_token', data.access_token);
-      if (data.api_key) localStorage.setItem('api_key', data.api_key);
-
-      showAlert('loginAlert', 'Login successful! Redirecting…', 'success');
-      setTimeout(() => window.location.href = 'dashboard.html', 800);
-
-    } catch (err) {
-      showAlert('loginAlert', 'Network error. Please try again.');
-    } finally {
+           } catch (err) {
+                 showAlert('loginAlert', 'Network error. Please try again.');
+          } finally {
       setBtn('loginBtn', false);
     }
   }
