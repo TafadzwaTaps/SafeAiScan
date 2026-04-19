@@ -3,454 +3,398 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>SafeAIScan Dashboard</title>
+<title>SafeAIScan — Dashboard</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 
 <style>
-/* =========================
-   SNYK-STYLE DARK SECURITY UI
-========================= */
+  /* ---- DASHBOARD LAYOUT ---- */
+  .dash-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr 260px;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+    gap: 0;
+  }
 
-body {
-    background: #0b0f17;
-    color: #e6edf3;
-    font-family: "Inter", "Segoe UI", sans-serif;
-}
+  .dash-topbar {
+    grid-column: 1 / -1;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
 
-/* =========================
-   TOP BAR (SNYK STYLE)
-========================= */
-.header {
-    padding: 14px 22px;
-    background: #0f172a;
-    border-bottom: 1px solid #1f2937;
-}
+  .dash-sidebar {
+    background: var(--bg-1);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    height: calc(100vh - 53px);
+    position: sticky;
+    top: 53px;
+  }
 
-.header h5 {
-    font-weight: 600;
-}
+  .dash-main {
+    padding: 20px;
+    overflow-y: auto;
+    max-height: calc(100vh - 53px);
+  }
 
-/* =========================
-   GLASS PANEL (CLEANER)
-========================= */
-.glass {
-    background: #111827;
-    border: 1px solid #1f2937;
-    border-radius: 14px;
-    box-shadow: 0 8px 25px rgba(0,0,0,0.35);
-}
+  .dash-aside {
+    background: var(--bg-1);
+    border-left: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    height: calc(100vh - 53px);
+    position: sticky;
+    top: 53px;
+  }
 
-/* =========================
-   METRICS (SNYK CARDS)
-========================= */
-.metric {
-    padding: 14px;
-    border-radius: 12px;
-    background: #0f172a;
-    border: 1px solid #1f2937;
-    margin-bottom: 12px;
-}
+  /* ---- SCAN PANEL ---- */
+  .scan-panel {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
 
-.metric h6 {
-    font-size: 11px;
-    color: #94a3b8;
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-}
+  .scan-panel-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+  }
 
-.metric h3 {
-    margin: 0;
-    font-size: 20px;
-}
-
-/* =========================
-   BUTTONS (SNYK STYLE)
-========================= */
-.btn-primary {
-    background: linear-gradient(135deg, #6366f1, #4f46e5);
-    border: none;
-    font-weight: 500;
-}
-
-.btn-primary:hover {
-    background: linear-gradient(135deg, #4f46e5, #4338ca);
-}
-
-.btn-warning {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-    border: none;
-}
-
-.btn-danger {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-    border: none;
-}
-
-/* =========================
-   TEXTAREA (CODE INPUT)
-========================= */
-textarea {
-    background: #0b1220 !important;
-    border: 1px solid #1f2937 !important;
-    color: #e6edf3 !important;
-}
-
-textarea:focus {
-    box-shadow: none !important;
-    border-color: #6366f1 !important;
-}
-
-/* =========================
-   OUTPUT CONSOLE (SNYK STYLE)
-========================= */
-pre {
-    background: #0b1220;
-    padding: 14px;
-    border-radius: 12px;
-    border: 1px solid #1f2937;
-    max-height: 260px;
-    overflow: auto;
-    font-size: 12px;
-    color: #cbd5e1;
-}
-
-/* =========================
-   STATUS BADGE
-========================= */
-.badge-soft {
-    background: #1f2937;
-    color: #93c5fd;
-    padding: 5px 10px;
-    border-radius: 999px;
-    font-size: 11px;
-    display: inline-block;
-}
-
-/* =========================
-   VULNERABILITY LIST (SNYK STYLE)
-========================= */
-ul {
-    padding-left: 0;
-    list-style: none;
-}
-
-li {
-    background: #0f172a;
-    border: 1px solid #1f2937;
-    padding: 10px;
-    border-radius: 10px;
-    margin-bottom: 8px;
+  /* ---- NAV LINK ---- */
+  .side-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
     font-size: 13px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-/* =========================
-   SEVERITY BADGES
-========================= */
-.badge {
-    font-size: 11px;
-    padding: 4px 8px;
-    border-radius: 8px;
-}
-
-.badge-critical { background: #7f1d1d; color: #fecaca; }
-.badge-high     { background: #991b1b; color: #fee2e2; }
-.badge-medium   { background: #92400e; color: #fef3c7; }
-.badge-low      { background: #14532d; color: #bbf7d0; }
-
-/* =========================
-   SCROLLBAR (MODERN)
-========================= */
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #1f2937;
-    border-radius: 10px;
-}
-
-/* =========================
-   PANEL SPACING IMPROVEMENT
-========================= */
-.container-fluid {
-    padding: 18px;
-}
-
-/* =========================
-   VULNERABILITY CARDS (SNYK STYLE)
-========================= */
-
-.vuln-container {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 10px;
-}
-
-.vuln-card {
-    background: #0f172a;
-    border: 1px solid #1f2937;
-    border-radius: 12px;
-    padding: 12px;
+    color: var(--text-muted);
     cursor: pointer;
-    transition: 0.2s ease;
-}
+    transition: all 0.15s;
+    text-decoration: none;
+    margin-bottom: 2px;
+  }
+  .side-nav-item:hover { background: var(--bg-3); color: var(--text-primary); }
+  .side-nav-item.active { background: rgba(91,123,254,0.12); color: #93aaff; border: 1px solid rgba(91,123,254,0.2); }
+  .side-nav-item i { font-size: 15px; }
 
-.vuln-card:hover {
-    border-color: #6366f1;
-    transform: translateY(-1px);
-}
-
-.vuln-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.vuln-title {
-    font-size: 14px;
+  /* ---- SECTION LABEL ---- */
+  .side-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-faint);
+    padding: 10px 12px 4px;
     font-weight: 600;
-}
+  }
 
-.vuln-meta {
+  /* ---- SCAN ACTIONS ---- */
+  .scan-actions { display: flex; gap: 10px; margin-top: 12px; }
+
+  /* ---- CHART TABS ---- */
+  .chart-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .chart-tab {
     font-size: 11px;
-    color: #94a3b8;
-    margin-top: 4px;
-}
+    padding: 5px 12px;
+    border-radius: 99px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    background: transparent;
+    transition: all 0.15s;
+  }
+  .chart-tab.active { background: rgba(91,123,254,0.12); color: #93aaff; border-color: rgba(91,123,254,0.3); }
 
-/* SEVERITY */
-.sev-critical { background: #7f1d1d; color: #fecaca; }
-.sev-high     { background: #991b1b; color: #fee2e2; }
-.sev-medium   { background: #92400e; color: #fef3c7; }
-.sev-low      { background: #14532d; color: #bbf7d0; }
-
-.sev-badge {
-    font-size: 11px;
-    padding: 4px 8px;
-    border-radius: 999px;
-}
-
-/* EXPANDABLE CONTENT */
-.vuln-details {
-    display: none;
-    margin-top: 10px;
-    border-top: 1px solid #1f2937;
-    padding-top: 10px;
-    font-size: 12px;
-    color: #cbd5e1;
-}
-
-.vuln-card.active .vuln-details {
-    display: block;
-}
-
-/* FIX BOX */
-.fix-box {
-    margin-top: 8px;
-    background: #0b1220;
-    border: 1px solid #1f2937;
-    padding: 10px;
-    border-radius: 10px;
-    font-size: 12px;
-}
-
-/* FILE LINE */
-.file-path {
-    color: #60a5fa;
-    font-size: 12px;
-}
-
-
+  /* ---- RESPONSIVE ---- */
+  @media (max-width: 1024px) {
+    .dash-layout { grid-template-columns: 1fr; }
+    .dash-sidebar, .dash-aside { display: none; }
+    .dash-main { padding: 14px; max-height: unset; }
+  }
 </style>
 
 <script>
-const token = localStorage.getItem("access_token");
-
-if (!token || token === "undefined") {
-  window.location.replace("login.html");
-}
+  // Auth guard
+  const _t = localStorage.getItem("access_token");
+  if (!_t || _t === "undefined") window.location.replace("login.html");
 </script>
-
 </head>
 
 <body>
+<div class="dash-layout">
 
-<!-- HEADER -->
-<div class="header d-flex justify-content-between align-items-center">
-    <h5 class="mb-0">🛡 SafeAIScan Enterprise</h5>
-    <span class="badge-soft">AI Security Platform</span>
-</div>
+  <!-- ============================================================
+       TOP BAR
+  ============================================================ -->
+  <header class="dash-topbar">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;letter-spacing:-0.03em;">
+        <span style="color:var(--accent);">Safe</span>AIScan
+        <span style="color:var(--border-bright);font-size:14px;">⬡</span>
+      </span>
+      <span class="badge-soft">
+        <span class="status-dot online"></span>AI Engine Online
+      </span>
+    </div>
 
-<div class="container-fluid mt-4">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div id="severityTabs" style="display:flex;gap:5px;"></div>
+      <button class="btn btn-sm btn-outline-light" onclick="logout()">
+        <i class="bi bi-box-arrow-right me-1"></i>Logout
+      </button>
+    </div>
+  </header>
 
-<div class="row g-4">
+  <!-- ============================================================
+       LEFT SIDEBAR
+  ============================================================ -->
+  <aside class="dash-sidebar">
 
-    <!-- LEFT PANEL -->
-    <div class="col-md-3">
+    <!-- Plan / User -->
+    <div class="scan-panel" style="margin-bottom:14px;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-faint);margin-bottom:6px;">Account</div>
+      <div id="plan">
+        <div class="skeleton" style="height:24px;border-radius:6px;"></div>
+      </div>
+    </div>
 
-        <div class="glass p-3 mb-3">
-            <h6>API Key</h6>
-            <code id="apiKey"></code>
-            <button class="btn btn-sm btn-light mt-2 w-100" onclick="copyKey()">
-                Copy Key
-            </button>
-        </div>
-
-        <div class="glass p-3">
-            <h6>Plan Status</h6>
-            <div id="plan" class="mb-3">Loading...</div>
-
-            <button class="btn btn-primary w-100 mb-2">
-                Upgrade Pro
-            </button>
-
-            <button class="btn btn-warning w-100">
-                Enterprise
-            </button>
-        </div>
-        
-        <div class="glass mt-3">
-        <h6>Advanced Scanner</h6>
-        <button class="btn btn-primary w-100"
-            onclick="window.location='minisky.html'">
-            Open Snyk Mode →
+    <!-- API Key -->
+    <div class="scan-panel" style="margin-bottom:14px;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-faint);margin-bottom:8px;">API Key</div>
+      <div class="apikey-box" id="apiKeyDisplay" style="cursor:default;">Loading…</div>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="btn btn-sm btn-outline-light flex-fill" onclick="toggleApiKey()">
+          <i class="bi bi-eye" id="toggleKeyIcon"></i> Show
         </button>
+        <button class="btn btn-sm btn-outline-light flex-fill" onclick="copyKey()">
+          <i class="bi bi-copy me-1"></i>Copy
+        </button>
+      </div>
+      <div id="copyConfirm" class="copy-confirm mt-1 text-center">
+        <i class="bi bi-check-circle me-1"></i>Copied!
+      </div>
     </div>
 
+    <!-- Navigation -->
+    <div class="side-label">Tools</div>
+    <a class="side-nav-item active" onclick="scrollTo(0,0)">
+      <i class="bi bi-shield-shaded"></i> Code Scanner
+    </a>
+    <a class="side-nav-item" href="minisky.html">
+      <i class="bi bi-github"></i> Repo Scanner
+    </a>
+    <a class="side-nav-item" href="minisky.html">
+      <i class="bi bi-bug"></i> CVE Lookup
+    </a>
+
+    <div class="side-label" style="margin-top:6px;">Upgrade</div>
+    <div class="scan-panel" style="margin-bottom:6px;">
+      <button class="btn btn-primary w-100 mb-2" style="font-size:13px;">
+        <i class="bi bi-lightning-charge me-1"></i>Upgrade Pro
+      </button>
+      <button class="btn btn-outline-light w-100" style="font-size:13px;">
+        <i class="bi bi-building me-1"></i>Enterprise
+      </button>
     </div>
 
-    <!-- CENTER PANEL -->
-    <div class="col-md-6">
+  </aside>
 
-        <div class="glass p-4">
+  <!-- ============================================================
+       MAIN CONTENT
+  ============================================================ -->
+  <main class="dash-main">
 
-            <h5>AI Code Scanner</h5>
+    <!-- SCAN PANEL -->
+    <div class="scan-panel">
+      <div class="scan-panel-title">
+        <i class="bi bi-shield-shaded" style="color:var(--accent);"></i>
+        AI Code Scanner
+      </div>
 
-            <div id="loader" style="display:none;" class="text-center mb-2">
-                  <div class="spinner-border text-primary"></div>
-                    <div>Scanning...</div>
-                </div>
+      <textarea
+        id="code"
+        class="form-control code-area"
+        rows="7"
+        placeholder="# Paste your code here…&#10;# Example:&#10;query = f&quot;SELECT * FROM users WHERE id = {user_input}&quot;&#10;eval(request.data)"
+      ></textarea>
 
-            <textarea id="code" class="form-control mt-3"
-                rows="6"
-                placeholder="eval("print('hello')")"></textarea>
-
-            <div class="d-flex gap-2 mt-3">
-                <button class="btn btn-primary w-100" onclick="scan()">
-                    Analyze Code
-                </button>
-
-                <button class="btn btn-warning w-100" onclick="scanRepo()">
-                    Scan GitHub
-                </button>
-            </div>
-
-            <pre id="result" class="mt-3"></pre>
-            <div id="vulnCards" class="mt-3"></div>
-            <div id="aiInsights"></div>
-            <div id="miniskyPanel" class="mt-3"></div>
-            <div id="status" class="badge-soft mt-2"></div>
-
+      <!-- Scan progress -->
+      <div style="margin:12px 0 8px;">
+        <div class="scan-progress-label" id="scanProgressText"></div>
+        <div class="progress">
+          <div id="scanProgressBar" class="progress-bar" style="width:0%;"></div>
         </div>
-         <button class="btn btn-outline-light w-100 mt-2" onclick="exportPDF()">Export PDF</button>
+      </div>
 
+      <!-- Loader -->
+      <div class="scan-loader" id="loader">
+        <div class="pulse-ring"></div>
+        <div style="font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">Analyzing code…</div>
+      </div>
+
+      <div class="scan-actions">
+        <button class="btn btn-primary flex-fill" onclick="scan()">
+          <i class="bi bi-play-circle me-1"></i>Analyze Code
+        </button>
+        <button class="btn btn-warning" onclick="scanRepo()">
+          <i class="bi bi-github me-1"></i>Scan Repo
+        </button>
+        <button class="btn btn-outline-light" onclick="exportPDF()">
+          <i class="bi bi-file-earmark-pdf"></i>
+        </button>
+      </div>
     </div>
 
-    <!-- RIGHT PANEL -->
-    <div class="col-md-3">
+    <!-- AI INSIGHTS -->
+    <div id="aiInsights"></div>
 
-        <div class="glass p-3 mb-3">
-            <div class="metric">
-                <h6>Usage Today</h6>
-                <h3 id="usage">0</h3>
+    <!-- VULN CARDS -->
+    <div id="vulnCards" class="mt-2"></div>
+
+    <!-- CHARTS ROW -->
+    <div class="row g-3 mt-1">
+      <div class="col-md-8">
+        <div class="scan-panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div class="scan-panel-title mb-0">
+              <i class="bi bi-bar-chart-line" style="color:var(--accent);"></i>
+              Usage Analytics
             </div>
-
-            <div class="metric">
-                <h6>System Status</h6>
-                <h3 style="color:#22c55e;">Online</h3>
+            <div class="chart-tabs">
+              <button class="chart-tab active">Scans</button>
             </div>
+          </div>
+          <div class="chart-wrap" style="padding:8px;">
+            <canvas id="usageChart" height="110"></canvas>
+          </div>
         </div>
-
-        <div class="glass p-3">
-            <ul id="history"></ul>
-
-            <button class="btn btn-danger w-100 mt-3" onclick="logout()">
-                Logout
-            </button>
+      </div>
+      <div class="col-md-4">
+        <div class="scan-panel h-100" style="display:flex;flex-direction:column;">
+          <div class="scan-panel-title">
+            <i class="bi bi-pie-chart" style="color:var(--accent);"></i>
+            Risk Distribution
+          </div>
+          <div class="chart-wrap" style="flex:1;display:flex;align-items:center;">
+            <canvas id="riskChart"></canvas>
+          </div>
         </div>
-
+      </div>
     </div>
+
+  </main>
+
+  <!-- ============================================================
+       RIGHT ASIDE
+  ============================================================ -->
+  <aside class="dash-aside">
+
+    <!-- Metrics -->
+    <div class="metric">
+      <h6><i class="bi bi-activity me-1"></i>Usage Today</h6>
+      <h3 id="usage">
+        <span class="skeleton" style="display:inline-block;width:40px;height:28px;border-radius:4px;"></span>
+      </h3>
+    </div>
+
+    <div class="metric">
+      <h6><i class="bi bi-circle-fill me-1" style="color:var(--success);font-size:8px;"></i>System Status</h6>
+      <h3 style="color:var(--success);font-size:16px;">
+        <span class="status-dot online"></span>All Systems Online
+      </h3>
+    </div>
+
+    <div class="metric">
+      <h6><i class="bi bi-shield me-1"></i>Security Status</h6>
+      <h6 id="statusText" class="status-safe" style="margin:4px 0 0;">
+        <span class="status-dot online"></span>Secure
+      </h6>
+    </div>
+
+    <!-- History -->
+    <div style="margin-top:14px;">
+      <div class="side-label" style="padding: 0 0 6px;">Scan History</div>
+      <div id="history">
+        <div class="skeleton mb-2" style="height:38px;border-radius:8px;"></div>
+        <div class="skeleton mb-2" style="height:38px;border-radius:8px;"></div>
+        <div class="skeleton mb-2" style="height:38px;border-radius:8px;"></div>
+      </div>
+    </div>
+
+    <!-- Mini heatmap -->
+    <div style="margin-top:14px;">
+      <div class="side-label" style="padding:0 0 6px;">Severity Heatmap</div>
+      <div id="heatmap" class="heatmap"></div>
+    </div>
+
+    <!-- Quick actions -->
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px;">
+      <a href="minisky.html" class="btn btn-outline-light btn-sm">
+        <i class="bi bi-grid-3x3-gap me-1"></i>Advanced Scanner
+      </a>
+      <button class="btn btn-danger btn-sm" onclick="logout()">
+        <i class="bi bi-box-arrow-right me-1"></i>Logout
+      </button>
+    </div>
+
+  </aside>
 
 </div>
 
-<div class="mt-2">
-  <div id="scanProgressText">Idle</div>
-  <div class="progress">
-    <div id="scanProgressBar"
-         class="progress-bar"
-         style="width: 0%"></div>
+<!-- SIDE DRAWER (vuln detail) -->
+<div id="side" class="side-drawer">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h5 id="sideTitle" style="font-family:'Syne',sans-serif;font-size:15px;margin:0;"></h5>
+    <button onclick="closeSide()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;">
+      <i class="bi bi-x"></i>
+    </button>
   </div>
+  <div id="sideDesc"></div>
 </div>
 
-<!-- CHART SECTION -->
-<div class="glass mt-4 p-4">
-    <h5>Usage Analytics</h5>
-    <canvas id="usageChart" height="80"></canvas>
-</div>
-
-</div>
-
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="api.js"></script>
 <script src="app.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
-    function renderMiniskyPanel(data) {
-  const panel = document.getElementById("miniskyPanel");
-  if (!panel) return;
+  // Heatmap update when vulns render
+  function updateHeatmap(findings) {
+    const map = document.getElementById("heatmap");
+    if (!map || !findings?.length) return;
+    map.innerHTML = findings.map(v => `
+      <div class="heat-cell ${(v.severity||'low').toLowerCase()}" title="${v.title || ''}"></div>
+    `).join("");
+  }
 
-  const findings = data.findings || [];
-
-  const total = findings.length;
-  const high = findings.filter(v => v.severity === "HIGH").length;
-  const medium = findings.filter(v => v.severity === "MEDIUM").length;
-  const low = findings.filter(v => v.severity === "LOW").length;
-
-  panel.innerHTML = `
-    <div class="card shadow-lg border-0">
-      <div class="card-header bg-dark text-white">
-        🔐 Minisky Security Panel
-      </div>
-
-      <div class="card-body">
-        <p><strong>Total Vulnerabilities:</strong> ${total}</p>
-
-        <div class="row text-center">
-          <div class="col text-danger">HIGH: ${high}</div>
-          <div class="col text-warning">MED: ${medium}</div>
-          <div class="col text-success">LOW: ${low}</div>
-        </div>
-
-        <hr/>
-
-        <div>
-          <span class="badge bg-danger">HIGH ${high}</span>
-          <span class="badge bg-warning">MED ${medium}</span>
-          <span class="badge bg-success">LOW ${low}</span>
-        </div>
-
-        <hr/>
-
-       
-      </div>
-    </div>
-  `;
-}
+  // Patch renderVulnerabilities to also update heatmap & risk chart
+  const _origRender = window.renderVulnerabilities;
+  window.renderVulnerabilities = function(data) {
+    _origRender && _origRender(data);
+    updateHeatmap(data.findings || []);
+    loadRiskChart(data.findings || []);
+  };
 </script>
 
 </body>

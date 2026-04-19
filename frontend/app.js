@@ -1,616 +1,678 @@
-// =========================
-// CODE SCAN
-// =========================
+// ============================================================
+//  SafeAIScan — Dashboard App Logic
+// ============================================================
+
+let scanProgressInterval = null;
+let findings = [];
+let currentContext = "";
+let usageChart = null;
+let riskChart = null;
+
+// ============================================================
+//  CODE SCAN
+// ============================================================
 async function scan() {
-  const code = document.getElementById("code").value;
+  const code = document.getElementById("code")?.value?.trim();
+  if (!code) { showToast("Paste some code to analyze", "warning"); return; }
+
+  setLoader(true);
+  startLiveProgress();
 
   try {
-    document.getElementById("loader")?.style &&
-      (document.getElementById("loader").style.display = "block");
-
-    startLiveProgress();
-
     const data = await analyzeCode(code);
-    console.log("🔥 SCAN RESULT:", data); // ADD THIS
+    findings = data.findings || [];
+
     renderAIInsights(data);
-
-    stopLiveProgress();
-
-    document.getElementById("loader")?.style &&
-      (document.getElementById("loader").style.display = "none");
-
-    const summary = {
-      issues: data.findings?.length || 0,
-      explanation: data.ai?.explanation || "No explanation",
-      fixes: data.ai?.fixes || [],
-
-    };
-
     renderVulnerabilities(data);
-    renderMiniskyPanel(data);
-    updateStatus(data.findings);
+    updateStatus(findings);
+    renderSeverityTabs(data);
+    loadUsageChart();
 
-    if (data.findings?.length > 0) {
-      enrichCVE(data.findings);
-    }
+    if (findings.length > 0) enrichCVE(findings);
 
     if (data.usage_today !== undefined) {
       const el = document.getElementById("usage");
       if (el) el.innerText = data.usage_today;
     }
 
+    stopLiveProgress();
+    showToast(`Scan complete — ${findings.length} issue(s) found`, findings.length > 0 ? "warning" : "success");
+
   } catch (err) {
     console.error(err);
     stopLiveProgress();
-    alert("Scan failed: " + err.message);
+    showToast("Scan failed: " + err.message, "error");
+  } finally {
+    setLoader(false);
   }
 }
 
-// =========================
-// REPO SCAN
-// =========================
+// ============================================================
+//  REPO SCAN
+// ============================================================
 async function scanRepo() {
-  const repoUrl = prompt("Enter GitHub repo URL:");
-  if (!repoUrl) return;
+  const repoUrl = prompt("Enter GitHub repo URL (https://github.com/...):");
+  if (!repoUrl?.trim()) return;
+
+  if (!repoUrl.startsWith("https://github.com/")) {
+    showToast("Only GitHub HTTPS URLs supported", "warning");
+    return;
+  }
+
+  setLoader(true);
+  showToast("Queuing repo scan...", "info");
 
   try {
     const data = await scanRepoAPI(repoUrl);
-    loadRepoTree(repoUrl); // ✅ correct variable
-
-    alert("Scan queued. Task ID: " + data.task_id);
-
-
+    showToast("Scan queued · Task: " + data.task_id, "success");
     pollTask(data.task_id);
-
   } catch (err) {
     console.error(err);
-    alert("Repo scan failed: " + err.message);
+    showToast("Repo scan failed: " + err.message, "error");
+  } finally {
+    setLoader(false);
   }
 }
 
-// =========================
-// FIXED POLLING (IMPORTANT)
-// =========================
+// ============================================================
+//  TASK POLLING
+// ============================================================
 async function pollTask(taskId) {
+  const states = {
+    CLONING: 15, VALIDATING: 35, SCANNING: 65, FINALIZING: 88, DONE: 100, FAILED: 0
+  };
+
+  const bar  = document.getElementById("scanProgressBar");
+  const text = document.getElementById("scanProgressText");
+
   const interval = setInterval(async () => {
     try {
       const data = await getTaskStatus(taskId);
 
-      // show status
-      const statusEl = document.getElementById("status");
-      if (statusEl) {
-        statusEl.innerText = "Status: " + data.state;
-      }
+      const pct = states[data.state] ?? 50;
+      if (bar)  bar.style.width  = pct + "%";
+      if (text) text.innerText   = data.message || data.state;
 
-      // 🔥 DEBUG (you NEED this)
-      console.log("POLL DATA:", data);
-
-      // =========================
-      // ✅ FIX: HANDLE RESULT
-      // =========================
       if (data.state === "DONE") {
         clearInterval(interval);
-
-        console.log("FINAL RESULT:", data.result);
-
-        if (!data.result) {
-          alert("Scan finished but no results returned");
-          return;
-        }
-
-        // 🔥 THIS IS THE FIX
-        findings = data.result.findings || data.result;
-
-        // render everywhere
-        render();
-        renderMinisky(data.result);
-
-        alert("Repo scan complete!");
+        findings = data.result?.findings || data.result || [];
+        renderVulnerabilities({ findings });
+        updateStatus(findings);
+        showToast("Repo scan complete!", "success");
       }
 
       if (data.state === "FAILED") {
         clearInterval(interval);
-        alert("Scan failed: " + data.result);
+        if (text) text.innerText = "Scan failed";
+        showToast("Scan failed: " + (data.result?.error || "Unknown error"), "error");
       }
 
     } catch (err) {
       console.error("Polling error:", err);
       clearInterval(interval);
     }
-  }, 2000);
+  }, 2500);
 }
 
-// =========================
-// UI LOADERS
-// =========================
-async function loadUsage() {
-  try {
-    const data = await getUsage();
-    const latest = data[data.length - 1];
-
-    const el = document.getElementById("usage");
-    if (el && latest) el.innerText = latest.request_count;
-    
-  } catch {
-    const el = document.getElementById("usage");
-    if (el) el.innerText = "Error";
-  }
-}
-
-async function loadHistory() {
-  try {
-    const data = await getHistory();
-
-    const list = document.getElementById("history");
-    list.innerHTML = "";
-
-    data.forEach(item => {
-      const li = document.createElement("li");
-
-      // 🔥 SaaS-style badge UI
-      li.innerHTML = `
-        <span class="badge bg-danger">${item.risk}</span>
-        Score: ${item.score}
-      `;
-
-      list.appendChild(li);
-    });
-
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-async function loadPlan() {
-  try {
-    const data = await getMe();
-    document.getElementById("plan").innerText = data.plan;
-  } catch {
-    document.getElementById("plan").innerText = "Free";
-  }
-}
-
-function renderVulnerabilities(data) {
-  const container = document.getElementById("vulnCards");
-  if (!container) return;
-
-  container.innerHTML = "";
-
-  const findings = data.findings || [];
-
-  findings.forEach((vuln, index) => {
-    const severityColor =
-      vuln.severity === "HIGH" ? "danger" :
-      vuln.severity === "MEDIUM" ? "warning" :
-      "success";
-
-    const card = document.createElement("div");
-    card.className = "card mb-3 shadow-sm fade-in";
-
-    card.onclick = () => openSnyk(vuln); // ✅ FIXED HOOK
-
-    card.innerHTML = `
-      <div class="card-header bg-${severityColor} text-white">
-        ${vuln.title || "Vulnerability"} (${vuln.severity})
-      </div>
-
-      <div class="card-body">
-        <p><strong>File:</strong> ${vuln.file || "N/A"}</p>
-        <p><strong>Line:</strong> ${vuln.line || "N/A"}</p>
-
-        <button class="btn btn-sm btn-primary"
-          onclick="event.stopPropagation(); toggleDetails(${index})">
-          View Details
-        </button>
-
-        <div id="details-${index}" class="mt-2 d-none">
-          <hr/>
-          <p><strong>Description:</strong> ${vuln.description || "No description"}</p>
-          <p><strong>Fix:</strong> ${vuln.fix || "No fix provided"}</p>
-
-${data.ai?.explanation ? `
-  <div class="mt-2 p-2" style="background:#0b1220;border-radius:8px;">
-    <small class="text-info">AI Insight:</small>
-    <div style="font-size:12px;">${data.ai.explanation}</div>
-  </div>
-` : ""}
-
-          <div id="cve-${index}" class="mt-2 text-muted">
-            Loading CVE enrichment...
-          </div>
-        </div>
-      </div>
-    `;
-
-    container.appendChild(card);
-  });
-}
-
-function toggleDetails(index) {
-  const el = document.getElementById(`details-${index}`);
+// ============================================================
+//  LOADERS / PROGRESS
+// ============================================================
+function setLoader(active) {
+  const el = document.getElementById("loader");
   if (!el) return;
-
-  el.classList.toggle("d-none");
+  el.classList.toggle("active", active);
 }
-
-// =========================
-// MINISKY PANEL (ADD HERE)
-// =========================
-
-
-
-// =========================
-// UTIL
-// =========================
-function copyKey() {
-  const key = localStorage.getItem("api_key");
-
-  if (!key) return alert("No API key");
-
-  navigator.clipboard.writeText(key);
-  alert("Copied!");
-}
-
-function logout() {
-  localStorage.clear();
-  window.location.replace("login.html");
-}
-
-// =========================
-// INIT
-// =========================
-async function init() {
-  const apiKeyEl = document.getElementById("apiKey");
-  if (apiKeyEl) {
-    apiKeyEl.innerText = localStorage.getItem("api_key") || "Not available";
-  }
-
-  if (document.getElementById("usage")) await loadUsage();
-  if (document.getElementById("history")) await loadHistory();
-  if (document.getElementById("plan")) await loadPlan();
-  if (document.getElementById("teamList")) await loadTeam();
-}
-
-init();
-
-// expose
-window.scan = scan;
-window.copyKey = copyKey;
-window.logout = logout;
-
-let scanProgressInterval = null;
 
 function startLiveProgress() {
-  let progress = 0;
-
-  const bar = document.getElementById("scanProgressBar");
+  let progress = 2;
+  const bar  = document.getElementById("scanProgressBar");
   const text = document.getElementById("scanProgressText");
 
-  if (!bar || !text) return;
+  const steps = [
+    "Parsing code…", "Running static analysis…", "Checking patterns…",
+    "AI risk modeling…", "Mapping CVEs…", "Finalizing report…"
+  ];
+  let stepIdx = 0;
 
   clearInterval(scanProgressInterval);
-
   scanProgressInterval = setInterval(() => {
-    if (progress >= 100) {
-      stopLiveProgress();
-      return;
+    if (progress >= 95) { stopLiveProgress(); return; }
+    progress += Math.random() * 6 + 1;
+    if (bar)  bar.style.width = Math.min(95, progress) + "%";
+    if (text && stepIdx < steps.length) {
+      text.innerText = steps[Math.floor(stepIdx)];
+      stepIdx += 0.4;
     }
-
-    progress += Math.random() * 8;
-
-    bar.style.width = `${progress}%`;
-    text.innerText = `Scanning... ${Math.floor(progress)}%`;
-  }, 300);
+  }, 350);
 }
 
 function stopLiveProgress() {
   clearInterval(scanProgressInterval);
-
-  const bar = document.getElementById("scanProgressBar");
+  const bar  = document.getElementById("scanProgressBar");
   const text = document.getElementById("scanProgressText");
-
-  if (bar) bar.style.width = "100%";
-  if (text) text.innerText = "Scan Complete";
+  if (bar)  { bar.style.width = "100%"; }
+  if (text) text.innerText = "Complete";
+  setTimeout(() => { if (bar) bar.style.width = "0%"; if (text) text.innerText = ""; }, 2000);
 }
 
-function openSnyk(vuln) {
-  const panel = document.getElementById("snykPanel");
-  const content = document.getElementById("snykContent");
+// ============================================================
+//  DATA LOADERS
+// ============================================================
+async function loadUsage() {
+  const el = document.getElementById("usage");
+  if (!el) return;
 
-  if (!panel || !content) return;
+  try {
+    const data = await getUsage();
+    const latest = Array.isArray(data) ? data[data.length - 1] : data;
+    el.innerText = latest?.request_count ?? (latest?.count ?? 0);
+  } catch {
+    el.innerText = "—";
+  }
+}
 
-  panel.classList.add("open");
+async function loadHistory() {
+  const list = document.getElementById("history");
+  if (!list) return;
 
-  content.innerHTML = `
-    <h6>${vuln.title}</h6>
+  // Show skeletons
+  list.innerHTML = [1,2,3].map(() => `
+    <div class="skeleton mb-2" style="height:40px; border-radius:8px;"></div>
+  `).join("");
 
-    <p><strong>Severity:</strong> ${vuln.severity}</p>
-    <p><strong>File:</strong> ${vuln.file || "N/A"}</p>
+  try {
+    const data = await getHistory();
+    if (!Array.isArray(data) || data.length === 0) {
+      list.innerHTML = `<div style="color:var(--text-faint);font-size:12px;padding:8px 0;">No history yet</div>`;
+      return;
+    }
 
-    <hr/>
+    list.innerHTML = data.slice(0, 8).map(item => {
+      const risk  = item.risk  || "LOW";
+      const score = item.score ?? "—";
+      const time  = item.created_at ? new Date(item.created_at).toLocaleDateString() : "";
+      const sevClass = risk === "HIGH" || risk === "CRITICAL" ? "sev-high" : risk === "MEDIUM" ? "sev-medium" : "sev-low";
+      return `
+        <div class="history-item pop-in">
+          <span class="badge-pill ${sevClass}">${risk}</span>
+          <span style="color:var(--text-muted);font-size:11px;">Score: ${score}</span>
+          <span style="color:var(--text-faint);font-size:10px;">${time}</span>
+        </div>
+      `;
+    }).join("");
 
-    <p>${vuln.description || ""}</p>
+  } catch (err) {
+    console.error(err);
+    list.innerHTML = `<div style="color:var(--text-faint);font-size:12px;">Failed to load history</div>`;
+  }
+}
 
-    <hr/>
+async function loadPlan() {
+  const el = document.getElementById("plan");
+  if (!el) return;
+  try {
+    const data = await getMe();
+    const plan = data.plan || "Free";
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span class="badge-pill ${plan === 'pro' ? 'sev-high' : plan === 'enterprise' ? 'sev-critical' : 'sev-low'}">${plan.toUpperCase()}</span>
+        <span style="font-size:12px;color:var(--text-muted);">${data.email || ""}</span>
+      </div>
+    `;
+  } catch {
+    if (el) el.innerHTML = `<span class="badge-pill sev-low">FREE</span>`;
+  }
+}
 
-    <p><strong>AI Fix:</strong></p>
-    <pre>${vuln.fix || "No fix available"}</pre>
+async function loadTeam() {
+  const list = document.getElementById("teamList");
+  if (!list) return;
+  try {
+    const res  = await apiRequest("/api/org/users");
+    const data = await safeJson(res);
+    list.innerHTML = (data || []).map(u => `
+      <li style="font-size:12px;color:var(--text-muted);padding:4px 0;">
+        <i class="bi bi-person-circle me-2" style="color:var(--accent);"></i>${u.email}
+      </li>
+    `).join("") || `<li style="color:var(--text-faint);font-size:12px;">No team members</li>`;
+  } catch {
+    if (list) list.innerHTML = `<li style="color:var(--text-faint);font-size:12px;">Team unavailable</li>`;
+  }
+}
+
+// ============================================================
+//  RENDER VULNERABILITIES
+// ============================================================
+function renderVulnerabilities(data) {
+  const container = document.getElementById("vulnCards");
+  if (!container) return;
+
+  const list = data.findings || [];
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:28px;color:var(--text-muted);">
+        <i class="bi bi-shield-check" style="font-size:28px;color:var(--success);display:block;margin-bottom:8px;"></i>
+        No issues detected
+      </div>`;
+    return;
+  }
+
+  const sevOrder = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+  const sorted   = [...list].sort((a, b) => (sevOrder[b.severity] || 0) - (sevOrder[a.severity] || 0));
+
+  container.innerHTML = sorted.map((vuln, i) => {
+    const sev      = (vuln.severity || "LOW").toUpperCase();
+    const sevClass = sev === "CRITICAL" ? "sev-crit-card" : sev === "HIGH" ? "sev-high-card" : sev === "MEDIUM" ? "sev-med-card" : "sev-low-card";
+    const badgeClass = sev === "CRITICAL" ? "sev-critical" : sev === "HIGH" ? "sev-high" : sev === "MEDIUM" ? "sev-medium" : "sev-low";
+
+    return `
+      <div class="vuln-card ${sevClass} pop-in" onclick="toggleVuln(this, ${i})" data-idx="${i}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div style="flex:1;min-width:0;">
+            <div class="vuln-title">${escHtml(vuln.title || "Issue")}</div>
+            <div class="vuln-meta">
+              ${vuln.file  ? `<i class="bi bi-file-code me-1"></i>${escHtml(vuln.file)}` : ""}
+              ${vuln.line  ? ` · line ${vuln.line}` : ""}
+              ${vuln.source ? ` · <span style="color:var(--accent);">${vuln.source}</span>` : ""}
+            </div>
+          </div>
+          <span class="badge-pill ${badgeClass}" style="margin-left:10px;flex-shrink:0;">${sev}</span>
+        </div>
+
+        <div class="vuln-details" id="vd-${i}">
+          <div style="color:var(--text-muted);margin-bottom:8px;">${escHtml(vuln.description || "No description provided")}</div>
+
+          ${vuln.fix && vuln.fix !== "No auto-fix available" ? `
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent);margin-bottom:4px;">Recommended Fix</div>
+            <div class="fix-box">${escHtml(vuln.fix)}</div>
+          ` : ""}
+
+          ${vuln.cve && vuln.cve !== "N/A" ? `
+            <div style="margin-top:8px;display:flex;align-items:center;gap:6px;">
+              <span class="badge-pill sev-${cvssSev(vuln.cvss)}">
+                <i class="bi bi-bug"></i> ${escHtml(vuln.cve)}
+              </span>
+              ${vuln.cvss ? `<span style="font-size:11px;color:var(--text-muted);">CVSS ${vuln.cvss}</span>` : ""}
+            </div>
+          ` : ""}
+
+          <div id="cve-${i}" style="margin-top:6px;"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function toggleVuln(card, idx) {
+  const wasActive = card.classList.contains("active");
+  document.querySelectorAll(".vuln-card.active").forEach(c => c.classList.remove("active"));
+  if (!wasActive) card.classList.add("active");
+}
+
+// ============================================================
+//  AI INSIGHTS
+// ============================================================
+function renderAIInsights(data) {
+  const container = document.getElementById("aiInsights");
+  if (!container) return;
+
+  const ai      = data.ai || {};
+  const explain = ai.explanation || "";
+  const fixes   = Array.isArray(ai.fixes) ? ai.fixes : [];
+
+  if (!explain && fixes.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="ai-box pop-in">
+      <div class="ai-label"><i class="bi bi-cpu me-1"></i> AI Security Insights</div>
+      ${explain ? `<p style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">${escHtml(explain)}</p>` : ""}
+      ${fixes.length > 0 ? `
+        <div style="font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;">Recommended Actions</div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${fixes.map(f => `
+            <div style="display:flex;gap:8px;font-size:12px;color:var(--text-muted);">
+              <i class="bi bi-check-circle-fill" style="color:var(--success);flex-shrink:0;margin-top:2px;"></i>
+              ${escHtml(f)}
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+    </div>
   `;
 }
 
-function closeSnyk() {
-  document.getElementById("snykPanel")?.classList.remove("open");
-}
-
-async function enrichCVE(findings) {
-  findings.forEach(async (vuln, i) => {
-    try {
-      const res = await fetch(`/api/cve/search?query=${encodeURIComponent(vuln.title)}`);
-      const data = await res.json();
-
-      const box = document.getElementById(`cve-${i}`);
-      if (!box) return;
-
-      if (data?.cves?.length) {
-        const top = data.cves[0];
-
-        box.innerHTML = `
-          <div class="alert alert-secondary p-2">
-            <strong>${top.id}</strong><br/>
-            CVSS: ${top.cvss || "N/A"}<br/>
-            <small>${top.description}</small>
-          </div>
-        `;
-      } else {
-        box.innerText = "No CVE match found";
-      }
-
-    } catch (err) {
-      console.error(err);
-    }
-  });
-}
-
-function renderTimeline(data) {
-  const el = document.getElementById("timeline");
-  if (!el) return;
-
-  const steps = data.timeline || [
-    "Code received",
-    "Scanning syntax",
-    "Running AI analysis",
-    "Checking CVEs",
-    "Finalizing report"
-  ];
-
-  el.innerHTML = steps.map(step => `
-    <div class="timeline-step">🧠 ${step}</div>
-  `).join("");
+// ============================================================
+//  STATUS + SEVERITY TABS
+// ============================================================
+function updateStatus(findings) {
+  const statusEl = document.getElementById("statusText");
+  if (!statusEl) return;
+  const hasCritical = findings.some(f => ["HIGH","CRITICAL"].includes(f.severity));
+  statusEl.innerHTML = hasCritical
+    ? `<span class="status-dot online" style="background:var(--danger);box-shadow:0 0 6px var(--danger);"></span>Vulnerable`
+    : `<span class="status-dot online"></span>Secure`;
+  statusEl.className = hasCritical ? "status-risk" : "status-safe";
 }
 
 function renderSeverityTabs(data) {
   const el = document.getElementById("severityTabs");
   if (!el) return;
-
-  const findings = data.findings || [];
-
-  const groups = {
-    CRITICAL: findings.filter(f => f.severity === "CRITICAL"),
-    HIGH: findings.filter(f => f.severity === "HIGH"),
-    MEDIUM: findings.filter(f => f.severity === "MEDIUM"),
-    LOW: findings.filter(f => f.severity === "LOW")
+  const f = data.findings || [];
+  const counts = {
+    CRITICAL: f.filter(x => x.severity === "CRITICAL").length,
+    HIGH:     f.filter(x => x.severity === "HIGH").length,
+    MEDIUM:   f.filter(x => x.severity === "MEDIUM").length,
+    LOW:      f.filter(x => x.severity === "LOW").length
   };
-
-  el.innerHTML = `
-    <div class="d-flex gap-2 flex-wrap">
-      <span class="badge sev-critical">CRITICAL ${groups.CRITICAL.length}</span>
-      <span class="badge sev-high">HIGH ${groups.HIGH.length}</span>
-      <span class="badge sev-medium">MEDIUM ${groups.MEDIUM.length}</span>
-      <span class="badge sev-low">LOW ${groups.LOW.length}</span>
-    </div>
-  `;
+  el.innerHTML = Object.entries(counts).map(([sev, cnt]) => `
+    <span class="badge-pill sev-${sev.toLowerCase()}">${sev} ${cnt}</span>
+  `).join("");
 }
 
-function renderCVEPanel(data) {
-  const el = document.getElementById("cvePanel");
-  if (!el) return;
-
-  const cves = data.cves || [];
-
-  el.innerHTML = `
-    <div class="card glass p-3">
-      <h6>🧬 CVE Enrichment</h6>
-
-      ${cves.length === 0 ? `
-        <p class="text-muted">No CVEs detected</p>
-      ` : cves.map(cve => `
-        <div class="fix-box">
-          <strong>${cve.id}</strong><br/>
-          CVSS: ${cve.cvss || "N/A"}<br/>
-          ${cve.description || ""}
-        </div>
-      `).join("")}
-    </div>
-  `;
+// ============================================================
+//  CVE ENRICHMENT
+// ============================================================
+async function enrichCVE(findings) {
+  findings.forEach(async (vuln, i) => {
+    const box = document.getElementById(`cve-${i}`);
+    if (!box || !vuln.title) return;
+    try {
+      const res  = await apiRequest(`/api/cve/search?query=${encodeURIComponent(vuln.title)}`);
+      const data = await safeJson(res);
+      if (data?.cves?.length) {
+        const top = data.cves[0];
+        box.innerHTML = `
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+            <i class="bi bi-shield-exclamation me-1" style="color:var(--warning);"></i>
+            ${escHtml(top.id)} · CVSS ${top.cvss || "N/A"} · <span style="color:var(--text-faint);">${escHtml((top.description || "").substring(0,120))}…</span>
+          </div>`;
+      }
+    } catch { /* silent */ }
+  });
 }
 
-function renderFixDiff(data) {
-  const el = document.getElementById("fixDiff");
+// ============================================================
+//  CHARTS
+// ============================================================
+async function loadUsageChart() {
+  const ctx = document.getElementById("usageChart");
+  if (!ctx) return;
+
+  let labels = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  let values = [0,0,0,0,0,0,0];
+
+  try {
+    const data = await getUsage();
+    if (Array.isArray(data) && data.length) {
+      labels = data.map(d => d.date || d.day || "—");
+      values = data.map(d => d.request_count || d.count || 0);
+    }
+  } catch { /* use defaults */ }
+
+  if (usageChart) usageChart.destroy();
+
+  const gradient = ctx.getContext("2d").createLinearGradient(0, 0, 0, 200);
+  gradient.addColorStop(0, "rgba(91,123,254,0.45)");
+  gradient.addColorStop(1, "rgba(91,123,254,0)");
+
+  usageChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Scans",
+        data: values,
+        borderColor: "#5b7bfe",
+        borderWidth: 2.5,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.45,
+        pointBackgroundColor: "#5b7bfe",
+        pointRadius: 4,
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: "#0f1a2e", titleColor: "#e8edf8", bodyColor: "#8296b3", borderColor: "#1e3a5f", borderWidth: 1 } },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#8296b3", font: { size: 11 } } },
+        y: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#8296b3", font: { size: 11 } }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function loadRiskChart(findings) {
+  const ctx = document.getElementById("riskChart");
+  if (!ctx || !findings?.length) return;
+
+  const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  findings.forEach(f => {
+    const s = (f.severity || "LOW");
+    if (s === "CRITICAL") counts.Critical++;
+    else if (s === "HIGH") counts.High++;
+    else if (s === "MEDIUM") counts.Medium++;
+    else counts.Low++;
+  });
+
+  if (riskChart) riskChart.destroy();
+
+  riskChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(counts),
+      datasets: [{
+        data: Object.values(counts),
+        backgroundColor: ["#c026d3","#f43f5e","#fb923c","#34d399"],
+        borderWidth: 0,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: "68%",
+      plugins: {
+        legend: { position: "right", labels: { color: "#8296b3", font: { size: 11 }, padding: 12 } },
+        tooltip: { backgroundColor: "#0f1a2e", titleColor: "#e8edf8", bodyColor: "#8296b3" }
+      }
+    }
+  });
+}
+
+// ============================================================
+//  API KEY UI
+// ============================================================
+function initApiKey() {
+  const el = document.getElementById("apiKeyDisplay");
   if (!el) return;
 
-  const fixes = data.ai?.fixes || [];
+  const key = localStorage.getItem("api_key") || "";
+  el.innerText = key ? maskKey(key) : "Not available";
+  el.dataset.full  = key;
+  el.dataset.masked = key ? maskKey(key) : "";
+  el.dataset.shown  = "false";
+}
 
-  el.innerHTML = fixes.map(fix => `
-    <div class="fix-box">
-      <div><strong>❌ Before</strong></div>
-      <pre>${fix.before || ""}</pre>
+function maskKey(key) {
+  if (!key || key.length < 10) return "••••••••";
+  return key.substring(0, 6) + "••••••••" + key.substring(key.length - 4);
+}
 
-      <div><strong>✅ After</strong></div>
-      <pre>${fix.after || ""}</pre>
+function toggleApiKey() {
+  const el   = document.getElementById("apiKeyDisplay");
+  const icon = document.getElementById("toggleKeyIcon");
+  if (!el) return;
+
+  const shown = el.dataset.shown === "true";
+  el.innerText = shown ? el.dataset.masked : el.dataset.full;
+  el.dataset.shown = String(!shown);
+  if (icon) icon.className = shown ? "bi bi-eye" : "bi bi-eye-slash";
+}
+
+function copyKey() {
+  const key = localStorage.getItem("api_key");
+  if (!key) { showToast("No API key available", "warning"); return; }
+
+  navigator.clipboard.writeText(key).then(() => {
+    showToast("API key copied to clipboard", "success");
+    const confirm = document.getElementById("copyConfirm");
+    if (confirm) { confirm.classList.add("show"); setTimeout(() => confirm.classList.remove("show"), 1800); }
+  }).catch(() => showToast("Copy failed", "error"));
+}
+
+// ============================================================
+//  UTILITY
+// ============================================================
+function logout() {
+  localStorage.clear();
+  window.location.replace("login.html");
+}
+
+function escHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function cvssSev(score) {
+  if (!score) return "low";
+  if (score >= 9)  return "critical";
+  if (score >= 7)  return "high";
+  if (score >= 4)  return "medium";
+  return "low";
+}
+
+async function exportPDF() {
+  try {
+    const res  = await apiRequest("/api/report/pdf", { method: "POST", body: JSON.stringify({ findings }) });
+    const blob = await res.blob();
+    const url  = window.URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = "safeaiscan-report.pdf"; a.click();
+    showToast("PDF exported", "success");
+  } catch (err) {
+    showToast("Export failed: " + err.message, "error");
+  }
+}
+
+// Side panel (shared)
+function openSide(v) {
+  currentContext = JSON.stringify(v);
+  const side  = document.getElementById("side");
+  const title = document.getElementById("sideTitle");
+  const desc  = document.getElementById("sideDesc");
+  if (!side) return;
+  if (title) title.innerText = v.title || v.match || "Finding";
+  if (desc) desc.innerHTML = `
+    <p style="color:var(--text-muted);">${v.description || ""}</p>
+    ${v.fix ? `<div class="fix-box mt-2">${escHtml(v.fix)}</div>` : ""}
+  `;
+  side.classList.add("open");
+}
+
+function closeSide() {
+  document.getElementById("side")?.classList.remove("open");
+}
+
+// Render timeline
+function renderTimeline(data) {
+  const el = document.getElementById("timeline");
+  if (!el) return;
+  const steps = data.timeline || ["Code received","Parsing syntax","AI analysis","CVE lookup","Report ready"];
+  el.innerHTML = steps.map(s => `<div class="timeline-item">${escHtml(s)}</div>`).join("");
+}
+
+function renderTree(nodes) {
+  if (!Array.isArray(nodes)) return "";
+  return nodes.map(n => `
+    <div style="margin-left:12px;padding:2px 0;font-size:11px;color:var(--text-muted);">
+      ${n.type === "dir" ? "📁" : "📄"} ${escHtml(n.name)}
+      ${n.children ? renderTree(n.children) : ""}
     </div>
   `).join("");
 }
 
-function renderMinisky(data) {
-  renderTimeline(data);
-  renderSeverityTabs(data);
-  renderMiniskyPanel(data);
-  renderCVEPanel(data);
-  renderFixDiff(data);
-}
-
 async function loadRepoTree(url) {
-    const res = await apiRequest(`/api/repo/tree?repo_url=${encodeURIComponent(url)}`);
-    const data = await res.json();
-
-    const container = document.getElementById("fileTree");
-    container.innerHTML = renderTree(data);
-}
-
-function renderTree(nodes) {
-    return nodes.map(n => `
-        <div style="margin-left:10px">
-            ${n.type === "dir" ? "📁" : "📄"} ${n.name}
-            ${n.children ? renderTree(n.children) : ""}
-        </div>
-    `).join("");
-}
-
-let currentContext = "";
-
-function openSide(v){
-    currentContext = JSON.stringify(v);
-
-    document.getElementById("side").classList.add("open");
-    document.getElementById("title").innerText = v.match || v.title;
-
-    document.getElementById("desc").innerHTML = `
-        <p>${v.description || ""}</p>
-        <pre>${v.fix || ""}</pre>
-    `;
-}
-
-async function askAI(){
-    const q = document.getElementById("aiInput").value;
-
-    const res = await apiRequest("/api/ai/explain", {
-        method: "POST",
-        body: JSON.stringify({
-            question: q,
-            context: currentContext
-        })
-    });
-
-    const data = await res.json();
-
-    const chat = document.getElementById("aiChat");
-
-    chat.innerHTML += `
-        <div><b>You:</b> ${q}</div>
-        <div class="text-success"><b>AI:</b> ${data.explanation}</div>
-        <hr/>
-    `;
-}
-
-async function exportPDF(){
-    const res = await apiRequest("/api/report/pdf", {
-        method: "POST",
-        body: JSON.stringify({ findings })
-    });
-
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "report.pdf";
-    a.click();
-}
-
-async function loadTeam(){
-    const list = document.getElementById("teamList");
-    if (!list) return;
-
-    list.innerHTML = "<li>Loading...</li>";
-
-    try {
-        const res = await apiRequest("/api/org/users");
-        const data = await res.json();
-
-        list.innerHTML = "";
-
-        data.forEach(u=>{
-            const li = document.createElement("li");
-            li.innerText = u.email;
-            list.appendChild(li);
-        });
-
-    } catch (e) {
-        list.innerHTML = "<li class='text-danger'>Failed to load team</li>";
-    }
-}
-
-function renderAIInsights(data) {
-  const container = document.getElementById("aiInsights");
-
+  const container = document.getElementById("fileTree");
   if (!container) return;
+  try {
+    const res  = await apiRequest(`/api/repo/tree?repo_url=${encodeURIComponent(url)}`);
+    const data = await safeJson(res);
+    container.innerHTML = renderTree(data);
+  } catch { /* optional feature */ }
+}
 
-  const ai = data.ai || {};
+async function askAI() {
+  const q    = document.getElementById("aiInput")?.value?.trim();
+  const chat = document.getElementById("aiChat");
+  if (!q || !chat) return;
 
-  // 🔥 FALLBACK SYSTEM (VERY IMPORTANT)
-  let explanation = ai.explanation || "No AI explanation available.";
-  let fixes = ai.fixes || [];
+  chat.innerHTML += `<div style="color:var(--accent);font-size:12px;margin-bottom:4px;"><b>You:</b> ${escHtml(q)}</div>`;
 
-  if (!fixes.length) {
-    fixes = [
-      "Validate and sanitize all inputs",
-      "Use parameterized queries to prevent SQL injection",
-      "Store secrets in environment variables",
-      "Apply authentication & authorization",
-      "Keep dependencies updated"
-    ];
+  try {
+    const res  = await apiRequest("/api/ai/explain", {
+      method: "POST",
+      body: JSON.stringify({ question: q, context: currentContext })
+    });
+    const data = await safeJson(res);
+    chat.innerHTML += `
+      <div style="color:var(--text-muted);font-size:12px;margin-bottom:8px;padding-left:8px;border-left:2px solid var(--accent);">
+        ${escHtml(data.explanation || "")}
+      </div>
+    `;
+    chat.scrollTop = chat.scrollHeight;
+  } catch (err) {
+    chat.innerHTML += `<div style="color:var(--danger);font-size:11px;">Error: ${err.message}</div>`;
   }
 
-  container.innerHTML = `
-    <div class="glass p-3 mt-3">
-      <h6>🧠 AI Security Insights</h6>
-
-      <div class="mb-2 text-muted small">
-        AI-powered explanation of detected risks
-      </div>
-
-      <div class="mb-3">
-        <strong>Explanation:</strong>
-        <div class="mt-1">${explanation}</div>
-      </div>
-
-      <div>
-        <strong>Recommended Fixes:</strong>
-        <ul class="mt-2">
-          ${fixes.map(f => `<li>✅ ${f}</li>`).join("")}
-        </ul>
-      </div>
-    </div>
-  `;
+  document.getElementById("aiInput").value = "";
 }
 
-function updateStatus(findings) {
-  const statusEl = document.getElementById("statusText");
-  if (!statusEl) return;
-
-  const hasCritical = findings.some(f => f.severity === "HIGH" || f.severity === "CRITICAL");
-
-  statusEl.innerText = hasCritical ? "Vulnerable" : "Secure";
-  statusEl.className = hasCritical ? "status-risk" : "status-safe";
+// ============================================================
+//  SCROLL FADE-IN
+// ============================================================
+function initScrollFade() {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add("show"); });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".fade-in").forEach(el => observer.observe(el));
 }
 
-function renderMiniskyPanel(data) {
-  renderTimeline(data);
-  renderSeverityTabs(data);
-  renderCVEPanel(data);
-  renderFixDiff(data);
+// ============================================================
+//  INIT
+// ============================================================
+async function init() {
+  initApiKey();
+  initScrollFade();
+
+  const p = (id) => !!document.getElementById(id);
+
+  if (p("usage"))   await loadUsage();
+  if (p("history")) await loadHistory();
+  if (p("plan"))    await loadPlan();
+  if (p("teamList")) await loadTeam();
+  if (p("usageChart")) await loadUsageChart();
 }
 
-function exportReport() {
-  exportPDF();
-}
+document.addEventListener("DOMContentLoaded", init);
+
+// expose globals
+window.scan = scan;
+window.scanRepo = scanRepo;
+window.copyKey = copyKey;
+window.toggleApiKey = toggleApiKey;
+window.logout = logout;
+window.exportPDF = exportPDF;
+window.openSide = openSide;
+window.closeSide = closeSide;
+window.askAI = askAI;
+window.fetchCVE = fetchCVE;
+window.toggleVuln = toggleVuln;

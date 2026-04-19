@@ -1,173 +1,371 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SafeAIScan Login</title>
+  <title>SafeAIScan — Login</title>
 
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 
   <style>
-    body {
-      min-height: 100vh;
-      background: radial-gradient(circle at top, #1f2937, #0b1220);
+    /* Tab switcher */
+    .auth-tabs {
+      display: flex;
+      gap: 0;
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      margin-bottom: 24px;
+    }
+    .auth-tab {
+      flex: 1;
+      padding: 8px;
+      text-align: center;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: all 0.2s;
+      border: none;
+      background: transparent;
+    }
+    .auth-tab.active {
+      background: var(--bg-3);
+      color: var(--text-primary);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .form-panel { display: none; }
+    .form-panel.active { display: block; animation: popIn 0.2s ease both; }
+
+    .divider {
       display: flex;
       align-items: center;
-      justify-content: center;
-      color: #fff;
+      gap: 12px;
+      margin: 18px 0;
+      color: var(--text-faint);
+      font-size: 11px;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
     }
 
-    .glass-card {
-      width: 100%;
-      max-width: 420px;
-      background: rgba(255, 255, 255, 0.06);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 2rem;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    .input-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      margin-bottom: 5px;
+      font-weight: 500;
     }
-
-    .form-control {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.1);
-      color: #fff;
+    .input-wrap {
+      position: relative;
+      margin-bottom: 14px;
     }
-
-    .form-control:focus {
-      background: rgba(255,255,255,0.12);
-      color: #fff;
-      box-shadow: none;
-      border-color: #3b82f6;
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-faint);
+      font-size: 14px;
+      pointer-events: none;
     }
-
-    .input-group-text {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.1);
-      color: #cbd5e1;
+    .input-wrap .form-control {
+      padding-left: 36px !important;
     }
-
-    .btn-primary {
-      background: #3b82f6;
+    .input-wrap .btn-eye {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
       border: none;
-      font-weight: 600;
+      color: var(--text-faint);
+      cursor: pointer;
+      padding: 4px;
+      font-size: 14px;
+      transition: color 0.15s;
+    }
+    .input-wrap .btn-eye:hover { color: var(--text-muted); }
+
+    .strength-bar {
+      height: 3px;
+      border-radius: 99px;
+      background: var(--bg-3);
+      margin-top: 4px;
+      overflow: hidden;
+    }
+    .strength-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.3s, background 0.3s;
     }
 
-    .btn-primary:hover {
-      background: #2563eb;
+    .feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 20px;
     }
-
-    .title {
-      font-weight: 700;
-      letter-spacing: 0.5px;
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
     }
-
-    .muted {
-      color: #94a3b8;
-      font-size: 0.9rem;
-    }
+    .feature-item i { color: var(--success); font-size: 11px; }
   </style>
 </head>
 
 <body>
+<div class="login-wrap">
+  <div style="width:100%;max-width:460px;padding:16px;">
 
-<div class="glass-card">
+    <!-- Brand -->
+    <div style="text-align:center;margin-bottom:28px;">
+      <div class="login-brand">
+        <span style="color:var(--accent);">Safe</span>AIScan
+        <span style="color:var(--border-bright);font-size:20px;margin-left:2px;">⬡</span>
+      </div>
+      <div class="login-tagline">AI-Powered Security Intelligence Platform</div>
+    </div>
 
-  <div class="text-center mb-4">
-    <h3 class="title">SafeAIScan</h3>
-    <p class="muted">Secure AI Vulnerability Scanner</p>
+    <div class="login-card">
+
+      <!-- Tab switcher -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="showTab('login')" id="tab-login">Sign In</button>
+        <button class="auth-tab" onclick="showTab('register')" id="tab-register">Create Account</button>
+      </div>
+
+      <!-- LOGIN -->
+      <div class="form-panel active" id="panel-login">
+
+        <div class="input-wrap">
+          <div class="input-label">Email</div>
+          <i class="bi bi-envelope input-icon"></i>
+          <input id="loginEmail" type="email" class="form-control" placeholder="you@company.com" autocomplete="email">
+        </div>
+
+        <div class="input-wrap">
+          <div class="input-label">Password</div>
+          <i class="bi bi-lock input-icon"></i>
+          <input id="loginPassword" type="password" class="form-control" placeholder="••••••••" autocomplete="current-password">
+          <button class="btn-eye" type="button" onclick="togglePwd('loginPassword', this)">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+
+        <button id="loginBtn" class="btn btn-primary w-100 mt-2" onclick="doLogin()" style="height:44px;font-size:14px;">
+          Sign In
+        </button>
+
+        <div id="loginAlert" class="alert mt-3 d-none"></div>
+
+      </div>
+
+      <!-- REGISTER -->
+      <div class="form-panel" id="panel-register">
+
+        <div class="feature-list">
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> Free 20 scans/day forever</div>
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> AI-powered vulnerability detection</div>
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> GitHub repository scanning</div>
+        </div>
+
+        <div class="input-wrap">
+          <div class="input-label">Email</div>
+          <i class="bi bi-envelope input-icon"></i>
+          <input id="regEmail" type="email" class="form-control" placeholder="you@company.com" autocomplete="email">
+        </div>
+
+        <div class="input-wrap">
+          <div class="input-label">Organization</div>
+          <i class="bi bi-building input-icon"></i>
+          <input id="regOrg" type="text" class="form-control" placeholder="Acme Corp">
+        </div>
+
+        <div class="input-wrap">
+          <div class="input-label">Password</div>
+          <i class="bi bi-lock input-icon"></i>
+          <input id="regPassword" type="password" class="form-control" placeholder="Min 8 characters"
+                 autocomplete="new-password" oninput="checkStrength(this)">
+          <button class="btn-eye" type="button" onclick="togglePwd('regPassword', this)">
+            <i class="bi bi-eye"></i>
+          </button>
+          <div class="strength-bar mt-1">
+            <div id="strengthFill" class="strength-fill" style="width:0%;"></div>
+          </div>
+        </div>
+
+        <button id="registerBtn" class="btn btn-primary w-100 mt-2" onclick="doRegister()" style="height:44px;font-size:14px;">
+          Create Account
+        </button>
+
+        <div id="registerAlert" class="alert mt-3 d-none"></div>
+
+      </div>
+
+      <div class="divider">secured with JWT + AES-256</div>
+      <div style="text-align:center;font-size:11px;color:var(--text-faint);">
+        By continuing you agree to our <a href="#" style="color:var(--accent);text-decoration:none;">Terms of Service</a>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-top:20px;">
+      <a href="index.html" style="color:var(--text-faint);font-size:12px;text-decoration:none;">
+        <i class="bi bi-arrow-left me-1"></i>Back to home
+      </a>
+    </div>
+
   </div>
-
-  <!-- Email -->
-  <div class="input-group mb-3">
-    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-    <input id="email" type="email" class="form-control" placeholder="Email">
-  </div>
-
-  <!-- Password -->
-  <div class="input-group mb-3">
-    <span class="input-group-text"><i class="bi bi-lock"></i></span>
-    <input id="password" type="password" class="form-control" placeholder="Password">
-    <button class="btn btn-outline-light" type="button" onclick="togglePassword()">
-      <i class="bi bi-eye"></i>
-    </button>
-  </div>
-
-  <!-- Login Button -->
-  <button id="loginBtn" class="btn btn-primary w-100" onclick="login()">
-    Login
-  </button>
-
-  <div id="alertBox" class="alert mt-3 d-none" role="alert"></div>
-
 </div>
 
 <script>
-function showAlert(message, type="danger") {
-  const box = document.getElementById("alertBox");
-  box.className = `alert alert-${type} mt-3`;
-  box.innerText = message;
-  box.classList.remove("d-none");
-}
-
-function setLoading(state) {
-  const btn = document.getElementById("loginBtn");
-  btn.disabled = state;
-  btn.innerHTML = state
-    ? `<span class="spinner-border spinner-border-sm"></span> Logging in...`
-    : `Login`;
-}
-
-function togglePassword() {
-  const input = document.getElementById("password");
-  input.type = input.type === "password" ? "text" : "password";
-}
-
-async function login() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-
-  if (!email || !password) {
-    showAlert("Please fill in all fields");
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    const res = await fetch("https://rathious-safeaiscan.hf.space/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
+  function showTab(tab) {
+    ['login','register'].forEach(t => {
+      document.getElementById('tab-' + t)?.classList.toggle('active', t === tab);
+      document.getElementById('panel-' + t)?.classList.toggle('active', t === tab);
     });
-
-    const data = await res.json();
-
-    if (!data.access_token) {
-      showAlert("Invalid credentials or login failed");
-      setLoading(false);
-      return;
-    }
-
-    localStorage.setItem("access_token", data.access_token);
-
-    if (data.api_key) {
-      localStorage.setItem("api_key", data.api_key);
-    }
-
-    showAlert("Login successful! Redirecting...", "success");
-
-    setTimeout(() => {
-      window.location.href = "dashboard.html";
-    }, 800);
-
-  } catch (err) {
-    showAlert("Network error. Please try again.");
+    document.getElementById('loginAlert')?.classList.add('d-none');
+    document.getElementById('registerAlert')?.classList.add('d-none');
   }
 
-  setLoading(false);
-}
+  function togglePwd(id, btn) {
+    const input = document.getElementById(id);
+    const icon  = btn.querySelector('i');
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.className = 'bi bi-eye-slash';
+    } else {
+      input.type = 'password';
+      icon.className = 'bi bi-eye';
+    }
+  }
+
+  function checkStrength(input) {
+    const val = input.value;
+    let score = 0;
+    if (val.length >= 8)          score++;
+    if (/[A-Z]/.test(val))        score++;
+    if (/[0-9]/.test(val))        score++;
+    if (/[^A-Za-z0-9]/.test(val)) score++;
+
+    const fill   = document.getElementById('strengthFill');
+    const colors = ['#f43f5e','#fb923c','#fbbf24','#34d399'];
+    fill.style.width      = (score * 25) + '%';
+    fill.style.background = colors[score - 1] || '#f43f5e';
+  }
+
+  function setBtn(id, loading) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = loading;
+    btn.innerHTML = loading
+      ? `<span class="spinner-border spinner-border-sm me-2"></span>Please wait…`
+      : (id === 'loginBtn' ? 'Sign In' : 'Create Account');
+  }
+
+  function showAlert(id, msg, type = 'danger') {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = `alert alert-${type} mt-3`;
+    el.innerHTML = `<i class="bi bi-${type==='success'?'check-circle':'exclamation-triangle'} me-2"></i>${msg}`;
+    el.classList.remove('d-none');
+  }
+
+  async function doLogin() {
+    const email    = document.getElementById('loginEmail')?.value?.trim();
+    const password = document.getElementById('loginPassword')?.value;
+
+    if (!email || !password) { showAlert('loginAlert', 'Please fill in all fields'); return; }
+    if (!email.includes('@')) { showAlert('loginAlert', 'Enter a valid email address'); return; }
+
+    setBtn('loginBtn', true);
+
+    try {
+      const res  = await fetch('https://rathious-safeaiscan.hf.space/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.access_token) {
+        showAlert('loginAlert', data.detail || 'Invalid credentials');
+        return;
+      }
+
+      localStorage.setItem('access_token', data.access_token);
+      if (data.api_key) localStorage.setItem('api_key', data.api_key);
+
+      showAlert('loginAlert', 'Login successful! Redirecting…', 'success');
+      setTimeout(() => window.location.href = 'dashboard.html', 800);
+
+    } catch (err) {
+      showAlert('loginAlert', 'Network error. Please try again.');
+    } finally {
+      setBtn('loginBtn', false);
+    }
+  }
+
+  async function doRegister() {
+    const email    = document.getElementById('regEmail')?.value?.trim();
+    const org_name = document.getElementById('regOrg')?.value?.trim();
+    const password = document.getElementById('regPassword')?.value;
+
+    if (!email || !password || !org_name) { showAlert('registerAlert', 'Please fill in all fields'); return; }
+    if (!email.includes('@'))  { showAlert('registerAlert', 'Enter a valid email address'); return; }
+    if (password.length < 8)   { showAlert('registerAlert', 'Password must be at least 8 characters'); return; }
+
+    setBtn('registerBtn', true);
+
+    try {
+      const res  = await fetch('https://rathious-safeaiscan.hf.space/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, org_name })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showAlert('registerAlert', data.detail || 'Registration failed');
+        return;
+      }
+
+      if (data.access_token) {
+        localStorage.setItem('access_token', data.access_token);
+        if (data.api_key) localStorage.setItem('api_key', data.api_key);
+        showAlert('registerAlert', 'Account created! Redirecting…', 'success');
+        setTimeout(() => window.location.href = 'dashboard.html', 900);
+      } else {
+        showAlert('registerAlert', 'Account created! Please sign in.', 'success');
+        setTimeout(() => showTab('login'), 1200);
+      }
+
+    } catch (err) {
+      showAlert('registerAlert', 'Network error. Please try again.');
+    } finally {
+      setBtn('registerBtn', false);
+    }
+  }
+
+  // Enter key support
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    if (document.getElementById('panel-login').classList.contains('active')) doLogin();
+    else doRegister();
+  });
 </script>
 
 </body>
