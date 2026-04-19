@@ -201,23 +201,28 @@ def register(req: RegisterRequest):
 
         supabase.table("organizations").insert({
             "id": org_id,
-            "name": req.org_name,
-            "plan": "free"
+            "name": req.org_name
         }).execute()
 
         password_hash = hash_password(req.password)
         raw_key = f"saas_{uuid.uuid4().hex}"
         api_hash = hash_key(raw_key)
 
-        supabase.table("users").insert({
+        user_row = {
             "id": user_id,
             "email": req.email,
             "password_hash": password_hash,
             "org_id": org_id,
             "api_key_hash": api_hash,
-            "plan": "free",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }).execute()
+        }
+        try:
+            supabase.table("users").insert({
+                **user_row,
+                "plan": "free",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }).execute()
+        except Exception:
+            supabase.table("users").insert(user_row).execute()
 
         token = create_access_token({"sub": user_id})
 
