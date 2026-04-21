@@ -666,7 +666,7 @@ def scan_repo(req: RepoRequest, background_tasks: BackgroundTasks, auth=Depends(
     org   = auth.get("org")
     plan  = user.get("plan", "free").lower()
 
-    enforce_feature(user, "repo_scan")    
+    require_feature(auth, "repo_scan")    
 
     task_id = str(uuid.uuid4())
     org_id  = org["id"] if org else user["id"]
@@ -810,7 +810,7 @@ def get_repo_tree(repo_url: str, auth=Depends(get_user)):
     user = auth["user"]
     plan = user.get("plan", "free").lower()
 
-    enforce_feature(user, "repo_scan")
+    require_feature(auth, "repo_scan")
 
     try:
         g         = Github(GITHUB_TOKEN) if GITHUB_TOKEN else Github()
