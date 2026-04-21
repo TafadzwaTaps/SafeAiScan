@@ -17,6 +17,7 @@ import hashlib
 import asyncio
 import logging
 import time
+from access import enforce_feature, within_limit
 from datetime import datetime, timezone
 
 import httpx
@@ -32,6 +33,7 @@ from github import Github
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
+from access import get_ai_depth
 
 from auth  import create_access_token, verify_token
 from plans import get_plan_limits, check_plan_access, within_limit
@@ -584,7 +586,7 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
         org_id = org["id"] if org else user["id"]
 
         usage_count = track_usage(user["id"], org_id)
-        if not within_limit(usage_count, plan):
+        if not within_limit(usage_count, user):
             limits = get_plan_limits(plan)
             fail(
                 f"Daily scan limit reached ({limits['daily_scans']} scans/day on {plan.upper()} plan). "
@@ -593,7 +595,7 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
             )
 
         findings = scan_vulnerabilities(req.text)
-        ai_depth = get_plan_limits(plan)["ai_depth"]
+        ai_depth = get_ai_depth(user)
         ai       = await ai_enrich(req.text, findings, depth=ai_depth)
 
         sev_score = {"CRITICAL": 40, "HIGH": 25, "MEDIUM": 10, "LOW": 3}
@@ -654,8 +656,7 @@ def scan_repo(req: RepoRequest, background_tasks: BackgroundTasks, auth=Depends(
     org   = auth.get("org")
     plan  = user.get("plan", "free").lower()
 
-    if not check_plan_access(plan, "repo_scan"):
-        fail("Repo scanning requires Pro or Enterprise plan.", 403)
+    enforce_feature(user, "repo_scan")    
 
     task_id = str(uuid.uuid4())
     org_id  = org["id"] if org else user["id"]
@@ -799,8 +800,7 @@ def get_repo_tree(repo_url: str, auth=Depends(get_user)):
     user = auth["user"]
     plan = user.get("plan", "free").lower()
 
-    if not check_plan_access(plan, "repo_scan"):
-        fail("Repo access requires Pro or Enterprise plan", 403)
+    enforce_feature(user, "repo_scan")
 
     try:
         g         = Github(GITHUB_TOKEN) if GITHUB_TOKEN else Github()
