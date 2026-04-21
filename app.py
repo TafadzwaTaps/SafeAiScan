@@ -34,9 +34,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 from access import get_ai_depth
-
 from auth  import create_access_token, verify_token
-from plans import get_plan_limits, within_limit
+from plans import within_limit
 from tasks import run_scan
 import db as DB
 
