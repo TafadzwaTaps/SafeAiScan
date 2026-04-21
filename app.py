@@ -22,16 +22,15 @@ from reportlab.lib.pagesizes import letter
 from auth  import create_access_token, verify_token
 
 from fastapi import Request
-from access import FEATURE_GATES, enforce_feature
 from access import (
     enforce_feature,
-    get_limits,
     has_feature,
     get_ai_depth,
     get_daily_limit,
-    get_history_limit,
     within_limit
 )
+
+from plans import get_plan_limits
 from tasks import run_scan
 import db as DB
 
@@ -49,18 +48,6 @@ logger = logging.getLogger("safeaiscan")
 # APP
 # ============================================================
 app = FastAPI(title="SafeAIScan Enterprise", version="2.1.0")
-
-@app.middleware("http")
-async def plan_gatekeeper(request: Request, call_next):
-    path = request.url.path
-
-    if path in FEATURE_GATES:
-        # user not yet injected in middleware → skip auth routes
-        if path.startswith("/api/") and path not in ["/auth/login", "/auth/register"]:
-            pass
-
-    response = await call_next(request)
-    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -496,7 +483,7 @@ def get_me(auth=Depends(get_user)):
     user   = auth["user"]
     org    = auth.get("org")
     plan   = user.get("plan", "free").lower()
-    limits = get_limits(plan)
+    limits = get_plan_limits(user.get("plan", "free"))
     return ok({
         "user_id":  user["id"],
         "email":    user.get("email"),
@@ -536,7 +523,7 @@ def get_dashboard(auth=Depends(get_user)):
     user   = auth["user"]
     org    = auth.get("org")
     plan   = user.get("plan", "free").lower()
-    limits = get_limits(plan)
+    limits = get_plan_limits(user.get("plan", "free"))
     org_id = org["id"] if org else None
 
     today       = str(datetime.utcnow().date())
@@ -580,7 +567,7 @@ def get_usage(auth=Depends(get_user)):
 def get_history(auth=Depends(get_user)):
     user  = auth["user"]
     plan  = user.get("plan", "free").lower()
-    limit = get_limits(plan)["history_limit"]
+    limit = get_plan_limits(user.get("plan", "free"))["history_limit"]
     return ok(DB.fetch_scan_history(user["id"], limit=min(limit, 20)))
 
 
@@ -598,11 +585,11 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
 
         usage_count = track_usage(user["id"], org_id)
         if not within_limit(user, usage_count):
-            limits = get_limits(user)
-            fail(
-                f"Daily scan limit reached ({limits['daily_scans']} scans/day on {user.get('plan','free').upper()} plan). Upgrade to continue.",
-                429
-            )
+           limits = get_plan_limits(user.get("plan", "free"))
+           fail(
+               f"Daily scan limit reached ({limits['daily_scans']} scans/day)",
+               429
+             )
 
         findings = scan_vulnerabilities(req.text)
         ai_depth = get_ai_depth(user)
@@ -635,7 +622,7 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
             metadata={"findings": len(findings), "risk": risk}
         )
 
-        limits = get_limits(plan)
+        limits = get_plan_limits(user.get("plan", "free"))
         logger.info(f"Scan: user={user['id']} plan={plan} findings={len(findings)} usage={usage_count}")
 
         return ok({
@@ -749,7 +736,7 @@ async def cve_search(query: str, auth=Depends(get_user)):
 async def ai_explain(req: AIExplainRequest, auth=Depends(get_user)):
     user  = auth["user"]
     plan  = user.get("plan", "free").lower()
-    depth = get_limits(plan)["ai_depth"]
+    depth = get_plan_limits(plan)["ai_depth"]
     try:
         result = await ai_enrich(
             req.context[:2000] + "\n\nQuestion: " + req.question[:500],
