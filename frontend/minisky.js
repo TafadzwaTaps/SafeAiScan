@@ -3,18 +3,24 @@
 //  FIXED: plan gating, findings reference, repo scan task_id,
 //         upgrade modal, auth flow, renderResults scope
 // ============================================================
-class PlanError extends Error {
-  constructor(message = "Plan upgrade required") {
-    super(message);
-    this.name = "PlanError";
+if (!window.PlanError) {
+  class PlanError extends Error {
+    constructor(message = "Plan upgrade required") {
+      super(message);
+      this.name = "PlanError";
+    }
   }
+  window.PlanError = PlanError;
 }
 
-class LimitError extends Error {
-  constructor(message = "Usage limit exceeded") {
-    super(message);
-    this.name = "LimitError";
+if (!window.LimitError) {
+  class LimitError extends Error {
+    constructor(message = "Usage limit exceeded") {
+      super(message);
+      this.name = "LimitError";
+    }
   }
+  window.LimitError = LimitError;
 }
 
 window.aiResult = null;
