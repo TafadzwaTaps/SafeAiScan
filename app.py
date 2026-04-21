@@ -4,7 +4,6 @@ import hashlib
 import asyncio
 import logging
 import time
-from access import enforce_feature, within_limit
 from datetime import datetime, timezone
 
 import httpx
@@ -20,15 +19,18 @@ from github import Github
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
-from access import get_ai_depth
 from auth  import create_access_token, verify_token
+
+from fastapi import Request
+from access import FEATURE_GATES, enforce_feature
 from access import (
     enforce_feature,
+    get_limits,
     has_feature,
     get_ai_depth,
     get_daily_limit,
-    within_limit,
-    get_limits
+    get_history_limit,
+    within_limit
 )
 from tasks import run_scan
 import db as DB
@@ -47,6 +49,18 @@ logger = logging.getLogger("safeaiscan")
 # APP
 # ============================================================
 app = FastAPI(title="SafeAIScan Enterprise", version="2.1.0")
+
+@app.middleware("http")
+async def plan_gatekeeper(request: Request, call_next):
+    path = request.url.path
+
+    if path in FEATURE_GATES:
+        # user not yet injected in middleware → skip auth routes
+        if path.startswith("/api/") and path not in ["/auth/login", "/auth/register"]:
+            pass
+
+    response = await call_next(request)
+    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -95,6 +109,10 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
+
+def require_feature(auth, feature: str):
+    user = auth["user"]
+    enforce_feature(user, feature)
 
 # ============================================================
 # REQUEST MODELS
@@ -579,11 +597,10 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
         org_id = org["id"] if org else user["id"]
 
         usage_count = track_usage(user["id"], org_id)
-        if not within_limit(usage_count, plan):
-            limits = get_limits(plan)
+        if not within_limit(user, usage_count):
+            limits = get_limits(user)
             fail(
-                f"Daily scan limit reached ({limits['daily_scans']} scans/day on {plan.upper()} plan). "
-                "Upgrade to continue.",
+                f"Daily scan limit reached ({limits['daily_scans']} scans/day on {user.get('plan','free').upper()} plan). Upgrade to continue.",
                 429
             )
 
