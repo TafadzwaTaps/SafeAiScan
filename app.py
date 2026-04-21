@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, validator
 from passlib.context import CryptContext
+from config import DEV_MODE
 from github import Github
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -371,6 +372,13 @@ async def ai_enrich(text: str, findings: list, depth: str = "full") -> dict:
 # ROUTES — AUTH
 # ============================================================
 
+@app.get("/api/dev/mode")
+def dev_mode_status():
+    return {
+        "dev_mode": DEV_MODE,
+        "status": "ALL FEATURES UNLOCKED" if DEV_MODE else "PRODUCTION MODE"
+    }
+
 @app.post("/auth/register")
 def register(req: RegisterRequest, request: Request):
     try:
@@ -500,7 +508,7 @@ def get_org_users(auth=Depends(get_user)):
     org  = auth.get("org")
     plan = user.get("plan", "free").lower()
 
-    if plan == "free":
+    if plan == "free" and not DEV_MODE:
         fail("Team management requires Pro or Enterprise plan", 403)
 
     org_id = org["id"] if org else None

@@ -1,37 +1,63 @@
-"""
-access.py — permission layer (CLEAN + FIXED)
-"""
-
 from fastapi import HTTPException
-from plans import PLAN_LIMITS, get_plan_limits
+from config import DEV_MODE
 
+# Example plan feature map (keep your existing one)
+PLAN_FEATURES = {
+    "free": {"scan", "basic_ai"},
+    "pro": {"scan", "basic_ai", "repo_scan", "advanced_ai"},
+    "enterprise": {"scan", "basic_ai", "repo_scan", "advanced_ai", "team"},
+}
 
-def has_feature(user: dict, feature: str) -> bool:
-    plan = (user or {}).get("plan", "free").lower()
-    return get_plan_limits(plan)["features"].get(feature, False)
+def enforce_feature(user, feature: str):
+    """
+    Blocks access unless feature exists in plan.
+    DEV_MODE bypasses everything for testing.
+    """
+    if DEV_MODE:
+        return  # 🔓 unlock all features in dev
 
+    plan = user.get("plan", "free").lower()
 
-def enforce_feature(user: dict, feature: str):
-    if not has_feature(user, feature):
+    if feature not in PLAN_FEATURES.get(plan, set()):
         raise HTTPException(
             status_code=403,
-            detail={
-                "success": False,
-                "error": f"{feature} requires higher plan"
-            }
+            detail={"success": False, "error": f"{feature} requires higher plan"}
         )
 
 
-def get_ai_depth(user: dict) -> str:
-    plan = (user or {}).get("plan", "free").lower()
-    return get_plan_limits(plan)["ai_depth"]
+def has_feature(user, feature: str) -> bool:
+    if DEV_MODE:
+        return True
+    plan = user.get("plan", "free").lower()
+    return feature in PLAN_FEATURES.get(plan, set())
 
 
-def get_daily_limit(user: dict) -> int:
-    plan = (user or {}).get("plan", "free").lower()
-    return get_plan_limits(plan)["daily_scans"]
+def get_ai_depth(user):
+    if DEV_MODE:
+        return "full"
+
+    plan = user.get("plan", "free").lower()
+    return {
+        "free": "basic",
+        "pro": "full",
+        "enterprise": "full"
+    }.get(plan, "basic")
 
 
-def within_limit(user: dict, count: int) -> bool:
-    plan = (user or {}).get("plan", "free").lower()
-    return count <= get_daily_limit(user)
+def get_daily_limit(user):
+    if DEV_MODE:
+        return 10_000
+
+    plan = user.get("plan", "free").lower()
+    return {
+        "free": 5,
+        "pro": 100,
+        "enterprise": 1000
+    }.get(plan, 5)
+
+
+def within_limit(user, usage_count: int) -> bool:
+    if DEV_MODE:
+        return True
+
+    return usage_count <= get_daily_limit(user)
