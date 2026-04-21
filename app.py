@@ -1,16 +1,3 @@
-"""
-SafeAIScan — FastAPI Backend v2.1
-Enterprise SaaS layer: stable, modular, resilient.
-
-Architecture:
-  app.py    — FastAPI app + all routes
-  db.py     — Supabase service layer (retry, cache, fallbacks)
-  plans.py  — Tier limits / feature flags
-  auth.py   — JWT helpers
-  scanner.py — Static vulnerability scanner
-  tasks.py  — Background repo scan worker
-"""
-
 import os
 import uuid
 import hashlib
@@ -35,7 +22,14 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 from access import get_ai_depth
 from auth  import create_access_token, verify_token
-from plans import within_limit
+from access import (
+    enforce_feature,
+    has_feature,
+    get_ai_depth,
+    get_daily_limit,
+    within_limit,
+    get_limits
+)
 from tasks import run_scan
 import db as DB
 
@@ -484,7 +478,7 @@ def get_me(auth=Depends(get_user)):
     user   = auth["user"]
     org    = auth.get("org")
     plan   = user.get("plan", "free").lower()
-    limits = get_plan_limits(plan)
+    limits = get_limits(plan)
     return ok({
         "user_id":  user["id"],
         "email":    user.get("email"),
@@ -524,7 +518,7 @@ def get_dashboard(auth=Depends(get_user)):
     user   = auth["user"]
     org    = auth.get("org")
     plan   = user.get("plan", "free").lower()
-    limits = get_plan_limits(plan)
+    limits = get_limits(plan)
     org_id = org["id"] if org else None
 
     today       = str(datetime.utcnow().date())
@@ -568,7 +562,7 @@ def get_usage(auth=Depends(get_user)):
 def get_history(auth=Depends(get_user)):
     user  = auth["user"]
     plan  = user.get("plan", "free").lower()
-    limit = get_plan_limits(plan)["history_limit"]
+    limit = get_limits(plan)["history_limit"]
     return ok(DB.fetch_scan_history(user["id"], limit=min(limit, 20)))
 
 
@@ -585,8 +579,8 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
         org_id = org["id"] if org else user["id"]
 
         usage_count = track_usage(user["id"], org_id)
-        if not within_limit(usage_count, user):
-            limits = get_plan_limits(plan)
+        if not within_limit(usage_count, plan):
+            limits = get_limits(plan)
             fail(
                 f"Daily scan limit reached ({limits['daily_scans']} scans/day on {plan.upper()} plan). "
                 "Upgrade to continue.",
@@ -624,7 +618,7 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
             metadata={"findings": len(findings), "risk": risk}
         )
 
-        limits = get_plan_limits(plan)
+        limits = get_limits(plan)
         logger.info(f"Scan: user={user['id']} plan={plan} findings={len(findings)} usage={usage_count}")
 
         return ok({
@@ -738,7 +732,7 @@ async def cve_search(query: str, auth=Depends(get_user)):
 async def ai_explain(req: AIExplainRequest, auth=Depends(get_user)):
     user  = auth["user"]
     plan  = user.get("plan", "free").lower()
-    depth = get_plan_limits(plan)["ai_depth"]
+    depth = get_limits(plan)["ai_depth"]
     try:
         result = await ai_enrich(
             req.context[:2000] + "\n\nQuestion: " + req.question[:500],
