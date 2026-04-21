@@ -3,6 +3,19 @@
 //  FIXED: plan gating, findings reference, repo scan task_id,
 //         upgrade modal, auth flow, renderResults scope
 // ============================================================
+class PlanError extends Error {
+  constructor(message = "Plan upgrade required") {
+    super(message);
+    this.name = "PlanError";
+  }
+}
+
+class LimitError extends Error {
+  constructor(message = "Usage limit exceeded") {
+    super(message);
+    this.name = "LimitError";
+  }
+}
 
 window.aiResult = null;
 window.SafeAIScan = window.SafeAIScan || {};
@@ -61,24 +74,28 @@ async function loadAndApplyPlan() {
 }
 
 function canProAccess() {
-  return ["pro", "enterprise"].includes(S.userPlan.toLowerCase());
+  return ["pro", "enterprise"].includes((S.userPlan || "free").toLowerCase());
 }
 
 function applyPlanGating(plan) {
   const isPro = ["pro", "enterprise"].includes(plan.toLowerCase());
 
-  // Repo scan button
   const repoBtn = document.getElementById("repoScanBtn");
-  if (repoBtn) {
-    if (!isPro) {
-      repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan <span style="font-size:9px;opacity:0.7;">(Pro)</span>`;
-      repoBtn.onclick = (e) => { e.preventDefault(); showUpgradeModal("Repo scanning"); };
-    }
-  }
 
-  // Show/hide upgrade banner
-  const banner = document.getElementById("upgradeBanner");
-  if (banner) banner.style.display = isPro ? "none" : "flex";
+if (repoBtn) {
+  repoBtn.dataset.originalHtml = repoBtn.dataset.originalHtml || repoBtn.innerHTML;
+
+  if (!isPro) {
+    repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan <span style="font-size:9px;opacity:0.7;">(Pro)</span>`;
+    repoBtn.onclick = (e) => {
+      e.preventDefault();
+      showUpgradeModal("Repo scanning");
+    };
+  } else {
+    repoBtn.innerHTML = repoBtn.dataset.originalHtml;
+    repoBtn.onclick = null;
+  }
+}
 }
 
 // ============================================================
@@ -921,7 +938,12 @@ function openSideDetail(idx) {
   const list = S.findings.length ? S.findings : (window.findings || []);
   const v    = list[idx];
   if (!v) return;
-  S.currentContext = JSON.stringify(v);
+  S.currentContext = JSON.stringify({
+  title: v.title,
+  severity: v.severity,
+  file: v.file,
+  line: v.line
+});
 
   const sev        = (v.severity || "LOW").toUpperCase();
   const badgeClass = sev === "CRITICAL" ? "sev-critical" : sev === "HIGH" ? "sev-high" : sev === "MEDIUM" ? "sev-medium" : "sev-low";

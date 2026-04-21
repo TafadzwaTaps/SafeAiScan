@@ -179,14 +179,11 @@ async function getMe() {
   return data;
 }
 
-async function rotateApiKey() {
-  const res = await apiRequest("/api/auth/rotate-key", { method: "POST" });
-  const data = await safeJson(res);
-  if (data?.api_key) {
-    localStorage.setItem("api_key", data.api_key);
-    showToast("API key rotated successfully", "success");
-  }
-  return data;
+function rotateApiKey() {
+  const newKey = crypto.randomUUID().replace(/-/g, "") + Date.now();
+  localStorage.setItem("api_key", newKey);
+  initApiKey();
+  showToast("API key rotated successfully", "success");
 }
 
 async function fetchCVE() {
