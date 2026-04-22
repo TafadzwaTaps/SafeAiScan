@@ -1,50 +1,105 @@
 // ============================================================
-//  SafeAIScan Pro — Minisky Scanner Engine v2.1
-//  FIXED: plan gating, findings reference, repo scan task_id,
-//         upgrade modal, auth flow, renderResults scope
+//  SafeAIScan Pro — Minisky Scanner Engine v3.0
+//
+//  FIXES APPLIED:
+//  [1] PlanError/LimitError declared ONCE — guard prevents re-declaration
+//  [2] runScan bound to window AFTER definition — no more "not defined"
+//  [3] All functions scoped inside SafeAIScan namespace (S.*) or hoisted
+//       before use — no more undefined renderResults / clearResults
+//  [4] DEV_MODE global toggle — true = full enterprise access,
+//       false = dashboard + basic scan only, upgrade modal on blocked features
+//  [5] getUserPlan() is the SOLE authority on plan — decoupled from UI
+//  [6] Initialization guard — initMinisky() runs exactly once
+//  [7] All async calls wrapped in try/catch — app never crashes
+//  [8] onclick attributes replaced with addEventListener bindings
+//  [9] canProAccess() / canEnterpriseAccess() use getUserPlan() exclusively
+//  [10] applyPlanGating() rebuilt around DEV_MODE-aware getUserPlan()
 // ============================================================
-if (!window.PlanError) {
-  class PlanError extends Error {
-    constructor(message = "Plan upgrade required") {
-      super(message);
-      this.name = "PlanError";
-    }
-  }
-  window.PlanError = PlanError;
-}
 
-if (!window.LimitError) {
-  class LimitError extends Error {
-    constructor(message = "Usage limit exceeded") {
-      super(message);
-      this.name = "LimitError";
-    }
-  }
-  window.LimitError = LimitError;
-}
+// ============================================================
+//  DEV MODE — set to false in production
+// ============================================================
+window.DEV_MODE = window.DEV_MODE !== undefined ? window.DEV_MODE : true;
 
-window.aiResult = null;
+// ============================================================
+//  ERROR CLASSES — declared exactly once, guarded
+// ============================================================
+(function defineErrors() {
+  if (!window.PlanError) {
+    class PlanError extends Error {
+      constructor(message = "Plan upgrade required") {
+        super(message);
+        this.name = "PlanError";
+      }
+    }
+    window.PlanError = PlanError;
+  }
+
+  if (!window.LimitError) {
+    class LimitError extends Error {
+      constructor(message = "Usage limit exceeded") {
+        super(message);
+        this.name = "LimitError";
+      }
+    }
+    window.LimitError = LimitError;
+  }
+})();
+
+// ============================================================
+//  NAMESPACE — single global object, safe to re-include
+// ============================================================
 window.SafeAIScan = window.SafeAIScan || {};
 const S = window.SafeAIScan;
 
-// STATE
-S.findings = S.findings || [];
-S.aiResult = S.aiResult || null;
-S.currentContext = S.currentContext || "";
-S.scanProgressInterval = S.scanProgressInterval || null;
-S.userPlan = localStorage.getItem("user_plan") || "free";
-S.userEmail = localStorage.getItem("user_email") || "";
+// ---- STATE (initialize only if not already set) ----
+S.findings            = S.findings            || [];
+S.aiResult            = S.aiResult            || null;
+S.currentContext      = S.currentContext      || "";
+S.scanProgressInterval= S.scanProgressInterval|| null;
+S.userPlan            = S.userPlan            || localStorage.getItem("user_plan") || "free";
+S.userEmail           = S.userEmail           || localStorage.getItem("user_email") || "";
+S.userLimits          = S.userLimits          || null;
 
 // ============================================================
-//  PLAN DETECTION — runs on load, syncs from backend
+//  PLAN — single source of truth
+// ============================================================
+S.getUserPlan = function () {
+  if (window.DEV_MODE) return "enterprise";
+  return (S.userPlan || localStorage.getItem("user_plan") || "free").toLowerCase();
+};
+
+function canProAccess() {
+  return ["pro", "enterprise"].includes(S.getUserPlan());
+}
+
+function canEnterpriseAccess() {
+  return S.getUserPlan() === "enterprise";
+}
+
+function canAccessFeature(feature) {
+  if (window.DEV_MODE) return true;
+  const plan = S.getUserPlan();
+  const featureMap = {
+    repo_scan:       ["pro", "enterprise"],
+    advanced_ai:     ["pro", "enterprise"],
+    cve_enrichment:  ["pro", "enterprise"],
+    team:            ["enterprise"],
+    audit_logs:      ["enterprise"],
+    api_access:      ["enterprise"],
+  };
+  return (featureMap[feature] || []).includes(plan);
+}
+
+// ============================================================
+//  PLAN LOAD — syncs from /api/me on init
 // ============================================================
 async function loadAndApplyPlan() {
   try {
-    const res  = await apiRequest("/api/me");
-    const data = await safeJson(res);
-
-    const plan  = data?.plan || data?.data?.plan || "free";
-    const email = data?.email || data?.data?.email || "";
+    const res   = await apiRequest("/api/me");
+    const data  = await safeJson(res);
+    const plan   = (data?.plan || data?.data?.plan || "free").toLowerCase();
+    const email  = data?.email  || data?.data?.email  || "";
     const limits = data?.limits || data?.data?.limits || {};
 
     S.userPlan   = plan;
@@ -55,60 +110,74 @@ async function loadAndApplyPlan() {
     localStorage.setItem("user_email",  email);
     localStorage.setItem("user_limits", JSON.stringify(limits));
 
-    // Update plan badge in topbar
-    const planBadge = document.getElementById("planBadge");
-    if (planBadge) {
-      const labels = { free: "FREE", pro: "PRO", enterprise: "ENTERPRISE" };
-      const colors = {
-        free:       "background:rgba(52,211,153,0.15);color:#6ee7b7;border:1px solid rgba(52,211,153,0.3);",
-        pro:        "background:linear-gradient(135deg,rgba(91,123,254,0.25),rgba(192,38,211,0.2));color:#a5b4fc;border:1px solid rgba(91,123,254,0.35);",
-        enterprise: "background:linear-gradient(135deg,rgba(192,38,211,0.25),rgba(244,63,94,0.2));color:#e879f9;border:1px solid rgba(192,38,211,0.4);"
-      };
-      planBadge.textContent  = labels[plan] || plan.toUpperCase();
-      planBadge.style.cssText += colors[plan] || colors.free;
-    }
-
-    // Apply plan gating to UI
-    applyPlanGating(plan);
-
-    return { plan, email, limits };
   } catch (err) {
-    console.warn("Plan load failed, using cached:", S.userPlan);
-    applyPlanGating(S.userPlan);
-    return { plan: S.userPlan };
+    console.warn("[SafeAIScan] Plan load failed, using cached:", S.userPlan);
   }
+
+  // Always apply gating regardless of fetch outcome
+  applyPlanGating();
+  updatePlanBadge();
 }
 
-function canProAccess() {
-  return ["pro", "enterprise"].includes((S.userPlan || "free").toLowerCase());
+function updatePlanBadge() {
+  const planBadge = document.getElementById("planBadge");
+  if (!planBadge) return;
+
+  const plan = S.getUserPlan();
+  const labels = { free: "FREE", pro: "PRO", enterprise: "ENTERPRISE" };
+  const colors  = {
+    free:       "background:rgba(52,211,153,0.15);color:#6ee7b7;border:1px solid rgba(52,211,153,0.3);",
+    pro:        "background:linear-gradient(135deg,rgba(91,123,254,0.25),rgba(192,38,211,0.2));color:#a5b4fc;border:1px solid rgba(91,123,254,0.35);",
+    enterprise: "background:linear-gradient(135deg,rgba(192,38,211,0.25),rgba(244,63,94,0.2));color:#e879f9;border:1px solid rgba(192,38,211,0.4);"
+  };
+  planBadge.textContent   = labels[plan] || plan.toUpperCase();
+  planBadge.style.cssText += colors[plan] || colors.free;
 }
 
-function applyPlanGating(plan) {
-  const isPro = ["pro", "enterprise"].includes(plan.toLowerCase());
-
+function applyPlanGating() {
+  const isPro = canProAccess();
   const repoBtn = document.getElementById("repoScanBtn");
 
-if (repoBtn) {
-  repoBtn.dataset.originalHtml = repoBtn.dataset.originalHtml || repoBtn.innerHTML;
+  if (repoBtn) {
+    // Store original HTML once
+    if (!repoBtn.dataset.originalHtml) {
+      repoBtn.dataset.originalHtml = repoBtn.innerHTML;
+    }
 
-  if (!isPro) {
-    repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan <span style="font-size:9px;opacity:0.7;">(Pro)</span>`;
-    repoBtn.onclick = (e) => {
-      e.preventDefault();
-      showUpgradeModal("Repo scanning");
-    };
-  } else {
-    repoBtn.innerHTML = repoBtn.dataset.originalHtml;
-    repoBtn.onclick = null;
+    // Remove any previously attached clone (avoid stacking listeners)
+    const oldClone = document.getElementById("repoScanBtnGated");
+    if (oldClone) oldClone.remove();
+
+    if (!isPro) {
+      repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan <span style="font-size:9px;opacity:0.7;">(Pro)</span>`;
+      // Replace with a clone to strip existing event listeners, then re-add
+      const gated = repoBtn.cloneNode(true);
+      gated.id = "repoScanBtnGated";
+      repoBtn.replaceWith(gated);
+      gated.addEventListener("click", (e) => {
+        e.preventDefault();
+        showUpgradeModal("Repo scanning");
+      });
+    } else {
+      repoBtn.innerHTML = repoBtn.dataset.originalHtml;
+      const unlocked = repoBtn.cloneNode(true);
+      repoBtn.replaceWith(unlocked);
+      unlocked.addEventListener("click", scanRepo);
+    }
   }
-}
+
+  // Gate feature sections that should be hidden for free users
+  const gatedSections = document.querySelectorAll("[data-feature-gate]");
+  gatedSections.forEach(section => {
+    const feature = section.dataset.featureGate;
+    section.style.display = canAccessFeature(feature) ? "" : "none";
+  });
 }
 
 // ============================================================
 //  UPGRADE MODAL
 // ============================================================
 function showUpgradeModal(featureName = "this feature") {
-  // Remove existing modal
   document.getElementById("upgradeModal")?.remove();
 
   const modal = document.createElement("div");
@@ -126,7 +195,6 @@ function showUpgradeModal(featureName = "this feature") {
       animation:popIn 0.25s cubic-bezier(0.34,1.56,0.64,1) both;
       overflow:hidden;
     ">
-      <!-- Header -->
       <div style="
         background:linear-gradient(135deg,rgba(91,123,254,0.15),rgba(192,38,211,0.1));
         border-bottom:1px solid var(--border);padding:24px 28px 20px;
@@ -135,7 +203,7 @@ function showUpgradeModal(featureName = "this feature") {
           <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-0.03em;">
             <i class="bi bi-lightning-charge" style="color:var(--warning);margin-right:8px;"></i>Upgrade Required
           </div>
-          <button onclick="document.getElementById('upgradeModal').remove()" style="
+          <button id="upgradeModalClose" style="
             background:var(--bg-3);border:1px solid var(--border);color:var(--text-muted);
             border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px;
             display:flex;align-items:center;justify-content:center;
@@ -147,11 +215,9 @@ function showUpgradeModal(featureName = "this feature") {
         </p>
       </div>
 
-      <!-- Plan comparison -->
       <div style="padding:20px 28px;">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
 
-          <!-- Free -->
           <div style="background:var(--bg-1);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;">
             <div style="font-size:11px;font-weight:700;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">Free</div>
             <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text-primary);">$0</div>
@@ -165,7 +231,6 @@ function showUpgradeModal(featureName = "this feature") {
             </div>
           </div>
 
-          <!-- Pro -->
           <div style="
             background:linear-gradient(145deg,var(--bg-1),rgba(91,123,254,0.08));
             border:1px solid rgba(91,123,254,0.4);border-radius:12px;padding:14px;text-align:center;
@@ -190,7 +255,6 @@ function showUpgradeModal(featureName = "this feature") {
             </div>
           </div>
 
-          <!-- Enterprise -->
           <div style="background:var(--bg-1);border:1px solid rgba(192,38,211,0.3);border-radius:12px;padding:14px;text-align:center;">
             <div style="font-size:11px;font-weight:700;color:#e879f9;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">Enterprise</div>
             <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text-primary);">Custom</div>
@@ -205,36 +269,40 @@ function showUpgradeModal(featureName = "this feature") {
           </div>
         </div>
 
-        <!-- CTA buttons -->
         <div style="display:flex;gap:10px;">
-          <button onclick="window.location.href='index.html#pricing'" style="
+          <button id="upgradeModalPro" style="
             flex:1;background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;
             padding:12px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;
-            font-family:'DM Sans',sans-serif;
-          ">
+            font-family:'DM Sans',sans-serif;">
             <i class="bi bi-lightning-charge me-1"></i>Upgrade to Pro
           </button>
-          <button onclick="window.location.href='enterprise.html'" style="
+          <button id="upgradeModalEnt" style="
             flex:1;background:transparent;color:var(--text-muted);border:1px solid var(--border);
             padding:12px;border-radius:10px;font-size:13px;cursor:pointer;
-            font-family:'DM Sans',sans-serif;
-          ">
+            font-family:'DM Sans',sans-serif;">
             <i class="bi bi-building me-1"></i>Enterprise Demo
           </button>
         </div>
 
         <div style="text-align:center;margin-top:12px;">
-          <button onclick="document.getElementById('upgradeModal').remove()" style="
+          <button id="upgradeModalLater" style="
             background:none;border:none;color:var(--text-faint);font-size:12px;
-            cursor:pointer;font-family:'DM Sans',sans-serif;
-          ">Maybe later</button>
+            cursor:pointer;font-family:'DM Sans',sans-serif;">
+            Maybe later
+          </button>
         </div>
       </div>
     </div>
   `;
 
   document.body.appendChild(modal);
+
+  // Bind close buttons via addEventListener — no inline onclick
   modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
+  document.getElementById("upgradeModalClose")?.addEventListener("click", () => modal.remove());
+  document.getElementById("upgradeModalLater")?.addEventListener("click", () => modal.remove());
+  document.getElementById("upgradeModalPro")?.addEventListener("click", () => { window.location.href = "index.html#pricing"; });
+  document.getElementById("upgradeModalEnt")?.addEventListener("click", () => { window.location.href = "enterprise.html"; });
 }
 
 // ============================================================
@@ -295,7 +363,7 @@ function startPipeline() {
   const text = document.getElementById("scanProgressText");
   const pct  = document.getElementById("scanPct");
 
-  let stage = 0;
+  let stage    = 0;
   let progress = 0;
 
   clearInterval(S.scanProgressInterval);
@@ -307,13 +375,12 @@ function startPipeline() {
     if (pct)  pct.innerText   = Math.round(progress) + "%";
     if (text) text.innerText  = STAGES[stage].label;
 
-    // Mark stage as active
     STAGES.forEach((s, i) => {
       const el = document.getElementById(s.id);
       if (!el) return;
-      if (i < stage) { el.classList.remove("active"); el.classList.add("done"); }
-      else if (i === stage) { el.classList.add("active"); el.classList.remove("done"); }
-      else { el.classList.remove("active", "done"); }
+      if (i < stage)      { el.classList.remove("active"); el.classList.add("done"); }
+      else if (i === stage){ el.classList.add("active"); el.classList.remove("done"); }
+      else                 { el.classList.remove("active", "done"); }
     });
 
     if (Math.abs(progress - target) < 1.5) stage++;
@@ -330,7 +397,7 @@ function stopPipeline() {
 // ============================================================
 function buildReport(findings, aiResult, meta = {}) {
   const severityCount = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
-  findings.forEach(f => {
+  (findings || []).forEach(f => {
     const s = (f.severity || "LOW").toUpperCase();
     severityCount[s] = (severityCount[s] || 0) + 1;
   });
@@ -342,15 +409,15 @@ function buildReport(findings, aiResult, meta = {}) {
   return {
     meta: { timestamp: new Date().toISOString(), source: meta.source || "code_scan", repo: meta.repo || null },
     summary: {
-      total: findings.length,
+      total: (findings || []).length,
       severityCount,
       riskScore,
       status: severityCount.CRITICAL > 0 ? "CRITICAL"
              : severityCount.HIGH > 0 ? "HIGH_RISK"
-             : findings.length > 0 ? "MODERATE" : "CLEAN"
+             : (findings || []).length > 0 ? "MODERATE" : "CLEAN"
     },
     ai: aiResult || { explanation: "No AI analysis available", fixes: [] },
-    findings: findings.length > 0 ? findings : [{
+    findings: (findings || []).length > 0 ? findings : [{
       title: "No Issues Detected",
       description: "Static + AI scan found no vulnerabilities.",
       severity: "LOW",
@@ -360,9 +427,36 @@ function buildReport(findings, aiResult, meta = {}) {
 }
 
 // ============================================================
-//  MAIN SCAN — uses S.findings as the source of truth
+//  CLEAR HELPERS — defined before runScan uses them
 // ============================================================
-S.runScan = async function () {
+function clearResults() {
+  const r = document.getElementById("results");
+  const a = document.getElementById("aiInsights");
+  if (r) r.innerHTML = "";
+  if (a) a.innerHTML = "";
+}
+
+function clearScan() {
+  S.findings      = [];
+  S.aiResult      = null;
+  window.findings = [];
+  window.aiResult = null;
+
+  const codeEl = document.getElementById("code");
+  if (codeEl) codeEl.value = "";
+
+  clearResults();
+  renderOverview([]);
+  renderSeverityBars([]);
+  renderHeatmap([]);
+  log("Cleared");
+}
+
+// ============================================================
+//  MAIN SCAN — defined as named function + aliased to S.runScan
+// ============================================================
+async function runScan() {
+  // DEV_MODE = false: basic scan still allowed, just no advanced features
   const code = document.getElementById("code")?.value?.trim();
   if (!code) { showToast("Paste some code to scan", "warning"); return; }
 
@@ -373,8 +467,8 @@ S.runScan = async function () {
   try {
     const data = await analyzeCode(code);
 
-    S.aiResult  = data.ai || null;
-    S.findings  = data.findings || [];
+    S.aiResult = data.ai || null;
+    S.findings = data.findings || [];
 
     // AI-only fallback
     if (!S.findings.length && S.aiResult?.explanation) {
@@ -388,7 +482,7 @@ S.runScan = async function () {
     }
 
     const report = buildReport(S.findings, S.aiResult);
-    window.findings   = S.findings; // keep window.findings in sync
+    window.findings   = S.findings;
     window.aiResult   = S.aiResult;
     window.scanReport = report;
 
@@ -397,7 +491,11 @@ S.runScan = async function () {
     renderSeverityBars(S.findings);
     renderHeatmap(S.findings);
     renderAIPanel();
-    enrichCVEPro(S.findings);
+
+    // CVE enrichment — gated
+    if (canAccessFeature("cve_enrichment")) {
+      enrichCVEPro(S.findings);
+    }
 
     // Update usage counter
     if (data.usage_today !== undefined) {
@@ -412,28 +510,27 @@ S.runScan = async function () {
   } catch (err) {
     stopPipeline();
     log(err.message, "error");
-    if (err instanceof PlanError) {
+    if (err instanceof window.PlanError) {
       showUpgradeModal("Full AI analysis");
-    } else if (err instanceof LimitError) {
+    } else if (err instanceof window.LimitError) {
       showToast(err.message, "warning");
     } else {
       showToast("Scan failed: " + err.message, "error");
     }
-    // Set safe empty report so no stale state
     window.scanReport = buildReport([], null, { source: "failed_scan" });
-    window.findings   = window.scanReport.findings;
+    window.findings   = [];
     S.findings        = [];
   }
-};
+}
 
-// Quick AI-only scan alias
-window.scan = S.runScan;
+// Alias on S for internal use
+S.runScan = runScan;
 
 // ============================================================
-//  REPO SCAN — FIXED: repoUrl scope, plan gate, task polling
+//  REPO SCAN — plan-gated
 // ============================================================
 async function scanRepo() {
-  if (!canProAccess()) {
+  if (!canAccessFeature("repo_scan")) {
     showUpgradeModal("Repo scanning");
     return;
   }
@@ -450,25 +547,27 @@ async function scanRepo() {
   log("Queuing repo scan: " + repoUrl);
   startPipeline();
 
-  // Disable button while scanning
-  const repoBtn = document.getElementById("repoScanBtn");
-  if (repoBtn) { repoBtn.disabled = true; repoBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Scanning`; }
+  const repoBtn = document.getElementById("repoScanBtn") || document.getElementById("repoScanBtnGated");
+  if (repoBtn) {
+    repoBtn.disabled = true;
+    repoBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Scanning`;
+  }
 
   try {
-    const data = await scanRepoAPI(repoUrl);
+    const data   = await scanRepoAPI(repoUrl);
     const taskId = data?.task_id || data?.data?.task_id;
 
     if (!taskId) throw new Error("No task ID returned from server");
 
     log("Task queued: " + taskId, "success");
     showToast("Repo scan queued · " + taskId, "success");
-    pollTaskPro(taskId, repoUrl);          // ← pass repoUrl explicitly
+    pollTaskPro(taskId, repoUrl);
     loadRepoTreePro(repoUrl);
 
   } catch (err) {
     stopPipeline();
     log("Repo scan failed: " + err.message, "error");
-    if (err instanceof PlanError) showUpgradeModal("Repo scanning");
+    if (err instanceof window.PlanError) showUpgradeModal("Repo scanning");
     else showToast("Failed: " + err.message, "error");
   } finally {
     if (repoBtn) {
@@ -479,7 +578,7 @@ async function scanRepo() {
 }
 
 // ============================================================
-//  TASK POLLING — FIXED: taskId and repoUrl passed explicitly
+//  TASK POLLING
 // ============================================================
 async function pollTaskPro(taskId, repoUrl) {
   const stateMap = { CLONING: 15, VALIDATING: 35, SCANNING: 65, FINALIZING: 90, DONE: 100, FAILED: 0 };
@@ -492,7 +591,7 @@ async function pollTaskPro(taskId, repoUrl) {
 
   const iv = setInterval(async () => {
     attempts++;
-    if (attempts > 120) { // 5-min timeout
+    if (attempts > 120) {
       clearInterval(iv);
       stopPipeline();
       showToast("Scan timed out — check back later", "warning");
@@ -501,7 +600,7 @@ async function pollTaskPro(taskId, repoUrl) {
 
     try {
       const data = await getTaskStatus(taskId);
-      const p = stateMap[data.state] ?? 50;
+      const p    = stateMap[data.state] ?? 50;
 
       if (bar)  bar.style.width = p + "%";
       if (text) text.innerText  = data.message || data.state || "Processing…";
@@ -511,7 +610,7 @@ async function pollTaskPro(taskId, repoUrl) {
 
       if (data.state === "DONE") {
         clearInterval(iv);
-        S.findings = data.result?.findings || data.findings || [];
+        S.findings      = data.result?.findings || data.findings || [];
         window.findings = S.findings;
         window.scanReport = buildReport(S.findings, null, { source: "repo_scan", repo: repoUrl });
 
@@ -532,7 +631,7 @@ async function pollTaskPro(taskId, repoUrl) {
       }
 
     } catch (err) {
-      console.error("Poll error:", err);
+      console.error("[SafeAIScan] Poll error:", err);
       clearInterval(iv);
       stopPipeline();
       log("Poll error: " + err.message, "error");
@@ -541,36 +640,9 @@ async function pollTaskPro(taskId, repoUrl) {
 }
 
 // ============================================================
-//  CLEAR
-// ============================================================
-function clearScan() {
-  S.findings = [];
-  S.aiResult = null;
-  window.findings = [];
-  window.aiResult = null;
-
-  const codeEl = document.getElementById("code");
-  if (codeEl) codeEl.value = "";
-
-  clearResults();
-  renderOverview([]);
-  renderSeverityBars([]);
-  renderHeatmap([]);
-  log("Cleared");
-}
-
-function clearResults() {
-  const r = document.getElementById("results");
-  const a = document.getElementById("aiInsights");
-  if (r) r.innerHTML = "";
-  if (a) a.innerHTML = "";
-}
-
-// ============================================================
-//  RENDER FINDINGS — FIXED: takes findings as param
+//  RENDER FINDINGS
 // ============================================================
 function renderResults(findings) {
-  // Normalize — accept undefined/null/array
   if (!Array.isArray(findings)) findings = S.findings || [];
 
   const box = document.getElementById("results");
@@ -597,7 +669,7 @@ function renderResults(findings) {
     const riskColor  = sev === "CRITICAL" ? "#e879f9" : sev === "HIGH" ? "var(--danger)" : sev === "MEDIUM" ? "var(--warning)" : "var(--success)";
 
     return `
-      <div class="pro-vuln" onclick="toggleProVuln(this,${i})" data-idx="${i}">
+      <div class="pro-vuln" data-idx="${i}">
         <div class="pro-vuln-header">
           <div class="pro-vuln-indicator ${indClass}"></div>
           <div class="pro-vuln-info">
@@ -645,8 +717,7 @@ function renderResults(findings) {
 
           <div id="proCVE-${i}" style="margin-top:6px;"></div>
 
-          <button class="btn btn-sm btn-outline-light mt-3"
-            onclick="event.stopPropagation();openSideDetail(${i})"
+          <button class="btn btn-sm btn-outline-light mt-3 view-detail-btn" data-idx="${i}"
             style="font-size:11px;">
             <i class="bi bi-arrows-fullscreen me-1"></i>View Full Detail
           </button>
@@ -654,6 +725,20 @@ function renderResults(findings) {
       </div>
     `;
   }).join("");
+
+  // Attach event listeners after render — no inline onclick
+  box.querySelectorAll(".pro-vuln").forEach(card => {
+    card.addEventListener("click", function (e) {
+      if (e.target.closest(".view-detail-btn")) return; // handled separately
+      toggleProVuln(this, parseInt(this.dataset.idx, 10));
+    });
+  });
+  box.querySelectorAll(".view-detail-btn").forEach(btn => {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openSideDetail(parseInt(this.dataset.idx, 10));
+    });
+  });
 }
 
 function toggleProVuln(card, idx) {
@@ -671,7 +756,7 @@ function toggleProVuln(card, idx) {
 }
 
 // ============================================================
-//  OVERVIEW METRICS — FIXED: takes findings as param
+//  OVERVIEW METRICS
 // ============================================================
 function renderOverview(findings) {
   if (!Array.isArray(findings)) findings = S.findings || [];
@@ -701,7 +786,7 @@ function setEl(id, val) {
 }
 
 // ============================================================
-//  SEVERITY BARS — FIXED: takes findings as param
+//  SEVERITY BARS
 // ============================================================
 function renderSeverityBars(findings) {
   if (!Array.isArray(findings)) findings = S.findings || [];
@@ -725,7 +810,7 @@ function renderSeverityBars(findings) {
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // ============================================================
-//  HEATMAP — FIXED: takes findings as param
+//  HEATMAP
 // ============================================================
 function renderHeatmap(findings) {
   if (!Array.isArray(findings)) findings = S.findings || [];
@@ -765,10 +850,12 @@ function renderAIPanel() {
 }
 
 // ============================================================
-//  CVE ENRICHMENT
+//  CVE ENRICHMENT — plan gated
 // ============================================================
 async function enrichCVEPro(findings) {
   if (!Array.isArray(findings)) return;
+  if (!canAccessFeature("cve_enrichment")) return;
+
   for (let i = 0; i < Math.min(findings.length, 5); i++) {
     const v   = findings[i];
     const box = document.getElementById(`proCVE-${i}`);
@@ -788,7 +875,7 @@ async function enrichCVEPro(findings) {
             ${top.description ? `· <span style="color:var(--text-faint);">${escHtml(top.description.substring(0, 90))}…</span>` : ""}
           </div>`;
       }
-    } catch { /* silent */ }
+    } catch { /* silent fail — never crash */ }
   }
 }
 
@@ -796,6 +883,11 @@ async function enrichCVEPro(findings) {
 //  CVE LOOKUP (panel)
 // ============================================================
 async function fetchCVE() {
+  if (!canAccessFeature("cve_enrichment")) {
+    showUpgradeModal("CVE enrichment");
+    return;
+  }
+
   const input = document.getElementById("cveInput")?.value?.trim();
   if (!input) return showToast("Enter a CVE ID or keyword", "warning");
 
@@ -836,6 +928,11 @@ async function fetchCVE() {
 //  AI CHAT
 // ============================================================
 async function askAI() {
+  if (!canAccessFeature("advanced_ai")) {
+    showUpgradeModal("Full AI chat");
+    return;
+  }
+
   const q    = document.getElementById("aiInput")?.value?.trim();
   const chat = document.getElementById("aiChat");
   if (!q || !chat) return;
@@ -869,13 +966,13 @@ async function askAI() {
 }
 
 // ============================================================
-//  TEAM LOADER
+//  TEAM LOADER — plan gated
 // ============================================================
 async function loadTeam() {
   const list = document.getElementById("teamList");
   if (!list) return;
 
-  if (!canProAccess()) {
+  if (!canAccessFeature("team")) {
     list.innerHTML = `
       <div style="font-size:11px;color:var(--text-faint);text-align:center;padding:8px 0;">
         <i class="bi bi-lock me-1"></i>Team management requires Pro
@@ -917,8 +1014,8 @@ async function loadRepoTreePro(url) {
   container.innerHTML = `<div class="skeleton" style="height:80px;border-radius:6px;"></div>`;
 
   try {
-    const res  = await apiRequest(`/api/repo/tree?repo_url=${encodeURIComponent(url)}`);
-    const data = await safeJson(res);
+    const res   = await apiRequest(`/api/repo/tree?repo_url=${encodeURIComponent(url)}`);
+    const data  = await safeJson(res);
     const nodes = Array.isArray(data) ? data : (data?.data || []);
     container.innerHTML = renderTreePro(nodes) || `<div style="font-size:11px;color:var(--text-faint);">No files found</div>`;
   } catch {
@@ -944,12 +1041,13 @@ function openSideDetail(idx) {
   const list = S.findings.length ? S.findings : (window.findings || []);
   const v    = list[idx];
   if (!v) return;
+
   S.currentContext = JSON.stringify({
-  title: v.title,
-  severity: v.severity,
-  file: v.file,
-  line: v.line
-});
+    title: v.title,
+    severity: v.severity,
+    file: v.file,
+    line: v.line
+  });
 
   const sev        = (v.severity || "LOW").toUpperCase();
   const badgeClass = sev === "CRITICAL" ? "sev-critical" : sev === "HIGH" ? "sev-high" : sev === "MEDIUM" ? "sev-medium" : "sev-low";
@@ -1024,7 +1122,6 @@ function closeSide() {
 //  EXPORT PDF
 // ============================================================
 async function exportPDF() {
-  const report = window.scanReport || buildReport(S.findings, S.aiResult);
   if (!S.findings.length) { showToast("Run a scan first", "warning"); return; }
 
   try {
@@ -1066,33 +1163,147 @@ function logout() {
 }
 
 // ============================================================
-//  INIT
+//  TOAST NOTIFICATIONS
+// ============================================================
+function showToast(message, type = "info") {
+  const colors = {
+    info:    "rgba(91,123,254,0.15)",
+    success: "rgba(52,211,153,0.12)",
+    warning: "rgba(251,146,60,0.12)",
+    error:   "rgba(244,63,94,0.12)"
+  };
+  const textColors = { info: "#93aaff", success: "#6ee7b7", warning: "#fdba74", error: "#fb7185" };
+  const icons      = { info: "bi-info-circle", success: "bi-check-circle", warning: "bi-exclamation-triangle", error: "bi-x-circle" };
+
+  if (!document.querySelector("#toastStyle")) {
+    const s = document.createElement("style");
+    s.id = "toastStyle";
+    s.textContent = `
+      @keyframes toastIn  { from { opacity:0;transform:translateY(12px) scale(0.95); } to { opacity:1;transform:translateY(0) scale(1); } }
+      @keyframes toastOut { from { opacity:1;transform:scale(1); } to { opacity:0;transform:translateY(6px) scale(0.95); } }
+      .toast-container { position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:flex-end; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  let container = document.querySelector(".toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.className = "toast-container";
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement("div");
+  toast.style.cssText = `
+    background:${colors[type] || colors.info};
+    color:${textColors[type] || textColors.info};
+    border:1px solid ${textColors[type] || textColors.info}33;
+    border-radius:10px;padding:11px 16px;font-size:13px;
+    font-family:'DM Sans',sans-serif;font-weight:500;
+    backdrop-filter:blur(12px);
+    box-shadow:0 8px 32px rgba(0,0,0,0.4);
+    animation:toastIn 0.25s ease both;
+    max-width:320px;display:flex;align-items:center;gap:8px;cursor:pointer;
+  `;
+  toast.innerHTML = `<i class="bi ${icons[type] || icons.info}" style="flex-shrink:0;font-size:14px;"></i><span>${escHtml(message)}</span>`;
+
+  const dismiss = () => {
+    toast.style.animation = "toastOut 0.22s ease forwards";
+    setTimeout(() => toast.remove(), 230);
+  };
+  toast.addEventListener("click", dismiss);
+  container.appendChild(toast);
+  setTimeout(dismiss, 3800);
+}
+
+// ============================================================
+//  UNHANDLED REJECTION HANDLER
+// ============================================================
+window.addEventListener("unhandledrejection", e => {
+  if (e.reason instanceof window.PlanError) {
+    showUpgradeModal(e.reason.message);
+    e.preventDefault();
+  } else if (e.reason instanceof window.LimitError) {
+    showToast(e.reason.message, "warning");
+    e.preventDefault();
+  } else {
+    console.error("[SafeAIScan] Unhandled rejection:", e.reason);
+  }
+});
+
+// ============================================================
+//  INIT — runs ONCE, guarded
 // ============================================================
 async function initMinisky() {
+  if (window.SafeAIScanInitialized) return;
+  window.SafeAIScanInitialized = true;
+
   log("SafeAIScan Pro initializing…", "info");
 
-  await loadAndApplyPlan();
+  if (window.DEV_MODE) {
+    log("⚠ DEV MODE — enterprise access unlocked", "warning");
+  }
 
+  await loadAndApplyPlan();
   await loadTeam();
   renderOverview([]);
   renderSeverityBars([]);
 
+  // Bind scan button via addEventListener — not inline onclick
+  const scanBtn = document.getElementById("scanBtn");
+  if (scanBtn) {
+    scanBtn.addEventListener("click", runScan);
+  }
+
+  // Bind clear button
+  const clearBtn = document.getElementById("clearBtn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", clearScan);
+  }
+
+  // Bind AI input Enter key
+  const aiInput = document.getElementById("aiInput");
+  if (aiInput) {
+    aiInput.addEventListener("keydown", e => { if (e.key === "Enter") askAI(); });
+  }
+
+  // Bind CVE search Enter key
+  const cveInput = document.getElementById("cveInput");
+  if (cveInput) {
+    cveInput.addEventListener("keydown", e => { if (e.key === "Enter") fetchCVE(); });
+  }
+
+  // Bind side drawer close
+  const sideClose = document.getElementById("sideClose");
+  if (sideClose) {
+    sideClose.addEventListener("click", closeSide);
+  }
+
   log("Ready", "success");
 }
 
-document.addEventListener("DOMContentLoaded", initMinisky);
-
-// ---- GLOBALS ----
-window.runScan        = S.runScan;
-window.scan           = S.runScan;
-window.scanRepo       = scanRepo;
-window.openSide       = openSide;
-window.closeSide      = closeSide;
-window.openSideDetail = openSideDetail;
-window.clearScan      = clearScan;
-window.exportPDF      = exportPDF;
-window.askAI          = askAI;
-window.logout         = logout;
-window.fetchCVE       = fetchCVE;
-window.toggleProVuln  = toggleProVuln;
+// ============================================================
+//  GLOBAL BINDINGS — defined AFTER all functions, bound once
+// ============================================================
+window.runScan          = runScan;
+window.scan             = runScan;           // alias
+window.scanRepo         = scanRepo;
+window.clearScan        = clearScan;
+window.openSide         = openSide;
+window.closeSide        = closeSide;
+window.openSideDetail   = openSideDetail;
+window.exportPDF        = exportPDF;
+window.askAI            = askAI;
+window.logout           = logout;
+window.fetchCVE         = fetchCVE;
+window.toggleProVuln    = toggleProVuln;
 window.showUpgradeModal = showUpgradeModal;
+window.showToast        = showToast;
+
+// Expose S.runScan as well (for backwards compat)
+S.runScan = runScan;
+
+// ============================================================
+//  BOOT
+// ============================================================
+document.addEventListener("DOMContentLoaded", initMinisky);
