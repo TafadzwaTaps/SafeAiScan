@@ -166,6 +166,12 @@ function applyPlanGating() {
     }
   }
 
+  // Hide upgrade banner for paid plans
+  const upgradeBanner = document.getElementById("upgradeBanner");
+  if (upgradeBanner) {
+    upgradeBanner.style.display = isPro ? "none" : "";
+  }
+
   // Gate feature sections that should be hidden for free users
   const gatedSections = document.querySelectorAll("[data-feature-gate]");
   gatedSections.forEach(section => {
@@ -1251,33 +1257,47 @@ async function initMinisky() {
 
   // Bind scan button via addEventListener — not inline onclick
   const scanBtn = document.getElementById("scanBtn");
-  if (scanBtn) {
-    scanBtn.addEventListener("click", runScan);
-  }
+  if (scanBtn) scanBtn.addEventListener("click", runScan);
+
+  // AI Only button also triggers runScan (same endpoint)
+  const aiOnlyBtn = document.getElementById("aiOnlyBtn");
+  if (aiOnlyBtn) aiOnlyBtn.addEventListener("click", runScan);
 
   // Bind clear button
   const clearBtn = document.getElementById("clearBtn");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", clearScan);
-  }
+  if (clearBtn) clearBtn.addEventListener("click", clearScan);
+
+  // Export PDF
+  const exportPdfBtn = document.getElementById("exportPdfBtn");
+  if (exportPdfBtn) exportPdfBtn.addEventListener("click", exportPDF);
+
+  // Logout
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn) logoutBtn.addEventListener("click", logout);
+
+  // Upgrade banner button
+  const upgradeBannerBtn = document.getElementById("upgradeBannerBtn");
+  if (upgradeBannerBtn) upgradeBannerBtn.addEventListener("click", () => showUpgradeModal("Pro features"));
+
+  // CVE search button
+  const cveSearchBtn = document.getElementById("cveSearchBtn");
+  if (cveSearchBtn) cveSearchBtn.addEventListener("click", fetchCVE);
+
+  // AI send button
+  const aiSendBtn = document.getElementById("aiSendBtn");
+  if (aiSendBtn) aiSendBtn.addEventListener("click", askAI);
 
   // Bind AI input Enter key
   const aiInput = document.getElementById("aiInput");
-  if (aiInput) {
-    aiInput.addEventListener("keydown", e => { if (e.key === "Enter") askAI(); });
-  }
+  if (aiInput) aiInput.addEventListener("keydown", e => { if (e.key === "Enter") askAI(); });
 
   // Bind CVE search Enter key
   const cveInput = document.getElementById("cveInput");
-  if (cveInput) {
-    cveInput.addEventListener("keydown", e => { if (e.key === "Enter") fetchCVE(); });
-  }
+  if (cveInput) cveInput.addEventListener("keydown", e => { if (e.key === "Enter") fetchCVE(); });
 
   // Bind side drawer close
   const sideClose = document.getElementById("sideClose");
-  if (sideClose) {
-    sideClose.addEventListener("click", closeSide);
-  }
+  if (sideClose) sideClose.addEventListener("click", closeSide);
 
   log("Ready", "success");
 }

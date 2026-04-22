@@ -772,13 +772,16 @@ function copyKey() {
 
 // ============================================================
 //  UTILITY
+//  FIX: guarded to avoid duplicate declarations with api.js
 // ============================================================
 function logout() {
   localStorage.clear();
   window.location.replace("login.html");
 }
 
+// Use window.escHtml if already defined by api.js (loaded first), else define it
 function escHtml(str) {
+  if (window.escHtml && window.escHtml !== escHtml) return window.escHtml(str);
   if (!str) return "";
   return String(str)
     .replace(/&/g, "&amp;")
@@ -788,6 +791,7 @@ function escHtml(str) {
 }
 
 function cvssSev(score) {
+  if (window.cvssSev && window.cvssSev !== cvssSev) return window.cvssSev(score);
   if (score == null) return "low";
   if (score >= 9) return "critical";
   if (score >= 7) return "high";
@@ -938,12 +942,14 @@ window.scan             = scan;
 window.scanRepo         = scanRepo;
 window.copyKey          = copyKey;
 window.toggleApiKey     = toggleApiKey;
+window.initApiKey       = initApiKey;   // FIX: expose so api.js rotateApiKey can call it
 window.logout           = logout;
 window.exportPDF        = exportPDF;
 window.openSide         = openSide;
 window.closeSide        = closeSide;
 window.askAI            = askAI;
-window.fetchCVE         = fetchCVE;
+// FIX: fetchCVE is defined in api.js — don't re-export an undefined ref here
+// window.fetchCVE      = fetchCVE;  ← removed
 window.toggleVuln       = toggleVuln;
 window.renderVulnerabilities = renderVulnerabilities;
 window.loadRiskChart    = loadRiskChart;

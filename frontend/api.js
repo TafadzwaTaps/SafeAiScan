@@ -180,10 +180,19 @@ async function getMe() {
 }
 
 function rotateApiKey() {
-  const newKey = crypto.randomUUID().replace(/-/g, "") + Date.now();
-  localStorage.setItem("api_key", newKey);
-  initApiKey();
-  showToast("API key rotated successfully", "success");
+  // FIX: key rotation now calls the backend, then refreshes UI via initApiKey if available
+  apiRequest("/api/auth/rotate-key", { method: "POST" })
+    .then(res => safeJson(res))
+    .then(data => {
+      const newKey = data?.api_key || data?.data?.api_key;
+      if (newKey) {
+        localStorage.setItem("api_key", newKey);
+        // initApiKey lives in app.js — call only if loaded
+        if (typeof window.initApiKey === "function") window.initApiKey();
+      }
+      showToast("API key rotated successfully", "success");
+    })
+    .catch(err => showToast("Key rotation failed: " + err.message, "error"));
 }
 
 async function fetchCVE() {
@@ -223,22 +232,29 @@ async function fetchCVE() {
   }
 }
 
-function cvssSev(score) {
-  if (score == null) return "low";
-  if (score >= 9)  return "critical";
-  if (score >= 7)  return "high";
-  if (score >= 4)  return "medium";
-  return "low";
+// FIX: guard with typeof check — app.js and minisky.js also define these helpers
+if (typeof window.cvssSev === "undefined") {
+  window.cvssSev = function cvssSev(score) {
+    if (score == null) return "low";
+    if (score >= 9)  return "critical";
+    if (score >= 7)  return "high";
+    if (score >= 4)  return "medium";
+    return "low";
+  };
 }
+function cvssSev(score) { return window.cvssSev(score); }
 
-function escHtml(str) {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+if (typeof window.escHtml === "undefined") {
+  window.escHtml = function escHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  };
 }
+function escHtml(str) { return window.escHtml(str); }
 
 // ============================================================
 //  UPGRADE PROMPT (shown on PlanError / LimitError)
@@ -280,7 +296,9 @@ function showUpgradePrompt(message) {
 
 // ============================================================
 //  TOAST NOTIFICATIONS
+//  FIX: guarded — app.js also defines showToast; only define once
 // ============================================================
+if (typeof window.showToast === "undefined")
 function showToast(message, type = "info") {
   const colors = {
     info:    "rgba(91,123,254,0.15)",

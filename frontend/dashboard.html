@@ -496,12 +496,25 @@
       return;
     }
     if (empty) empty.style.display = "none";
-    map.innerHTML = findings.map(v => `
+
+    // FIX: store findings on window so onclick data-idx lookup works safely
+    window._heatmapFindings = findings;
+    map.innerHTML = findings.map((v, i) => `
       <div class="heat-cell ${(v.severity||'low').toLowerCase()}"
            title="${escHtml(v.title || '')}"
-           onclick="openSide(${escHtml(JSON.stringify(v))})">
+           data-idx="${i}"
+           style="cursor:pointer;">
       </div>
     `).join("");
+
+    // FIX: attach listeners instead of inline onclick with raw object
+    map.querySelectorAll(".heat-cell").forEach(cell => {
+      cell.addEventListener("click", function() {
+        const idx = parseInt(this.dataset.idx, 10);
+        const item = (window._heatmapFindings || [])[idx];
+        if (item && typeof window.openSide === "function") window.openSide(item);
+      });
+    });
   }
 
   // Patch renderVulnerabilities to also update heatmap + risk chart

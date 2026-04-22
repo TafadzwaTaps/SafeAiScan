@@ -366,10 +366,10 @@ body { overflow-x: hidden; }
     </div>
 
     <div style="display:flex;gap:8px;align-items:center;">
-      <button class="btn btn-sm btn-outline-light" onclick="exportPDF()">
+      <button id="exportPdfBtn" class="btn btn-sm btn-outline-light">
         <i class="bi bi-file-earmark-pdf me-1"></i>Export PDF
       </button>
-      <button class="btn btn-sm btn-danger" onclick="logout()">
+      <button id="logoutBtn" class="btn btn-sm btn-danger">
         <i class="bi bi-box-arrow-right"></i>
       </button>
     </div>
@@ -390,7 +390,7 @@ body { overflow-x: hidden; }
           </div>
           <div style="color:var(--text-faint);">Repo scanning, full AI analysis, CVE enrichment</div>
         </div>
-        <button onclick="showUpgradeModal('Pro features')" style="
+        <button id="upgradeBannerBtn" style="
           background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;
           padding:5px 12px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;
           font-family:'DM Sans',sans-serif;white-space:nowrap;">
@@ -419,7 +419,7 @@ body { overflow-x: hidden; }
         <div class="repo-input-wrap">
           <input id="repoUrl" class="form-control form-control-sm"
                  placeholder="https://github.com/owner/repo"/>
-          <button id="repoScanBtn" class="btn btn-primary btn-sm repo-scan-btn" onclick="scanRepo()">
+          <button id="repoScanBtn" class="btn btn-primary btn-sm repo-scan-btn">
             Scan
           </button>
         </div>
@@ -435,7 +435,7 @@ body { overflow-x: hidden; }
         </div>
         <input id="cveInput" class="form-control form-control-sm mb-2"
                placeholder="CVE-2024-1337 or keyword"/>
-        <button class="btn btn-warning btn-sm w-100" onclick="fetchCVE()">
+        <button id="cveSearchBtn" class="btn btn-warning btn-sm w-100">
           <i class="bi bi-search me-1"></i>Search CVEs
         </button>
         <div id="cvePanel" class="mt-2"></div>
@@ -461,7 +461,7 @@ body { overflow-x: hidden; }
           <i class="bi bi-shield-shaded" style="color:var(--accent);margin-right:8px;"></i>
           Scan Engine
         </div>
-        <button class="btn btn-sm btn-outline-light" onclick="clearScan()">
+        <button id="clearBtn" class="btn btn-sm btn-outline-light">
           <i class="bi bi-x-circle me-1"></i>Clear
         </button>
       </div>
@@ -508,10 +508,10 @@ body { overflow-x: hidden; }
 
       <!-- Action buttons -->
       <div style="display:flex;gap:8px;margin-bottom:16px;">
-        <button class="btn btn-success flex-fill" onclick="runScan()" style="font-weight:600;height:40px;">
+        <button id="scanBtn" class="btn btn-success flex-fill" style="font-weight:600;height:40px;">
           <i class="bi bi-play-circle-fill me-2"></i>Run Full Scan
         </button>
-        <button class="btn btn-primary" onclick="runScan()" style="height:40px;">
+        <button id="aiOnlyBtn" class="btn btn-primary" style="height:40px;">
           <i class="bi bi-cpu me-1"></i>AI Only
         </button>
       </div>
@@ -591,9 +591,8 @@ body { overflow-x: hidden; }
         </div>
         <div style="position:relative;">
           <input id="aiInput" class="form-control form-control-sm"
-                 placeholder="Ask about a vulnerability…"
-                 onkeydown="if(event.key==='Enter') askAI()"/>
-          <button onclick="askAI()" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;">
+                 placeholder="Ask about a vulnerability…"/>
+          <button id="aiSendBtn" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;">
             <i class="bi bi-send-fill"></i>
           </button>
         </div>
@@ -631,7 +630,7 @@ body { overflow-x: hidden; }
       <div id="sideTitle" style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:4px;"></div>
       <div id="sideSev" style="font-size:11px;"></div>
     </div>
-    <div class="drawer-close" onclick="closeSide()">
+    <div id="sideClose" class="drawer-close">
       <i class="bi bi-x"></i>
     </div>
   </div>
