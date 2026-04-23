@@ -15,6 +15,8 @@ _PLAN_LIMITS = {
         "ai_depth":         "full",
         "repo_scan":        True,
         "team_management":  False,
+        "cve_enrichment":   True,
+        "api_access":       True,
     },
     "enterprise": {
         "daily_scans":      1000,

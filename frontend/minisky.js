@@ -17,9 +17,10 @@
 // ============================================================
 
 // ============================================================
-//  DEV MODE — set to false in production
+//  DEV MODE — false in production; set window.DEV_MODE = true BEFORE
+//  loading this script to unlock all features during testing.
 // ============================================================
-window.DEV_MODE = window.DEV_MODE !== undefined ? window.DEV_MODE : true;
+window.DEV_MODE = window.DEV_MODE !== undefined ? window.DEV_MODE : false;
 
 // ============================================================
 //  ERROR CLASSES — declared exactly once, guarded
@@ -250,14 +251,14 @@ function showUpgradeModal(featureName = "this feature") {
               letter-spacing:0.8px;text-transform:uppercase;
             ">Popular</div>
             <div style="font-size:11px;font-weight:700;color:#93aaff;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">Pro</div>
-            <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text-primary);">$29</div>
+            <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text-primary);">$8.99</div>
             <div style="font-size:10px;color:var(--text-faint);margin-bottom:12px;">/month</div>
             <div style="font-size:11px;color:var(--text-muted);text-align:left;display:flex;flex-direction:column;gap:5px;">
-              <div><i class="bi bi-check2 me-1" style="color:var(--success);"></i>200 scans/day</div>
+              <div><i class="bi bi-check2 me-1" style="color:var(--success);"></i>100 scans/day</div>
               <div><i class="bi bi-check2 me-1" style="color:var(--success);"></i>Repo scanning</div>
-              <div><i class="bi bi-check2 me-1" style="color:var(--success);"></i>Full AI analysis</div>
+              <div><i class="bi bi-check2 me-1" style="color:var(--success);"></i>Deep AI analysis</div>
               <div><i class="bi bi-check2 me-1" style="color:var(--success);"></i>CVE enrichment</div>
-              <div><i class="bi bi-check2 me-1" style="color:var(--success);"></i>5 team members</div>
+              <div><i class="bi bi-check2 me-1" style="color:var(--success);"></i>REST API access</div>
             </div>
           </div>
 
@@ -307,7 +308,7 @@ function showUpgradeModal(featureName = "this feature") {
   modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
   document.getElementById("upgradeModalClose")?.addEventListener("click", () => modal.remove());
   document.getElementById("upgradeModalLater")?.addEventListener("click", () => modal.remove());
-  document.getElementById("upgradeModalPro")?.addEventListener("click", () => { window.location.href = "index.html#pricing"; });
+  document.getElementById("upgradeModalPro")?.addEventListener("click", () => { window.location.href = "pricing.html"; });
   document.getElementById("upgradeModalEnt")?.addEventListener("click", () => { window.location.href = "enterprise.html"; });
 }
 
@@ -459,16 +460,21 @@ function clearScan() {
 }
 
 // ============================================================
-//  MAIN SCAN — defined as named function + aliased to S.runScan
+//  MAIN SCAN — Full static + AI pipeline (Pro)
 // ============================================================
 async function runScan() {
-  // DEV_MODE = false: basic scan still allowed, just no advanced features
   const code = document.getElementById("code")?.value?.trim();
   if (!code) { showToast("Paste some code to scan", "warning"); return; }
 
-  log("Starting scan…");
+  log("Starting full scan…");
   startPipeline();
   clearResults();
+
+  // Mark AI Only button as inactive
+  const aiOnlyBtn = document.getElementById("aiOnlyBtn");
+  const scanBtn   = document.getElementById("scanBtn");
+  if (scanBtn)   { scanBtn.disabled = true;   scanBtn.innerHTML   = `<span class="spinner-border spinner-border-sm me-1"></span>Scanning…`; }
+  if (aiOnlyBtn) { aiOnlyBtn.disabled = true; }
 
   try {
     const data = await analyzeCode(code);
@@ -498,7 +504,7 @@ async function runScan() {
     renderHeatmap(S.findings);
     renderAIPanel();
 
-    // CVE enrichment — gated
+    // CVE enrichment — gated to pro/enterprise
     if (canAccessFeature("cve_enrichment")) {
       enrichCVEPro(S.findings);
     }
@@ -517,7 +523,7 @@ async function runScan() {
     stopPipeline();
     log(err.message, "error");
     if (err instanceof window.PlanError) {
-      showUpgradeModal("Full AI analysis");
+      showUpgradeModal("Full scan");
     } else if (err instanceof window.LimitError) {
       showToast(err.message, "warning");
     } else {
@@ -526,11 +532,185 @@ async function runScan() {
     window.scanReport = buildReport([], null, { source: "failed_scan" });
     window.findings   = [];
     S.findings        = [];
+  } finally {
+    if (scanBtn)   { scanBtn.disabled   = false; scanBtn.innerHTML   = `<i class="bi bi-play-circle-fill me-2"></i>Run Full Scan`; }
+    if (aiOnlyBtn) { aiOnlyBtn.disabled = false; }
   }
 }
 
 // Alias on S for internal use
 S.runScan = runScan;
+
+// ============================================================
+//  AI-ONLY SCAN — Pro deep analysis mode, richer output
+// ============================================================
+async function runAIScan() {
+  const code = document.getElementById("code")?.value?.trim();
+  if (!code) { showToast("Paste some code for AI analysis", "warning"); return; }
+
+  // AI-only is a Pro feature
+  if (!canAccessFeature("advanced_ai")) {
+    showUpgradeModal("AI-Only deep analysis");
+    return;
+  }
+
+  log("Starting AI-only deep analysis…", "info");
+  startPipeline();
+  clearResults();
+
+  const aiOnlyBtn = document.getElementById("aiOnlyBtn");
+  const scanBtn   = document.getElementById("scanBtn");
+  if (aiOnlyBtn) { aiOnlyBtn.disabled = true;  aiOnlyBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Analyzing…`; }
+  if (scanBtn)   { scanBtn.disabled   = true; }
+
+  try {
+    // Use the analyze endpoint but signal AI-only mode for deeper output
+    const res = await apiRequest("/api/analyze", {
+      method: "POST",
+      body: JSON.stringify({ text: code, mode: "ai_only", depth: "full" })
+    });
+    const data = await safeJson(res);
+
+    S.aiResult = data.ai || null;
+    // In AI-only mode we trust the AI findings exclusively
+    S.findings = data.findings || [];
+
+    // Build rich AI findings from explanation if no structured findings returned
+    if (!S.findings.length && S.aiResult) {
+      const ai = S.aiResult;
+      // Parse fixes array into individual findings for richer display
+      const fixes = ai.fixes || [];
+      if (fixes.length > 0) {
+        S.findings = fixes.map((fix, i) => ({
+          title:       `AI Finding #${i + 1}`,
+          description: fix,
+          severity:    i === 0 ? "HIGH" : "MEDIUM",
+          fix:         "See AI recommendation above",
+          source:      "ai_deep"
+        }));
+      } else if (ai.explanation) {
+        S.findings = [{
+          title:       "AI Security Analysis",
+          description: ai.explanation,
+          severity:    "HIGH",
+          fix:         "Review the AI analysis for remediation guidance",
+          source:      "ai_deep"
+        }];
+      }
+    }
+
+    const report = buildReport(S.findings, S.aiResult, { source: "ai_only" });
+    window.findings   = S.findings;
+    window.aiResult   = S.aiResult;
+    window.scanReport = report;
+
+    renderResults(S.findings);
+    renderOverview(S.findings);
+    renderSeverityBars(S.findings);
+    renderHeatmap(S.findings);
+    renderAIPanelDeep(data); // Richer AI panel for Pro users
+
+    // CVE enrichment on AI findings — also gated
+    if (canAccessFeature("cve_enrichment")) {
+      enrichCVEPro(S.findings);
+    }
+
+    stopPipeline();
+    log(`AI analysis complete — ${S.findings.length} finding(s)`, S.findings.length > 0 ? "warning" : "success");
+    showToast(`AI deep analysis done — ${S.findings.length} issue(s)`, S.findings.length > 0 ? "warning" : "success");
+
+  } catch (err) {
+    stopPipeline();
+    log(err.message, "error");
+    if (err instanceof window.PlanError) {
+      showUpgradeModal("AI-Only deep analysis");
+    } else if (err instanceof window.LimitError) {
+      showToast(err.message, "warning");
+    } else {
+      showToast("AI analysis failed: " + err.message, "error");
+    }
+    S.findings = [];
+    window.findings = [];
+  } finally {
+    if (aiOnlyBtn) { aiOnlyBtn.disabled = false; aiOnlyBtn.innerHTML = `<i class="bi bi-cpu me-1"></i>AI Only`; }
+    if (scanBtn)   { scanBtn.disabled   = false; }
+  }
+}
+
+// ============================================================
+//  RICH AI PANEL — Pro mode with full detail breakdown
+// ============================================================
+function renderAIPanelDeep(data) {
+  const chat = document.getElementById("aiChat");
+  if (!chat) return;
+
+  const ai = data.ai || S.aiResult;
+  if (!ai) return;
+
+  // Clear previous
+  chat.innerHTML = "";
+
+  // Header message
+  const header = document.createElement("div");
+  header.className = "ai-msg-bot";
+  header.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+      <i class="bi bi-cpu-fill" style="color:var(--accent);font-size:16px;"></i>
+      <strong style="font-size:13px;color:var(--text-primary);">Deep AI Security Analysis</strong>
+      <span style="font-size:9px;padding:2px 7px;border-radius:99px;background:linear-gradient(135deg,rgba(91,123,254,0.25),rgba(192,38,211,0.2));color:#a5b4fc;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Pro</span>
+    </div>
+    <div style="font-size:13px;color:var(--text-muted);line-height:1.7;margin-bottom:10px;">
+      ${escHtml(ai.explanation || "Analysis complete.")}
+    </div>
+    ${ai.risk_summary ? `
+      <div style="background:rgba(244,63,94,0.08);border:1px solid rgba(244,63,94,0.2);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--danger);margin-bottom:4px;font-weight:700;">Risk Summary</div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">${escHtml(ai.risk_summary)}</div>
+      </div>` : ""}
+    ${ai.fixes && ai.fixes.length ? `
+      <div style="margin-top:10px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent);margin-bottom:8px;font-weight:700;">
+          <i class="bi bi-wrench-adjustable me-1"></i>Recommended Fixes
+        </div>
+        ${ai.fixes.map((fix, i) => `
+          <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;padding:8px 10px;
+                      background:rgba(91,123,254,0.06);border-radius:8px;border-left:3px solid var(--accent);">
+            <span style="background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:50%;
+                         width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">${i+1}</span>
+            <span style="font-size:12px;color:var(--text-muted);line-height:1.6;">${escHtml(fix)}</span>
+          </div>`).join("")}
+      </div>` : ""}
+    ${ai.severity_prediction ? `
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);">
+        <i class="bi bi-shield-exclamation" style="color:var(--warning);"></i>
+        Predicted severity: <strong style="color:var(--warning);">${escHtml(ai.severity_prediction)}</strong>
+      </div>` : ""}
+  `;
+  chat.appendChild(header);
+
+  // Compliance note if available
+  if (data.compliance || ai.compliance) {
+    const comp = data.compliance || ai.compliance;
+    const compMsg = document.createElement("div");
+    compMsg.className = "ai-msg-bot";
+    compMsg.innerHTML = `
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:#e879f9;margin-bottom:6px;font-weight:700;">
+        <i class="bi bi-clipboard-check me-1"></i>Compliance Impact
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">${escHtml(typeof comp === "string" ? comp : JSON.stringify(comp))}</div>
+    `;
+    chat.appendChild(compMsg);
+  }
+
+  // Prompt to ask follow-up
+  const hint = document.createElement("div");
+  hint.className = "ai-msg-bot";
+  hint.style.cssText = "color:var(--text-faint);font-size:11px;border:1px dashed var(--border);background:transparent;";
+  hint.innerHTML = `<i class="bi bi-chat-dots me-1" style="color:var(--accent);"></i>Ask me anything about these findings below…`;
+  chat.appendChild(hint);
+
+  chat.scrollTop = chat.scrollHeight;
+}
 
 // ============================================================
 //  REPO SCAN — plan-gated
@@ -1259,9 +1439,9 @@ async function initMinisky() {
   const scanBtn = document.getElementById("scanBtn");
   if (scanBtn) scanBtn.addEventListener("click", runScan);
 
-  // AI Only button also triggers runScan (same endpoint)
+  // AI Only button triggers dedicated deep-AI scan (Pro)
   const aiOnlyBtn = document.getElementById("aiOnlyBtn");
-  if (aiOnlyBtn) aiOnlyBtn.addEventListener("click", runScan);
+  if (aiOnlyBtn) aiOnlyBtn.addEventListener("click", runAIScan);
 
   // Bind clear button
   const clearBtn = document.getElementById("clearBtn");
@@ -1306,6 +1486,7 @@ async function initMinisky() {
 //  GLOBAL BINDINGS — defined AFTER all functions, bound once
 // ============================================================
 window.runScan          = runScan;
+window.runAIScan        = runAIScan;         // AI-only deep scan
 window.scan             = runScan;           // alias
 window.scanRepo         = scanRepo;
 window.clearScan        = clearScan;

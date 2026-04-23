@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SafeAIScan — Pricing</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+
+  <style>
+    /* ---- PAGE LAYOUT ---- */
+    .pricing-page {
+      min-height: 100vh;
+      background: var(--bg-base);
+      padding: 0 0 80px;
+    }
+
+    /* ---- TOPBAR ---- */
+    .pricing-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-1);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+
+    .nav-brand {
+      font-family: 'Syne', sans-serif;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text-primary); }
+
+    /* ---- HERO ---- */
+    .pricing-hero {
+      text-align: center;
+      padding: 72px 24px 48px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pricing-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 50% 0%, rgba(91,123,254,0.12) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 30% at 80% 50%, rgba(56,189,248,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--accent);
+      background: rgba(91,123,254,0.1);
+      border: 1px solid rgba(91,123,254,0.25);
+      padding: 4px 14px;
+      border-radius: 99px;
+      margin-bottom: 20px;
+    }
+
+    .hero-title {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--text-primary);
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+
+    .hero-title span {
+      background: linear-gradient(135deg, #5b7bfe 0%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 480px;
+      margin: 0 auto 32px;
+      line-height: 1.6;
+    }
+
+    /* ---- BILLING TOGGLE ---- */
+    .billing-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 4px 6px;
+      margin-bottom: 60px;
+    }
+
+    .billing-opt {
+      padding: 7px 18px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--text-muted);
+      border: none;
+      background: transparent;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .billing-opt.active {
+      background: var(--bg-3);
+      color: var(--text-primary);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    }
+
+    .save-badge {
+      position: absolute;
+      top: -8px;
+      right: -4px;
+      background: var(--success);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 99px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ---- PRICING GRID ---- */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      max-width: 1020px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .plan-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      position: relative;
+      transition: border-color 0.25s, transform 0.2s, box-shadow 0.25s;
+    }
+
+    .plan-card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-3px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+
+    .plan-card.featured {
+      background: linear-gradient(145deg, rgba(91,123,254,0.08), var(--bg-2));
+      border-color: rgba(91,123,254,0.45);
+      box-shadow: 0 0 0 1px rgba(91,123,254,0.2), 0 24px 80px rgba(91,123,254,0.12);
+    }
+
+    .plan-card.featured:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 0 0 1px rgba(91,123,254,0.35), 0 32px 80px rgba(91,123,254,0.2);
+    }
+
+    .plan-card.enterprise-card {
+      background: linear-gradient(145deg, rgba(192,38,211,0.06), var(--bg-2));
+      border-color: rgba(192,38,211,0.25);
+    }
+
+    /* Popular badge */
+    .popular-badge {
+      position: absolute;
+      top: -13px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #5b7bfe, #4361ee);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 4px 16px;
+      border-radius: 99px;
+      white-space: nowrap;
+      box-shadow: 0 4px 16px rgba(91,123,254,0.5);
+    }
+
+    .plan-name {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .plan-price-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+
+    .plan-price {
+      font-family: 'Syne', sans-serif;
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      color: var(--text-primary);
+    }
+
+    .plan-price-dollar {
+      font-family: 'Syne', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-muted);
+      padding-bottom: 6px;
+    }
+
+    .plan-period {
+      font-size: 13px;
+      color: var(--text-faint);
+      padding-bottom: 8px;
+    }
+
+    .plan-orig {
+      font-size: 12px;
+      color: var(--text-faint);
+      text-decoration: line-through;
+      margin-bottom: 4px;
+      min-height: 18px;
+    }
+
+    .plan-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 22px;
+      padding-bottom: 22px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* CTA button */
+    .plan-cta {
+      display: block;
+      width: 100%;
+      padding: 13px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      border: none;
+      text-align: center;
+      text-decoration: none;
+      margin-bottom: 22px;
+      transition: all 0.2s;
+    }
+
+    .cta-free {
+      background: var(--bg-3);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .cta-free:hover { border-color: var(--border-bright); color: var(--text-primary); }
+
+    .cta-pro {
+      background: linear-gradient(135deg, #5b7bfe, #4361ee);
+      color: #fff;
+      box-shadow: 0 6px 20px rgba(91,123,254,0.35);
+    }
+    .cta-pro:hover { box-shadow: 0 8px 28px rgba(91,123,254,0.5); transform: translateY(-1px); }
+
+    .cta-enterprise {
+      background: linear-gradient(135deg, rgba(192,38,211,0.15), rgba(91,123,254,0.1));
+      color: #e879f9;
+      border: 1px solid rgba(192,38,211,0.35);
+    }
+    .cta-enterprise:hover { background: linear-gradient(135deg, rgba(192,38,211,0.25), rgba(91,123,254,0.2)); }
+
+    /* Feature list */
+    .feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .feature-item i {
+      font-size: 13px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .feature-item i.check   { color: var(--success); }
+    .feature-item i.cross   { color: var(--text-faint); }
+    .feature-item i.pro-ico { color: #93aaff; }
+    .feature-item i.ent-ico { color: #e879f9; }
+
+    .feature-label {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    /* ---- COMPARISON TABLE ---- */
+    .compare-section {
+      max-width: 900px;
+      margin: 80px auto 0;
+      padding: 0 24px;
+    }
+
+    .compare-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      text-align: center;
+      margin-bottom: 32px;
+      color: var(--text-primary);
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .compare-table th {
+      font-family: 'Syne', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 12px 16px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .compare-table th.th-pro {
+      color: #93aaff;
+      background: rgba(91,123,254,0.05);
+      border-radius: 10px 10px 0 0;
+    }
+
+    .compare-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(99,130,255,0.06);
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .compare-table td:first-child {
+      text-align: left;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .compare-table tr:hover td {
+      background: rgba(91,123,254,0.03);
+    }
+
+    .td-pro { background: rgba(91,123,254,0.04); }
+
+    /* ---- FAQ ---- */
+    .faq-section {
+      max-width: 680px;
+      margin: 80px auto 0;
+      padding: 0 24px;
+    }
+
+    .faq-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      text-align: center;
+      margin-bottom: 32px;
+      color: var(--text-primary);
+    }
+
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .faq-item:hover { border-color: var(--border-bright); }
+
+    .faq-q {
+      padding: 16px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+
+    .faq-q:hover { background: var(--bg-2); }
+
+    .faq-a {
+      padding: 0 20px;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+    }
+
+    .faq-item.open .faq-a {
+      max-height: 200px;
+      padding-bottom: 16px;
+    }
+
+    .faq-chevron {
+      font-size: 12px;
+      color: var(--text-faint);
+      transition: transform 0.2s;
+    }
+
+    .faq-item.open .faq-chevron {
+      transform: rotate(180deg);
+    }
+
+    /* ---- TRUST STRIP ---- */
+    .trust-strip {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin: 72px auto 0;
+      max-width: 700px;
+      padding: 0 24px;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .trust-item i {
+      font-size: 16px;
+      color: var(--success);
+    }
+
+    @keyframes popIn {
+      from { opacity: 0; transform: translateY(16px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .plan-card { animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both; }
+    .plan-card:nth-child(1) { animation-delay: 0.05s; }
+    .plan-card:nth-child(2) { animation-delay: 0.12s; }
+    .plan-card:nth-child(3) { animation-delay: 0.19s; }
+  </style>
+</head>
+<body>
+
+<div class="pricing-page">
+
+  <!-- Nav -->
+  <nav class="pricing-nav">
+    <a href="index.html" class="nav-brand">
+      <span style="color:var(--accent);">Safe</span>AIScan
+      <span style="color:var(--border-bright);font-size:18px;margin-left:2px;">⬡</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="enterprise.html">Enterprise</a>
+      <a href="login.html" class="btn btn-sm btn-primary" style="font-size:12px;">Sign In</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="pricing-hero">
+    <div class="hero-eyebrow">
+      <i class="bi bi-lightning-charge-fill"></i>
+      Simple, Transparent Pricing
+    </div>
+    <h1 class="hero-title">
+      Security that scales<br>
+      <span>with your team</span>
+    </h1>
+    <p class="hero-sub">
+      Start free. Upgrade when you need deeper analysis, repo scanning, and full AI power.
+    </p>
+
+    <!-- Billing toggle -->
+    <div class="billing-toggle">
+      <button class="billing-opt active" id="btnMonthly" onclick="setBilling('monthly')">Monthly</button>
+      <button class="billing-opt" id="btnAnnual" onclick="setBilling('annual')" style="position:relative;">
+        Annual
+        <span class="save-badge">–20%</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Pricing Cards -->
+  <div class="pricing-grid">
+
+    <!-- FREE -->
+    <div class="plan-card">
+      <div class="plan-name">Free</div>
+      <div class="plan-orig" id="freeOrig">&nbsp;</div>
+      <div class="plan-price-row">
+        <span class="plan-price-dollar">$</span>
+        <span class="plan-price" id="freePrice">0</span>
+        <span class="plan-period">/mo</span>
+      </div>
+      <p class="plan-desc">For individuals exploring AI security scanning with no commitment.</p>
+      <a href="login.html" class="plan-cta cta-free">
+        <i class="bi bi-person me-1"></i>Get Started Free
+      </a>
+      <ul class="feature-list">
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill check"></i>
+          <span><span class="feature-label">10 scans / day</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill check"></i>
+          <span>Code snippet scanning</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill check"></i>
+          <span>Basic AI analysis</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill check"></i>
+          <span>10-item scan history</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-x-circle cross"></i>
+          <span>Repo scanning</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-x-circle cross"></i>
+          <span>Deep AI analysis</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-x-circle cross"></i>
+          <span>CVE enrichment</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-x-circle cross"></i>
+          <span>API access</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- PRO (FEATURED) -->
+    <div class="plan-card featured">
+      <div class="popular-badge"><i class="bi bi-star-fill me-1" style="font-size:9px;"></i>Most Popular</div>
+      <div class="plan-name" style="color:#93aaff;">Pro</div>
+      <div class="plan-orig" id="proOrig">&nbsp;</div>
+      <div class="plan-price-row">
+        <span class="plan-price-dollar" style="color:#93aaff;">$</span>
+        <span class="plan-price" id="proPrice" style="color:var(--text-primary);">8.99</span>
+        <span class="plan-period">/mo</span>
+      </div>
+      <p class="plan-desc">For developers and security engineers who need the full toolkit every day.</p>
+      <button class="plan-cta cta-pro" onclick="startCheckout('pro')">
+        <i class="bi bi-lightning-charge-fill me-1"></i>Upgrade to Pro
+      </button>
+      <ul class="feature-list">
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill check"></i>
+          <span><span class="feature-label">100 scans / day</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill pro-ico"></i>
+          <span><span class="feature-label">GitHub repo scanning</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill pro-ico"></i>
+          <span><span class="feature-label">Deep AI analysis + AI-Only mode</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill pro-ico"></i>
+          <span><span class="feature-label">CVE enrichment &amp; lookup</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill check"></i>
+          <span>100-item scan history</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill check"></i>
+          <span>PDF report export</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill pro-ico"></i>
+          <span>REST API access</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-x-circle cross"></i>
+          <span>Team management</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- ENTERPRISE -->
+    <div class="plan-card enterprise-card">
+      <div class="plan-name" style="color:#e879f9;">Enterprise</div>
+      <div class="plan-orig">&nbsp;</div>
+      <div class="plan-price-row">
+        <span class="plan-price" style="font-size:32px;padding-bottom:8px;">Custom</span>
+      </div>
+      <p class="plan-desc">For security teams that need unlimited scale, audit trails, and SSO.</p>
+      <a href="enterprise.html" class="plan-cta cta-enterprise">
+        <i class="bi bi-building me-1"></i>Contact Sales
+      </a>
+      <ul class="feature-list">
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill ent-ico"></i>
+          <span><span class="feature-label">Unlimited scans</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill ent-ico"></i>
+          <span><span class="feature-label">Everything in Pro</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill ent-ico"></i>
+          <span><span class="feature-label">Team management (unlimited seats)</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill ent-ico"></i>
+          <span><span class="feature-label">Audit logs</span></span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill ent-ico"></i>
+          <span>SSO / SAML</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill ent-ico"></i>
+          <span>Dedicated API rate limits</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill ent-ico"></i>
+          <span>Priority support + SLA</span>
+        </li>
+        <li class="feature-item">
+          <i class="bi bi-check-circle-fill ent-ico"></i>
+          <span>Custom integrations</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- Trust strip -->
+  <div class="trust-strip">
+    <div class="trust-item"><i class="bi bi-shield-check"></i>Cancel anytime</div>
+    <div class="trust-item"><i class="bi bi-lock-fill"></i>AES-256 encrypted</div>
+    <div class="trust-item"><i class="bi bi-arrow-counterclockwise"></i>30-day money-back</div>
+    <div class="trust-item"><i class="bi bi-credit-card"></i>No hidden fees</div>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="compare-section">
+    <div class="compare-title">Full feature comparison</div>
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th style="text-align:left;">Feature</th>
+          <th>Free</th>
+          <th class="th-pro">Pro <span style="font-weight:400;color:var(--text-faint);text-transform:none;letter-spacing:0;">— $8.99/mo</span></th>
+          <th style="color:#e879f9;">Enterprise</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Daily scans</td>
+          <td>10</td>
+          <td class="td-pro">100</td>
+          <td>Unlimited</td>
+        </tr>
+        <tr>
+          <td>Code snippet scanning</td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+          <td class="td-pro"><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+        </tr>
+        <tr>
+          <td>Basic AI analysis</td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+          <td class="td-pro"><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+        </tr>
+        <tr>
+          <td>Deep AI analysis (AI-Only mode)</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro"><i class="bi bi-check-lg" style="color:#93aaff;"></i></td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+        </tr>
+        <tr>
+          <td>GitHub repo scanning</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro"><i class="bi bi-check-lg" style="color:#93aaff;"></i></td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+        </tr>
+        <tr>
+          <td>CVE enrichment &amp; lookup</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro"><i class="bi bi-check-lg" style="color:#93aaff;"></i></td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+        </tr>
+        <tr>
+          <td>PDF report export</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro"><i class="bi bi-check-lg" style="color:#93aaff;"></i></td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+        </tr>
+        <tr>
+          <td>REST API access</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro"><i class="bi bi-check-lg" style="color:#93aaff;"></i></td>
+          <td><i class="bi bi-check-lg" style="color:var(--success);"></i></td>
+        </tr>
+        <tr>
+          <td>Scan history</td>
+          <td>10 items</td>
+          <td class="td-pro">100 items</td>
+          <td>Unlimited</td>
+        </tr>
+        <tr>
+          <td>Team management</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro"><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td><i class="bi bi-check-lg" style="color:#e879f9;"></i> Unlimited seats</td>
+        </tr>
+        <tr>
+          <td>Audit logs</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro"><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td><i class="bi bi-check-lg" style="color:#e879f9;"></i></td>
+        </tr>
+        <tr>
+          <td>SSO / SAML</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro"><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td><i class="bi bi-check-lg" style="color:#e879f9;"></i></td>
+        </tr>
+        <tr>
+          <td>Priority support</td>
+          <td><i class="bi bi-x-lg" style="color:var(--text-faint);"></i></td>
+          <td class="td-pro">Email</td>
+          <td>Dedicated + SLA</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FAQ -->
+  <div class="faq-section">
+    <div class="faq-title">Frequently asked questions</div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFAQ(this)">
+        Can I try Pro before paying?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </div>
+      <div class="faq-a">
+        Yes — we offer a 30-day money-back guarantee, no questions asked. Sign up, try every Pro feature, and if it's not for you we'll refund in full.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFAQ(this)">
+        What's the difference between Basic AI and Deep AI?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </div>
+      <div class="faq-a">
+        Basic AI gives you a summary of detected risks. Deep AI (Pro's AI-Only mode) runs a full reasoning pass over your code — it explains the attack surface, maps each finding to OWASP categories, predicts severity, lists remediation steps with code examples, and assesses compliance impact.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFAQ(this)">
+        What counts as a "scan"?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </div>
+      <div class="faq-a">
+        Each code snippet analysis or AI-Only analysis is one scan. Repo scans count as one scan regardless of repository size. Limits reset at midnight UTC.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFAQ(this)">
+        How does annual billing work?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </div>
+      <div class="faq-a">
+        Annual plans are billed once per year at a 20% discount. For Pro that's $7.19/mo (billed as $86.28/year). You can cancel before renewal for a pro-rated refund.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFAQ(this)">
+        I'm a developer testing my own app — do I need Pro?
+        <i class="bi bi-chevron-down faq-chevck"></i>
+      </div>
+      <div class="faq-a">
+        If you're a developer testing via the API or a local environment with <code>DEV_MODE</code> enabled, all features are unlocked for testing purposes. Pro is required for production access to repo scanning, deep AI, and CVE enrichment.
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFAQ(this)">
+        Can I upgrade or downgrade later?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </div>
+      <div class="faq-a">
+        Yes. Upgrades take effect immediately with prorated billing. Downgrades take effect at the next billing cycle — you keep Pro access until then.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ---- BILLING TOGGLE ----
+  const prices = {
+    monthly: { free: "0", pro: "8.99", orig: "" },
+    annual:  { free: "0", pro: "7.19", orig: "$8.99" }
+  };
+
+  function setBilling(mode) {
+    const p = prices[mode];
+    document.getElementById("freePrice").textContent = p.free;
+    document.getElementById("proPrice").textContent  = p.pro;
+    document.getElementById("proOrig").textContent   = p.orig;
+
+    document.getElementById("btnMonthly").classList.toggle("active", mode === "monthly");
+    document.getElementById("btnAnnual").classList.toggle("active",  mode === "annual");
+  }
+
+  // ---- FAQ ----
+  function toggleFAQ(btn) {
+    const item = btn.closest(".faq-item");
+    item.classList.toggle("open");
+  }
+
+  // ---- CHECKOUT ----
+  function startCheckout(plan) {
+    const token = localStorage.getItem("access_token");
+    if (!token || token === "undefined" || token === "null") {
+      // Not logged in — redirect to login, then come back
+      sessionStorage.setItem("pending_upgrade", plan);
+      window.location.href = "login.html";
+      return;
+    }
+
+    // Logged in — show toast and redirect to dashboard
+    // In a real integration this would open a Stripe checkout session
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+      position:fixed;bottom:20px;right:20px;z-index:99999;
+      background:rgba(91,123,254,0.15);color:#93aaff;
+      border:1px solid rgba(91,123,254,0.3);border-radius:10px;
+      padding:12px 18px;font-size:13px;font-family:'DM Sans',sans-serif;
+      font-weight:500;backdrop-filter:blur(12px);
+      box-shadow:0 8px 32px rgba(0,0,0,0.4);
+      animation:toastIn 0.25s ease both;max-width:320px;
+      display:flex;align-items:center;gap:10px;
+    `;
+    toast.innerHTML = `
+      <i class="bi bi-lightning-charge-fill" style="color:#5b7bfe;font-size:16px;flex-shrink:0;"></i>
+      <span>Redirecting to checkout for <strong>Pro — $8.99/mo</strong>…</span>
+    `;
+    const style = document.createElement("style");
+    style.textContent = "@keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}";
+    document.head.appendChild(style);
+    document.body.appendChild(toast);
+
+    // In production: call your backend to create a Stripe session, then redirect
+    // window.location.href = "/api/billing/checkout?plan=pro";
+    setTimeout(() => {
+      toast.remove();
+      // Fallback: back to dashboard so user can see they're still on free
+      window.location.href = "dashboard.html";
+    }, 2200);
+  }
+</script>
+
+</body>
+</html>
