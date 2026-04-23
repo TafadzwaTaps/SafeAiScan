@@ -48,15 +48,23 @@ async function apiRequest(endpoint, options = {}, retries = MAX_RETRIES) {
   const token  = getToken();
   const apiKey = getApiKey();
 
+  // FIX: only attach x-api-key when the caller explicitly opts in via options.useApiKey
+  // Sending a stale/rotated api_key on every browser request caused 403 "Invalid API key"
+  // which was previously misclassified as a PlanError, breaking all dashboard calls.
+  const sendApiKey = options.useApiKey && apiKey && apiKey !== "undefined" && apiKey !== "null";
+
   const headers = {
     "Content-Type": "application/json",
-    ...(token  && token  !== "undefined" && token  !== "null" && { "Authorization": `Bearer ${token}` }),
-    ...(apiKey && apiKey !== "undefined" && apiKey !== "null"  && { "x-api-key": apiKey }),
+    ...(token   && token  !== "undefined" && token  !== "null" && { "Authorization": `Bearer ${token}` }),
+    ...(sendApiKey && { "x-api-key": apiKey }),
     ...(options.headers || {})
   };
 
+  // Strip internal flag before passing to fetch
+  const { useApiKey: _omit, ...fetchOptions } = options;
+
   try {
-    const res = await fetch(BASE_URL + endpoint, { ...options, headers });
+    const res = await fetch(BASE_URL + endpoint, { ...fetchOptions, headers });
 
     if (res.status === 401) {
       clearAuth();
@@ -65,19 +73,35 @@ async function apiRequest(endpoint, options = {}, retries = MAX_RETRIES) {
 
     if (res.status === 403) {
       const body = await res.json().catch(() => ({}));
-      const msg = body?.detail?.error || body?.error || "Access denied";
+      const msg  = body?.detail?.error || body?.error || "Access denied";
+
+      // FIX: "Invalid API key" is an auth/credential error, NOT a plan restriction.
+      // Strip the bad key from storage and retry the request without it so the
+      // JWT-only flow takes over — no upgrade modal, no crash.
+      if (msg === "Invalid API key") {
+        console.warn("[SafeAIScan] Stale API key detected — removing from storage and retrying.");
+        localStorage.removeItem("api_key");
+        _userLimits = null;
+        localStorage.removeItem("user_limits");
+        // Retry once without the api key
+        if (retries > 0) {
+          return apiRequest(endpoint, { ...fetchOptions, headers: options.headers }, retries - 1);
+        }
+        throw new Error("API key invalid. Please rotate your key in settings.");
+      }
+
       throw new PlanError(msg);
     }
 
     if (res.status === 429) {
       const body = await res.json().catch(() => ({}));
-      const msg = body?.detail?.error || body?.error || "Usage limit reached";
+      const msg  = body?.detail?.error || body?.error || "Usage limit reached";
       throw new LimitError(msg);
     }
 
     if (!res.ok) {
       const body = await res.json().catch(() => null);
-      const msg = body?.detail?.error || body?.error || res.statusText || `HTTP ${res.status}`;
+      const msg  = body?.detail?.error || body?.error || res.statusText || `HTTP ${res.status}`;
       throw new Error(msg);
     }
 
@@ -86,10 +110,11 @@ async function apiRequest(endpoint, options = {}, retries = MAX_RETRIES) {
   } catch (err) {
     if (err instanceof PlanError || err instanceof LimitError) throw err;
     if (err.message.includes("Session expired")) throw err;
+    if (err.message.includes("API key invalid")) throw err;
 
     if (retries > 0) {
       await sleep(RETRY_DELAY_MS);
-      return apiRequest(endpoint, options, retries - 1);
+      return apiRequest(endpoint, fetchOptions, retries - 1);
     }
     throw err;
   }

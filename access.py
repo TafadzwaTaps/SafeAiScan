@@ -1,12 +1,15 @@
 from fastapi import HTTPException
 from config import DEV_MODE
 
-# Example plan feature map (keep your existing one)
+# FIX: import from plans.py so limits are defined in ONE place
+from plans import get_plan_limits
+
 PLAN_FEATURES = {
-    "free": {"scan", "basic_ai"},
-    "pro": {"scan", "basic_ai", "repo_scan", "advanced_ai"},
+    "free":       {"scan", "basic_ai"},
+    "pro":        {"scan", "basic_ai", "repo_scan", "advanced_ai"},
     "enterprise": {"scan", "basic_ai", "repo_scan", "advanced_ai", "team"},
 }
+
 
 def enforce_feature(user, feature: str):
     """
@@ -14,7 +17,7 @@ def enforce_feature(user, feature: str):
     DEV_MODE bypasses everything for testing.
     """
     if DEV_MODE:
-        return  # 🔓 unlock all features in dev
+        return  # unlock all features in dev
 
     plan = user.get("plan", "free").lower()
 
@@ -32,32 +35,24 @@ def has_feature(user, feature: str) -> bool:
     return feature in PLAN_FEATURES.get(plan, set())
 
 
-def get_ai_depth(user):
+def get_ai_depth(user) -> str:
     if DEV_MODE:
         return "full"
-
     plan = user.get("plan", "free").lower()
-    return {
-        "free": "basic",
-        "pro": "full",
-        "enterprise": "full"
-    }.get(plan, "basic")
+    # FIX: delegate to plans.py — single source of truth
+    return get_plan_limits(plan).get("ai_depth", "basic")
 
 
-def get_daily_limit(user):
+def get_daily_limit(user) -> int:
     if DEV_MODE:
-        return 10_000
-
+        return 999999
     plan = user.get("plan", "free").lower()
-    return {
-        "free": 5,
-        "pro": 100,
-        "enterprise": 1000
-    }.get(plan, 5)
+    # FIX: was hardcoded to 5/100/1000 here AND differently in plans.py (10/100/1000)
+    # Now always reads from plans.py so there's one place to change limits
+    return get_plan_limits(plan).get("daily_scans", 10)
 
 
 def within_limit(user, usage_count: int) -> bool:
     if DEV_MODE:
         return True
-
     return usage_count <= get_daily_limit(user)
