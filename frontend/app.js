@@ -55,39 +55,37 @@ async function scan() {
 }
 
 // ============================================================
-//  REPO SCAN
+//  REPO SCAN — delegates to dashboard modal (showRepoModal)
+//  which handles URL input and validation before calling scanRepoAPI
 // ============================================================
 async function scanRepo() {
-  // Check plan before even prompting
   if (!canAccessFeature("repo_scan")) {
     showUpgradePrompt("Repo scanning requires a Pro or Enterprise plan. Upgrade to unlock full repository analysis.");
     return;
   }
-
-  const repoUrl = prompt("Enter GitHub repo URL (https://github.com/user/repo):");
-  if (!repoUrl?.trim()) return;
-
-  if (!repoUrl.startsWith("https://github.com/")) {
-    showToast("Only GitHub HTTPS URLs are supported", "warning");
-    return;
-  }
-
-  setLoader(true);
-  showToast("Queuing repo scan…", "info");
-
-  try {
-    const data = await scanRepoAPI(repoUrl);
-    showToast(`Scan queued · Task: ${data.task_id}`, "success");
-    pollTask(data.task_id);
-  } catch (err) {
-    console.error(err);
-    if (err instanceof PlanError) {
-      showUpgradePrompt(err.message);
-    } else {
-      showToast("Repo scan failed: " + err.message, "error");
+  // showRepoModal is defined in the dashboard inline script
+  if (typeof window.showRepoModal === "function") {
+    window.showRepoModal();
+  } else {
+    // Fallback for non-dashboard pages (minisky context)
+    const repoUrl = prompt("Enter GitHub repo URL (https://github.com/user/repo):");
+    if (!repoUrl?.trim()) return;
+    if (!repoUrl.startsWith("https://github.com/")) {
+      showToast("Only GitHub HTTPS URLs are supported", "warning");
+      return;
     }
-  } finally {
-    setLoader(false);
+    setLoader(true);
+    showToast("Queuing repo scan…", "info");
+    try {
+      const data = await scanRepoAPI(repoUrl);
+      showToast(`Scan queued · Task: ${data.task_id}`, "success");
+      pollTask(data.task_id);
+    } catch (err) {
+      if (err instanceof PlanError) showUpgradePrompt(err.message);
+      else showToast("Repo scan failed: " + err.message, "error");
+    } finally {
+      setLoader(false);
+    }
   }
 }
 
@@ -356,8 +354,14 @@ async function loadPlan() {
       </div>
     `;
 
-    // Update locked UI based on plan
+    // Update plan in localStorage so nav gating is current
+    localStorage.setItem("user_plan", plan);
+
+    // Apply gating using fresh plan data
     applyPlanGating(plan, limits);
+
+    // Also sync dashboard nav badges if function is available
+    if (typeof window.applyNavGating === "function") window.applyNavGating(plan);
 
   } catch {
     el.innerHTML = `<span class="badge-pill sev-low"><i class="bi bi-person me-1"></i>FREE</span>`;
@@ -365,20 +369,32 @@ async function loadPlan() {
 }
 
 function applyPlanGating(plan, limits) {
-  // Repo scan button
-  const repoBtn = document.querySelector('[onclick="scanRepo()"]');
-  if (repoBtn && !limits?.repo_scan) {
-    repoBtn.classList.add("locked-feature");
-    repoBtn.title = "Requires Pro plan";
-    repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan Repo`;
-    repoBtn.style.opacity = "0.55";
+  plan = (plan || "free").toLowerCase();
+  const isPro = ["pro", "enterprise"].includes(plan);
+
+  // Repo scan button — id-based, safe
+  const repoBtn = document.getElementById("repoScanBtn");
+  if (repoBtn) {
+    if (!isPro) {
+      repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan Repo`;
+      repoBtn.style.opacity = "0.6";
+      repoBtn.title = "Requires Pro plan";
+    } else {
+      repoBtn.innerHTML = `<i class="bi bi-github me-1"></i>Scan Repo`;
+      repoBtn.style.opacity = "";
+      repoBtn.title = "";
+    }
   }
 
-  // Show upgrade sidebar section if free
-  const upgradeSection = document.querySelector(".side-label + .scan-panel");
-  if (upgradeSection && plan !== "free") {
-    upgradeSection.style.display = "none";
-  }
+  // Nav lock badges
+  const repoBadge = document.getElementById("repoLockBadge");
+  const cveBadge  = document.getElementById("cveLockBadge");
+  if (repoBadge) repoBadge.style.display = isPro ? "none" : "inline-flex";
+  if (cveBadge)  cveBadge.style.display  = isPro ? "none" : "inline-flex";
+
+  // Upgrade section visibility
+  const upgradeSection = document.getElementById("upgradeSection");
+  if (upgradeSection) upgradeSection.style.display = isPro ? "none" : "";
 }
 
 async function loadTeam() {
@@ -515,7 +531,7 @@ function renderAIInsights(data) {
     <div class="ai-box pop-in">
       <div class="ai-label">
         <i class="bi bi-cpu me-1"></i>AI Security Insights
-        ${isBasic ? `<span class="badge-pill sev-low" style="font-size:9px;margin-left:6px;">Basic</span>` : ""}
+        ${isBasic ? `<span class="badge-pill sev-low" style="font-size:9px;margin-left:6px;">Basic</span>` : `<span class="badge-pill sev-high" style="font-size:9px;margin-left:6px;background:rgba(91,123,254,0.15);color:#93aaff;border:1px solid rgba(91,123,254,0.3);">Pro</span>`}
       </div>
 
       ${explain ? `<p style="font-size:13px;color:var(--text-muted);margin-bottom:${fixes.length ? "10px" : "0"};line-height:1.55;">${escHtml(explain)}</p>` : ""}
@@ -523,9 +539,13 @@ function renderAIInsights(data) {
       ${fixes.length > 0 ? `
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-faint);margin-bottom:6px;">Recommended Actions</div>
         <div style="display:flex;flex-direction:column;gap:5px;">
-          ${fixes.map(f => `
-            <div style="display:flex;gap:8px;font-size:12px;color:var(--text-muted);">
-              <i class="bi bi-check-circle-fill" style="color:var(--success);flex-shrink:0;margin-top:2px;"></i>
+          ${fixes.map((f, i) => `
+            <div style="display:flex;gap:8px;font-size:12px;color:var(--text-muted);
+                        padding:7px 10px;background:rgba(91,123,254,0.05);border-radius:7px;
+                        border-left:2px solid var(--accent);">
+              <span style="background:var(--accent);color:#fff;font-size:9px;font-weight:700;
+                           border-radius:50%;width:16px;height:16px;display:flex;align-items:center;
+                           justify-content:center;flex-shrink:0;margin-top:1px;">${i+1}</span>
               <span>${escHtml(f)}</span>
             </div>
           `).join("")}
@@ -534,10 +554,10 @@ function renderAIInsights(data) {
 
       ${isBasic ? `
         <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
-          <a href="#" onclick="showUpgradePrompt('Get full AI-powered vulnerability analysis, actionable code fixes, and CVE mapping with Pro.')" style="
+          <a href="pricing.html" style="
             font-size:11px;color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:5px;">
             <i class="bi bi-lightning-charge"></i>
-            Upgrade to Pro for full AI analysis & fixes
+            Upgrade to Pro for deep AI analysis, CVE mapping &amp; code fixes
           </a>
         </div>
       ` : ""}
@@ -581,9 +601,13 @@ function renderSeverityTabs(data) {
 }
 
 // ============================================================
-//  CVE ENRICHMENT (background, non-blocking)
+//  CVE ENRICHMENT — Pro/Enterprise only, background, non-blocking
 // ============================================================
 async function enrichCVE(findingsList) {
+  // Only run for Pro/Enterprise
+  const plan = getUserPlan();
+  if (!["pro", "enterprise"].includes(plan)) return;
+
   for (let i = 0; i < findingsList.length && i < 5; i++) {
     const vuln = findingsList[i];
     const box  = document.getElementById(`cve-${i}`);

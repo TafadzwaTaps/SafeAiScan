@@ -300,7 +300,7 @@ function showUpgradePrompt(message) {
       </div>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">${escHtml(message)}</p>
       <div style="display:grid;gap:8px;">
-        <button onclick="window.location.href='index.html#pricing'" style="
+        <button onclick="window.location.href='pricing.html'" style="
           background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;
           padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;
           font-family:'DM Sans',sans-serif;">

@@ -891,7 +891,9 @@
 
   // ---- CHECKOUT ----
   function startCheckout(plan) {
-    const token = localStorage.getItem("access_token");
+    const billing = document.getElementById("btnAnnual")?.classList.contains("active") ? "annual" : "monthly";
+    const token   = localStorage.getItem("access_token");
+
     if (!token || token === "undefined" || token === "null") {
       // Not logged in — redirect to login, then come back
       sessionStorage.setItem("pending_upgrade", plan);
@@ -899,35 +901,7 @@
       return;
     }
 
-    // Logged in — show toast and redirect to dashboard
-    // In a real integration this would open a Stripe checkout session
-    const toast = document.createElement("div");
-    toast.style.cssText = `
-      position:fixed;bottom:20px;right:20px;z-index:99999;
-      background:rgba(91,123,254,0.15);color:#93aaff;
-      border:1px solid rgba(91,123,254,0.3);border-radius:10px;
-      padding:12px 18px;font-size:13px;font-family:'DM Sans',sans-serif;
-      font-weight:500;backdrop-filter:blur(12px);
-      box-shadow:0 8px 32px rgba(0,0,0,0.4);
-      animation:toastIn 0.25s ease both;max-width:320px;
-      display:flex;align-items:center;gap:10px;
-    `;
-    toast.innerHTML = `
-      <i class="bi bi-lightning-charge-fill" style="color:#5b7bfe;font-size:16px;flex-shrink:0;"></i>
-      <span>Redirecting to checkout for <strong>Pro — $8.99/mo</strong>…</span>
-    `;
-    const style = document.createElement("style");
-    style.textContent = "@keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}";
-    document.head.appendChild(style);
-    document.body.appendChild(toast);
-
-    // In production: call your backend to create a Stripe session, then redirect
-    // window.location.href = "/api/billing/checkout?plan=pro";
-    setTimeout(() => {
-      toast.remove();
-      // Fallback: back to dashboard so user can see they're still on free
-      window.location.href = "dashboard.html";
-    }, 2200);
+    window.location.href = `checkout.html?plan=${plan}&billing=${billing}`;
   }
 </script>
 
