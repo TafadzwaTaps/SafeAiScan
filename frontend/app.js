@@ -55,37 +55,39 @@ async function scan() {
 }
 
 // ============================================================
-//  REPO SCAN — delegates to dashboard modal (showRepoModal)
-//  which handles URL input and validation before calling scanRepoAPI
+//  REPO SCAN
 // ============================================================
 async function scanRepo() {
+  // Check plan before even prompting
   if (!canAccessFeature("repo_scan")) {
     showUpgradePrompt("Repo scanning requires a Pro or Enterprise plan. Upgrade to unlock full repository analysis.");
     return;
   }
-  // showRepoModal is defined in the dashboard inline script
-  if (typeof window.showRepoModal === "function") {
-    window.showRepoModal();
-  } else {
-    // Fallback for non-dashboard pages (minisky context)
-    const repoUrl = prompt("Enter GitHub repo URL (https://github.com/user/repo):");
-    if (!repoUrl?.trim()) return;
-    if (!repoUrl.startsWith("https://github.com/")) {
-      showToast("Only GitHub HTTPS URLs are supported", "warning");
-      return;
+
+  const repoUrl = prompt("Enter GitHub repo URL (https://github.com/user/repo):");
+  if (!repoUrl?.trim()) return;
+
+  if (!repoUrl.startsWith("https://github.com/")) {
+    showToast("Only GitHub HTTPS URLs are supported", "warning");
+    return;
+  }
+
+  setLoader(true);
+  showToast("Queuing repo scan…", "info");
+
+  try {
+    const data = await scanRepoAPI(repoUrl);
+    showToast(`Scan queued · Task: ${data.task_id}`, "success");
+    pollTask(data.task_id);
+  } catch (err) {
+    console.error(err);
+    if (err instanceof PlanError) {
+      showUpgradePrompt(err.message);
+    } else {
+      showToast("Repo scan failed: " + err.message, "error");
     }
-    setLoader(true);
-    showToast("Queuing repo scan…", "info");
-    try {
-      const data = await scanRepoAPI(repoUrl);
-      showToast(`Scan queued · Task: ${data.task_id}`, "success");
-      pollTask(data.task_id);
-    } catch (err) {
-      if (err instanceof PlanError) showUpgradePrompt(err.message);
-      else showToast("Repo scan failed: " + err.message, "error");
-    } finally {
-      setLoader(false);
-    }
+  } finally {
+    setLoader(false);
   }
 }
 
@@ -215,6 +217,7 @@ function updateUsageMeter(used, limit) {
 }
 
 function showLimitBanner() {
+  if (window.DEV_MODE) return; // never show limit banner in dev mode
   const plan = getUserPlan();
   const existing = document.getElementById("limitBanner");
   if (existing) return;
@@ -233,7 +236,7 @@ function showLimitBanner() {
       <div>
         <div style="font-size:13px;font-weight:600;color:var(--warning);">Daily scan limit reached</div>
         <div style="font-size:11px;color:var(--text-muted);">
-          ${plan === "free" ? "Free plan: 20 scans/day. " : ""}Upgrade for more scans.
+          ${plan === "free" ? "Free plan: 10 scans/day. " : ""}Upgrade for more scans.
         </div>
       </div>
     </div>
@@ -324,6 +327,30 @@ async function loadPlan() {
   const el = document.getElementById("plan");
   if (!el) return;
 
+  // DEV_MODE: force enterprise display, skip server call
+  if (window.DEV_MODE) {
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="badge-pill" style="padding:4px 10px;font-size:11px;
+          background:linear-gradient(135deg,rgba(192,38,211,0.25),rgba(91,123,254,0.2));
+          color:#e879f9;border:1px solid rgba(192,38,211,0.4);">
+          <i class="bi bi-building me-1"></i>ENTERPRISE
+        </span>
+        <span style="font-size:11px;color:var(--text-muted);">DEV MODE</span>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-faint);">
+        <i class="bi bi-bar-chart me-1"></i>Unlimited scans · All features unlocked
+      </div>
+    `;
+    const devLimits = {
+      daily_scans: 999999, repo_scan: true,
+      team_management: true, cve_enrichment: true, api_access: true
+    };
+    applyPlanGating("enterprise", devLimits);
+    if (typeof window.applyNavGating === "function") window.applyNavGating("enterprise");
+    return;
+  }
+
   try {
     const data   = await getMe();
     const plan   = (data.plan || "free").toLowerCase();
@@ -342,10 +369,10 @@ async function loadPlan() {
 
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="badge-pill ${planColors[plan] || 'sev-low'}" style="padding:4px 10px;font-size:11px;">
-          <i class="bi ${planIcons[plan] || 'bi-person'} me-1"></i>${plan.toUpperCase()}
+        <span class="badge-pill ${planColors[plan] || "sev-low"}" style="padding:4px 10px;font-size:11px;">
+          <i class="bi ${planIcons[plan] || "bi-person"} me-1"></i>${plan.toUpperCase()}
         </span>
-        <span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;" title="${escHtml(data.email || '')}">
+        <span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;" title="${escHtml(data.email || "")}">
           ${escHtml(data.email || "")}
         </span>
       </div>
@@ -354,13 +381,8 @@ async function loadPlan() {
       </div>
     `;
 
-    // Update plan in localStorage so nav gating is current
     localStorage.setItem("user_plan", plan);
-
-    // Apply gating using fresh plan data
     applyPlanGating(plan, limits);
-
-    // Also sync dashboard nav badges if function is available
     if (typeof window.applyNavGating === "function") window.applyNavGating(plan);
 
   } catch {
@@ -369,10 +391,18 @@ async function loadPlan() {
 }
 
 function applyPlanGating(plan, limits) {
+  if (window.DEV_MODE) {
+    plan   = "enterprise";
+    limits = limits || {
+      daily_scans: 999999, repo_scan: true,
+      team_management: true, cve_enrichment: true, api_access: true
+    };
+  }
+
   plan = (plan || "free").toLowerCase();
   const isPro = ["pro", "enterprise"].includes(plan);
 
-  // Repo scan button — id-based, safe
+  // Repo scan button — id-based
   const repoBtn = document.getElementById("repoScanBtn");
   if (repoBtn) {
     if (!isPro) {
@@ -392,7 +422,7 @@ function applyPlanGating(plan, limits) {
   if (repoBadge) repoBadge.style.display = isPro ? "none" : "inline-flex";
   if (cveBadge)  cveBadge.style.display  = isPro ? "none" : "inline-flex";
 
-  // Upgrade section visibility
+  // Upgrade section
   const upgradeSection = document.getElementById("upgradeSection");
   if (upgradeSection) upgradeSection.style.display = isPro ? "none" : "";
 }
@@ -531,7 +561,7 @@ function renderAIInsights(data) {
     <div class="ai-box pop-in">
       <div class="ai-label">
         <i class="bi bi-cpu me-1"></i>AI Security Insights
-        ${isBasic ? `<span class="badge-pill sev-low" style="font-size:9px;margin-left:6px;">Basic</span>` : `<span class="badge-pill sev-high" style="font-size:9px;margin-left:6px;background:rgba(91,123,254,0.15);color:#93aaff;border:1px solid rgba(91,123,254,0.3);">Pro</span>`}
+        ${isBasic ? `<span class="badge-pill sev-low" style="font-size:9px;margin-left:6px;">Basic</span>` : ""}
       </div>
 
       ${explain ? `<p style="font-size:13px;color:var(--text-muted);margin-bottom:${fixes.length ? "10px" : "0"};line-height:1.55;">${escHtml(explain)}</p>` : ""}
@@ -539,13 +569,9 @@ function renderAIInsights(data) {
       ${fixes.length > 0 ? `
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-faint);margin-bottom:6px;">Recommended Actions</div>
         <div style="display:flex;flex-direction:column;gap:5px;">
-          ${fixes.map((f, i) => `
-            <div style="display:flex;gap:8px;font-size:12px;color:var(--text-muted);
-                        padding:7px 10px;background:rgba(91,123,254,0.05);border-radius:7px;
-                        border-left:2px solid var(--accent);">
-              <span style="background:var(--accent);color:#fff;font-size:9px;font-weight:700;
-                           border-radius:50%;width:16px;height:16px;display:flex;align-items:center;
-                           justify-content:center;flex-shrink:0;margin-top:1px;">${i+1}</span>
+          ${fixes.map(f => `
+            <div style="display:flex;gap:8px;font-size:12px;color:var(--text-muted);">
+              <i class="bi bi-check-circle-fill" style="color:var(--success);flex-shrink:0;margin-top:2px;"></i>
               <span>${escHtml(f)}</span>
             </div>
           `).join("")}
@@ -554,10 +580,10 @@ function renderAIInsights(data) {
 
       ${isBasic ? `
         <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
-          <a href="pricing.html" style="
+          <a href="#" onclick="showUpgradePrompt('Get full AI-powered vulnerability analysis, actionable code fixes, and CVE mapping with Pro.')" style="
             font-size:11px;color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:5px;">
             <i class="bi bi-lightning-charge"></i>
-            Upgrade to Pro for deep AI analysis, CVE mapping &amp; code fixes
+            Upgrade to Pro for full AI analysis & fixes
           </a>
         </div>
       ` : ""}
@@ -601,13 +627,13 @@ function renderSeverityTabs(data) {
 }
 
 // ============================================================
-//  CVE ENRICHMENT — Pro/Enterprise only, background, non-blocking
+//  CVE ENRICHMENT — Pro/Enterprise + DEV_MODE, background, non-blocking
 // ============================================================
 async function enrichCVE(findingsList) {
-  // Only run for Pro/Enterprise
-  const plan = getUserPlan();
-  if (!["pro", "enterprise"].includes(plan)) return;
-
+  if (!window.DEV_MODE) {
+    const plan = getUserPlan();
+    if (!["pro", "enterprise"].includes(plan)) return;
+  }
   for (let i = 0; i < findingsList.length && i < 5; i++) {
     const vuln = findingsList[i];
     const box  = document.getElementById(`cve-${i}`);

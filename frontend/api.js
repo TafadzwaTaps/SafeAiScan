@@ -17,18 +17,35 @@ function clearAuth() {
 }
 
 // ---- PLAN HELPERS (cached from /api/me) ----
-let _userPlan = localStorage.getItem("user_plan") || "free";
+// DEV_MODE: always treat as enterprise — localStorage plan is ignored
+let _userPlan = (function() {
+  if (window.DEV_MODE) return "enterprise";
+  return localStorage.getItem("user_plan") || "free";
+})();
 let _userLimits = null;
 
 try {
-  const stored = localStorage.getItem("user_limits");
-  if (stored) _userLimits = JSON.parse(stored);
+  if (window.DEV_MODE) {
+    _userLimits = {
+      daily_scans: 999999, history_limit: 999999,
+      ai_depth: "full", repo_scan: true,
+      team_management: true, cve_enrichment: true, api_access: true
+    };
+  } else {
+    const stored = localStorage.getItem("user_limits");
+    if (stored) _userLimits = JSON.parse(stored);
+  }
 } catch {}
 
-function getUserPlan()   { return _userPlan; }
+function getUserPlan()   {
+  if (window.DEV_MODE) return "enterprise";
+  return _userPlan;
+}
 function getUserLimits() { return _userLimits; }
 
 function cachePlanData(plan, limits) {
+  // Never downgrade plan in DEV_MODE
+  if (window.DEV_MODE) return;
   _userPlan   = plan;
   _userLimits = limits;
   localStorage.setItem("user_plan", plan);
@@ -36,7 +53,19 @@ function cachePlanData(plan, limits) {
 }
 
 function canAccessFeature(feature) {
-  if (!_userLimits) return _userPlan !== "free";
+  if (window.DEV_MODE) return true;
+  const plan = getUserPlan();
+  const featureMap = {
+    repo_scan:      ["pro", "enterprise"],
+    advanced_ai:    ["pro", "enterprise"],
+    cve_enrichment: ["pro", "enterprise"],
+    api_access:     ["pro", "enterprise"],
+    team:           ["enterprise"],
+    audit_logs:     ["enterprise"],
+  };
+  if (featureMap[feature]) return featureMap[feature].includes(plan);
+  // Fallback: check limits object
+  if (!_userLimits) return plan !== "free";
   return !!_userLimits[feature];
 }
 
@@ -163,8 +192,8 @@ async function analyzeCode(text) {
     body: JSON.stringify({ text })
   });
   const data = await safeJson(res);
-  // Cache plan info returned from analyze
-  if (data.plan && data.usage_limit) {
+  // Only cache plan data in production mode
+  if (!window.DEV_MODE && data.plan && data.usage_limit) {
     cachePlanData(data.plan, null);
     document.dispatchEvent(new CustomEvent("planUpdated", { detail: data }));
   }
@@ -200,7 +229,7 @@ async function getHistory() {
 async function getMe() {
   const res = await apiRequest("/api/me");
   const data = await safeJson(res);
-  if (data?.plan) cachePlanData(data.plan, data.limits || null);
+  if (!window.DEV_MODE && data?.plan) cachePlanData(data.plan, data.limits || null);
   return data;
 }
 
@@ -300,7 +329,7 @@ function showUpgradePrompt(message) {
       </div>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">${escHtml(message)}</p>
       <div style="display:grid;gap:8px;">
-        <button onclick="window.location.href='pricing.html'" style="
+        <button onclick="window.location.href='index.html#pricing'" style="
           background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;
           padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;
           font-family:'DM Sans',sans-serif;">

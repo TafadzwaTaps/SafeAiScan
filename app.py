@@ -349,9 +349,28 @@ def rotate_api_key(auth=Depends(get_user)):
 def get_me(auth=Depends(get_user)):
     user   = auth["user"]
     org    = auth.get("org")
+    # DEV_MODE: always return enterprise plan so frontend stays unlocked
+    if DEV_MODE:
+        dev_limits = get_plan_limits("enterprise")
+        return ok({
+            "user_id":  user["id"],
+            "email":    user.get("email"),
+            "plan":     "enterprise",
+            "role":     user.get("role", "admin"),
+            "org_name": org["name"] if org else None,
+            "limits":   dev_limits,
+            "dev_mode": True
+        })
     plan   = user.get("plan", "free").lower()
-    limits = get_plan_limits(user.get("plan", "free"))
-    return ok({"user_id": user["id"], "email": user.get("email"), "plan": plan, "role": user.get("role", "member"), "org_name": org["name"] if org else None, "limits": limits})
+    limits = get_plan_limits(plan)
+    return ok({
+        "user_id":  user["id"],
+        "email":    user.get("email"),
+        "plan":     plan,
+        "role":     user.get("role", "member"),
+        "org_name": org["name"] if org else None,
+        "limits":   limits
+    })
 
 @app.get("/api/org/users")
 def get_org_users(auth=Depends(get_user)):
@@ -397,11 +416,25 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
     try:
         user   = auth["user"]
         org    = auth.get("org")
-        plan   = user.get("plan", "free").lower()
         org_id = org["id"] if org else user["id"]
+
+        # DEV_MODE: skip limit tracking, use full depth
+        if DEV_MODE:
+            findings = scan_vulnerabilities(req.text)
+            ai       = await ai_enrich(req.text, findings, depth="full")
+            sev_score = {"CRITICAL": 40, "HIGH": 25, "MEDIUM": 10, "LOW": 3}
+            score     = min(100, sum(sev_score.get(f.get("severity", "LOW"), 3) for f in findings))
+            hi_count  = sum(1 for f in findings if f.get("severity") in ("CRITICAL", "HIGH"))
+            risk      = ("CRITICAL" if hi_count >= 3 else "HIGH" if hi_count >= 1 else "MEDIUM" if findings else "LOW")
+            return ok({
+                "id": str(uuid.uuid4()), "usage_today": 0, "usage_limit": 999999,
+                "plan": "enterprise", "findings": findings, "ai": ai, "risk": risk, "score": score
+            })
+
+        plan   = user.get("plan", "free").lower()
         usage_count = track_usage(user["id"], org_id)
         if not within_limit(user, usage_count):
-            limits = get_plan_limits(user.get("plan", "free"))
+            limits = get_plan_limits(plan)
             fail(f"Daily scan limit reached ({limits['daily_scans']} scans/day)", 429)
         findings = scan_vulnerabilities(req.text)
         ai_depth = get_ai_depth(user)
@@ -413,7 +446,7 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
         analysis_id = str(uuid.uuid4())
         DB.insert_scan_history({"id": analysis_id, "user_id": user["id"], "org_id": org_id, "input_text": req.text[:500], "risk": risk, "score": score, "findings_count": len(findings), "explanation": ai.get("explanation", "")[:1000], "fixes": ai.get("fixes", []), "timestamp": datetime.now(timezone.utc).isoformat()})
         DB.write_audit_log(user["id"], "scan", org_id=org_id, resource="/api/analyze", ip_address=request.client.host, metadata={"findings": len(findings), "risk": risk})
-        limits = get_plan_limits(user.get("plan", "free"))
+        limits = get_plan_limits(plan)
         logger.info(f"Scan: user={user['id']} plan={plan} findings={len(findings)} usage={usage_count}")
         return ok({"id": analysis_id, "usage_today": usage_count, "usage_limit": limits["daily_scans"], "plan": plan, "findings": findings, "ai": ai, "risk": risk, "score": score})
     except HTTPException:

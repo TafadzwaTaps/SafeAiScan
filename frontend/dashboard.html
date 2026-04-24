@@ -219,10 +219,17 @@
 </style>
 
 <script>
-  // Auth guard — runs before render
-  const _t = localStorage.getItem("access_token");
-  if (!_t || _t === "undefined" || _t === "null") {
-    window.location.replace("login.html");
+  // ---- DEV MODE — must be set BEFORE api.js / app.js load ----
+  // true  = all Pro/Enterprise features unlocked (default for local dev)
+  // false = production gating
+  window.DEV_MODE = window.DEV_MODE !== undefined ? window.DEV_MODE : true;
+
+  // Auth guard — skip in DEV_MODE so devs can load dashboard directly
+  if (!window.DEV_MODE) {
+    const _t = localStorage.getItem("access_token");
+    if (!_t || _t === "undefined" || _t === "null") {
+      window.location.replace("login.html");
+    }
   }
 </script>
 </head>
@@ -296,7 +303,7 @@
     <a class="side-nav-item active" onclick="window.scrollTo(0,0)" style="cursor:pointer;">
       <i class="bi bi-shield-shaded"></i> Code Scanner
     </a>
-    <a class="side-nav-item" href="minisky.html" id="nav-repo">
+    <a class="side-nav-item" id="nav-repo" href="minisky.html">
       <i class="bi bi-github"></i> Repo Scanner
       <span id="repoLockBadge" class="badge-pill sev-low" style="margin-left:auto;font-size:9px;display:none;">PRO</span>
     </a>
@@ -305,7 +312,7 @@
       <span id="cveLockBadge" class="badge-pill sev-low" style="margin-left:auto;font-size:9px;display:none;">PRO</span>
     </a>
 
-    <!-- Upgrade section (hidden for paid plans) -->
+    <!-- Upgrade section — hidden for Pro/Enterprise and DEV_MODE -->
     <div id="upgradeSection">
       <div class="side-label" style="margin-top:6px;">Upgrade</div>
       <div class="scan-panel" style="margin-bottom:6px;">
@@ -485,7 +492,9 @@
 <script src="app.js"></script>
 
 <script>
-  // Heatmap update
+  // ============================================================
+  //  HEATMAP
+  // ============================================================
   function updateHeatmap(findings) {
     const map   = document.getElementById("heatmap");
     const empty = document.getElementById("heatmapEmpty");
@@ -500,15 +509,14 @@
 
     window._heatmapFindings = findings;
     map.innerHTML = findings.map((v, i) => `
-      <div class="heat-cell ${(v.severity||'low').toLowerCase()}"
-           title="${escHtml(v.title || '')}"
+      <div class="heat-cell ${(v.severity||"low").toLowerCase()}"
+           title="${escHtml(v.title || "")}"
            data-idx="${i}"
-           style="cursor:pointer;">
-      </div>
+           style="cursor:pointer;"></div>
     `).join("");
 
     map.querySelectorAll(".heat-cell").forEach(cell => {
-      cell.addEventListener("click", function() {
+      cell.addEventListener("click", function () {
         const idx  = parseInt(this.dataset.idx, 10);
         const item = (window._heatmapFindings || [])[idx];
         if (item && typeof window.openSide === "function") window.openSide(item);
@@ -518,22 +526,23 @@
 
   // Patch renderVulnerabilities to also update heatmap + risk chart
   const _origRender = window.renderVulnerabilities;
-  window.renderVulnerabilities = function(data) {
+  window.renderVulnerabilities = function (data) {
     _origRender && _origRender(data);
     const list = Array.isArray(data) ? data : (data?.findings || []);
     updateHeatmap(list);
     window.loadRiskChart && loadRiskChart(list);
   };
 
-  // ---- REPO SCAN MODAL ----
+  // ============================================================
+  //  REPO SCAN MODAL — proper UX instead of browser prompt()
+  // ============================================================
   function showRepoModal() {
     document.getElementById("repoModal")?.remove();
-
     const modal = document.createElement("div");
     modal.id = "repoModal";
     modal.style.cssText = `
       position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;
-      background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);padding:16px;
+      background:rgba(0,0,0,0.72);backdrop-filter:blur(8px);padding:16px;
     `;
     modal.innerHTML = `
       <div style="background:var(--bg-2);border:1px solid var(--border-bright);border-radius:18px;
@@ -545,21 +554,19 @@
             <i class="bi bi-github" style="color:var(--accent);margin-right:8px;"></i>Scan GitHub Repo
           </div>
           <button id="repoModalClose" style="background:var(--bg-3);border:1px solid var(--border);
-            color:var(--text-muted);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px;
-            display:flex;align-items:center;justify-content:center;">
+            color:var(--text-muted);border-radius:8px;width:30px;height:30px;cursor:pointer;
+            font-size:16px;display:flex;align-items:center;justify-content:center;">
             <i class="bi bi-x"></i>
           </button>
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">
-          Enter a public GitHub repository URL. The scanner will clone, validate and run a full security analysis.
+          Enter a public GitHub repository URL. SafeAIScan will clone, validate and run a full security analysis.
         </div>
         <div style="position:relative;margin-bottom:8px;">
           <i class="bi bi-github" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);
              color:var(--text-faint);font-size:14px;pointer-events:none;"></i>
-          <input id="repoModalInput" type="text" class="form-control"
-            style="padding-left:36px;"
-            placeholder="https://github.com/owner/repo"
-            value="https://github.com/"/>
+          <input id="repoModalInput" type="text" class="form-control" style="padding-left:36px;"
+            placeholder="https://github.com/owner/repo" value="https://github.com/"/>
         </div>
         <div style="font-size:11px;color:var(--text-faint);margin-bottom:18px;">
           <i class="bi bi-info-circle me-1"></i>Only public HTTPS GitHub repos are supported.
@@ -568,30 +575,25 @@
           <button id="repoModalScan" class="btn btn-primary flex-fill" style="height:42px;font-weight:600;">
             <i class="bi bi-play-circle me-1"></i>Start Scan
           </button>
-          <button id="repoModalCancel" class="btn btn-outline-light" style="height:42px;">
-            Cancel
-          </button>
+          <button id="repoModalCancel" class="btn btn-outline-light" style="height:42px;">Cancel</button>
         </div>
         <div id="repoModalError" style="display:none;margin-top:10px;font-size:12px;color:var(--danger);
-             padding:8px 12px;background:rgba(244,63,94,0.08);border-radius:8px;border:1px solid rgba(244,63,94,0.2);">
-        </div>
-      </div>
-    `;
+             padding:8px 12px;background:rgba(244,63,94,0.08);border-radius:8px;
+             border:1px solid rgba(244,63,94,0.2);"></div>
+      </div>`;
 
     document.body.appendChild(modal);
 
-    // Focus input, position cursor at end
     const input = document.getElementById("repoModalInput");
     if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
 
-    // Bind events
     modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
     document.getElementById("repoModalClose")?.addEventListener("click",  () => modal.remove());
     document.getElementById("repoModalCancel")?.addEventListener("click", () => modal.remove());
     document.getElementById("repoModalScan")?.addEventListener("click",   () => submitRepoScan());
-
     input?.addEventListener("keydown", e => { if (e.key === "Enter") submitRepoScan(); });
   }
+  window.showRepoModal = showRepoModal;
 
   async function submitRepoScan() {
     const input = document.getElementById("repoModalInput");
@@ -599,19 +601,11 @@
     const btn   = document.getElementById("repoModalScan");
     const url   = input?.value?.trim();
 
-    const showErr = (msg) => {
-      if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
-    };
+    const showErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; } };
 
     if (!url) { showErr("Please enter a GitHub URL."); return; }
-    if (!url.startsWith("https://github.com/")) {
-      showErr("Only https://github.com/ URLs are supported.");
-      return;
-    }
-    if (url === "https://github.com/" || url.split("/").filter(Boolean).length < 4) {
-      showErr("Please enter a full repo URL, e.g. https://github.com/owner/repo");
-      return;
-    }
+    if (!url.startsWith("https://github.com/")) { showErr("Only https://github.com/ URLs are supported."); return; }
+    if (url.split("/").filter(Boolean).length < 4) { showErr("Please enter a full repo URL: https://github.com/owner/repo"); return; }
 
     if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Queuing…`; }
     if (errEl) errEl.style.display = "none";
@@ -619,8 +613,9 @@
     try {
       const data = await scanRepoAPI(url);
       document.getElementById("repoModal")?.remove();
-      showToast(`Repo scan queued · Task: ${data.task_id || data?.data?.task_id}`, "success");
-      pollTask(data.task_id || data?.data?.task_id);
+      const taskId = data.task_id || data?.data?.task_id;
+      showToast(`Repo scan queued · Task: ${taskId}`, "success");
+      pollTask(taskId);
     } catch (err) {
       if (btn) { btn.disabled = false; btn.innerHTML = `<i class="bi bi-play-circle me-1"></i>Start Scan`; }
       if (err instanceof PlanError) {
@@ -632,66 +627,75 @@
     }
   }
 
-  // ---- PLAN GATING INIT ----
+  // ============================================================
+  //  NAV GATING — respects DEV_MODE
+  // ============================================================
+  function applyNavGating(plan) {
+    plan = (plan || "free").toLowerCase();
+    // DEV_MODE always acts as enterprise
+    if (window.DEV_MODE) plan = "enterprise";
+
+    const isPro = ["pro", "enterprise"].includes(plan);
+
+    const repoBadge = document.getElementById("repoLockBadge");
+    const cveBadge  = document.getElementById("cveLockBadge");
+    if (repoBadge) repoBadge.style.display = isPro ? "none" : "inline-flex";
+    if (cveBadge)  cveBadge.style.display  = isPro ? "none" : "inline-flex";
+
+    const repoBtn = document.getElementById("repoScanBtn");
+    if (repoBtn) {
+      if (!isPro) {
+        repoBtn.innerHTML    = `<i class="bi bi-lock me-1"></i>Scan Repo`;
+        repoBtn.style.opacity = "0.6";
+        repoBtn.title         = "Requires Pro plan";
+      } else {
+        repoBtn.innerHTML    = `<i class="bi bi-github me-1"></i>Scan Repo`;
+        repoBtn.style.opacity = "";
+        repoBtn.title         = "";
+      }
+    }
+
+    const upgradeSection = document.getElementById("upgradeSection");
+    if (upgradeSection) upgradeSection.style.display = isPro ? "none" : "";
+  }
+  window.applyNavGating = applyNavGating;
+
+  // ============================================================
+  //  BOOT — bind buttons + apply gating on DOMContentLoaded
+  // ============================================================
   document.addEventListener("DOMContentLoaded", () => {
-    // Wire buttons — no inline onclick, no fragile querySelector
+    // Wire scan action buttons via addEventListener (no fragile onclick attrs)
     document.getElementById("codeScanBtn")?.addEventListener("click",  () => scan());
     document.getElementById("exportPdfBtn")?.addEventListener("click", () => exportPDF());
 
     const repoBtn = document.getElementById("repoScanBtn");
     if (repoBtn) {
       repoBtn.addEventListener("click", () => {
-        const plan = (localStorage.getItem("user_plan") || "free").toLowerCase();
-        if (plan === "free") {
+        if (window.DEV_MODE || ["pro","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
+          showRepoModal();
+        } else {
           showUpgradePrompt("Repo scanning requires a Pro or Enterprise plan. Upgrade to unlock full repository analysis.");
-          return;
         }
-        showRepoModal();
       });
     }
 
-    // Nav CVE gating
+    // CVE nav gating
     const navCve = document.getElementById("nav-cve");
     if (navCve) {
-      navCve.addEventListener("click", (e) => {
-        const plan = (localStorage.getItem("user_plan") || "free").toLowerCase();
-        if (plan === "free") {
+      navCve.addEventListener("click", e => {
+        if (window.DEV_MODE || ["pro","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
+          window.location.href = "minisky.html";
+        } else {
           e.preventDefault();
           showUpgradePrompt("CVE Lookup requires a Pro or Enterprise plan.");
-          return;
         }
-        window.location.href = "minisky.html";
       });
     }
 
-    // Apply visual lock badges based on cached plan
-    applyNavGating(localStorage.getItem("user_plan") || "free");
+    // Apply nav gating from cached plan (will be refreshed by loadPlan() shortly)
+    const cachedPlan = window.DEV_MODE ? "enterprise" : (localStorage.getItem("user_plan") || "free");
+    applyNavGating(cachedPlan);
   });
-
-  function applyNavGating(plan) {
-    plan = (plan || "free").toLowerCase();
-    const isPro = ["pro", "enterprise"].includes(plan);
-
-    // Repo nav badge
-    const repoBadge = document.getElementById("repoLockBadge");
-    if (repoBadge) repoBadge.style.display = isPro ? "none" : "inline-flex";
-
-    // CVE nav badge
-    const cveBadge = document.getElementById("cveLockBadge");
-    if (cveBadge) cveBadge.style.display = isPro ? "none" : "inline-flex";
-
-    // Repo scan button lock state
-    const repoBtn = document.getElementById("repoScanBtn");
-    if (repoBtn && !isPro) {
-      repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan Repo`;
-      repoBtn.style.opacity = "0.6";
-      repoBtn.title = "Requires Pro plan";
-    }
-
-    // Upgrade section — hide for paid plans
-    const upgradeSection = document.getElementById("upgradeSection");
-    if (upgradeSection) upgradeSection.style.display = isPro ? "none" : "";
-  }
 </script>
 
 </body>
