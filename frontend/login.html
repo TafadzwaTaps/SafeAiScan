@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SecretScan — Login</title>
+  <title>SafeAIScan — Login</title>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
@@ -132,10 +132,10 @@
     <!-- Brand -->
     <div style="text-align:center;margin-bottom:28px;">
       <div class="login-brand">
-        <span style="color:var(--accent);">Secret</span>Scan
+        <span style="color:var(--accent);">Safe</span>AIScan
         <span style="color:var(--border-bright);font-size:20px;margin-left:2px;">⬡</span>
       </div>
-      <div class="login-tagline">Hardcoded Secrets Detection</div>
+      <div class="login-tagline">AI-Powered Security Intelligence Platform</div>
     </div>
 
     <div class="login-card">
@@ -176,15 +176,21 @@
       <div class="form-panel" id="panel-register">
 
         <div class="feature-list">
-          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> Free scan every day — no credit card</div>
-          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> Detects 25+ secret types instantly</div>
-          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> ZIP upload or GitHub repo scan</div>
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> Free 20 scans/day forever</div>
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> AI-powered vulnerability detection</div>
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> GitHub repository scanning</div>
         </div>
 
         <div class="input-wrap">
           <div class="input-label">Email</div>
           <i class="bi bi-envelope input-icon"></i>
           <input id="regEmail" type="email" class="form-control" placeholder="you@company.com" autocomplete="email">
+        </div>
+
+        <div class="input-wrap">
+          <div class="input-label">Organization</div>
+          <i class="bi bi-building input-icon"></i>
+          <input id="regOrg" type="text" class="form-control" placeholder="Acme Corp">
         </div>
 
         <div class="input-wrap">
@@ -208,7 +214,36 @@
 
       </div>
 
-      <div class="divider">secured with JWT · no card required to start</div>
+      <div id="resetPanel" style="display:none;margin-top:12px;padding:16px;background:var(--bg-1);border:1px solid var(--border);border-radius:10px;">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;font-weight:600;">
+          <i class="bi bi-key me-1"></i>Reset your password
+        </div>
+        <div class="input-wrap">
+          <i class="bi bi-envelope input-icon"></i>
+          <input id="resetEmail" type="email" class="form-control" placeholder="you@company.com" style="padding-left:36px!important;">
+        </div>
+        <div class="input-wrap">
+          <i class="bi bi-lock input-icon"></i>
+          <input id="resetOldPwd" type="password" class="form-control" placeholder="Current password" style="padding-left:36px!important;">
+        </div>
+        <div class="input-wrap">
+          <i class="bi bi-lock-fill input-icon"></i>
+          <input id="resetNewPwd" type="password" class="form-control" placeholder="New password (min 8 chars)" style="padding-left:36px!important;">
+        </div>
+        <button class="btn btn-primary w-100" onclick="doReset()" style="height:40px;font-size:13px;">
+          Reset Password
+        </button>
+        <div id="resetAlert" class="alert mt-2 d-none"></div>
+      </div>
+
+      <div style="text-align:center;margin-top:10px;">
+        <a href="#" onclick="toggleReset();return false;" id="resetLink"
+           style="color:var(--text-faint);font-size:11px;text-decoration:none;">
+          Forgot password?
+        </a>
+      </div>
+
+      <div class="divider">secured with JWT + AES-256</div>
       <div style="text-align:center;font-size:11px;color:var(--text-faint);">
         By continuing you agree to our <a href="#" style="color:var(--accent);text-decoration:none;">Terms of Service</a>
       </div>
@@ -297,13 +332,17 @@
      
       // 
       if (!res.ok || !data?.access_token) {
-          showAlert('loginAlert', raw.detail?.error || raw.detail || 'Invalid credentials');
+          const errMsg = raw?.detail?.error || raw?.detail || raw?.error || 'Invalid email or password.';
+          showAlert('loginAlert', errMsg);
             return;
           }
           
           localStorage.setItem('access_token', data.access_token);
-          localStorage.setItem('user_id', data.user_id);
+          localStorage.setItem('user_id', data.user_id || '');
+          localStorage.setItem('user_plan', data.plan || 'free');
           localStorage.setItem('is_pro', data.is_pro ? 'true' : 'false');
+          if (data.org_id) localStorage.setItem('org_id', data.org_id);
+          if (data.api_key) localStorage.setItem('api_key', data.api_key);
 
                showAlert('loginAlert', 'Login successful! Redirecting…', 'success');
                setTimeout(() => window.location.href = 'dashboard.html', 800);
@@ -317,10 +356,10 @@
 
   async function doRegister() {
     const email    = document.getElementById('regEmail')?.value?.trim();
-
+    const org_name = document.getElementById('regOrg')?.value?.trim();
     const password = document.getElementById('regPassword')?.value;
 
-    if (!email || !password) { showAlert('registerAlert', 'Please fill in all fields'); return; }
+    if (!email || !password || !org_name) { showAlert('registerAlert', 'Please fill in all fields'); return; }
     if (!email.includes('@'))  { showAlert('registerAlert', 'Enter a valid email address'); return; }
     if (password.length < 8)   { showAlert('registerAlert', 'Password must be at least 8 characters'); return; }
 
@@ -330,20 +369,31 @@
       const res  = await fetch('https://rathious-safeaiscan.hf.space/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, org_name })
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        showAlert('registerAlert', data.detail || 'Registration failed');
+        // 409 = email already registered — switch to Sign In tab automatically
+        if (res.status === 409) {
+          showAlert('registerAlert',
+            (data?.detail?.error || data?.detail || 'This email is already registered.') +
+            ' Switching to Sign In…', 'warning');
+          setTimeout(() => {
+            showTab('login');
+            document.getElementById('loginEmail').value = email;
+            document.getElementById('loginPassword').focus();
+          }, 1500);
+          return;
+        }
+        showAlert('registerAlert', data?.detail?.error || data?.detail || 'Registration failed');
         return;
       }
 
       if (data.access_token) {
         localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('user_id', data.user_id || '');
-        localStorage.setItem('is_pro', 'false'); // new users start on free
+        if (data.api_key) localStorage.setItem('api_key', data.api_key);
         showAlert('registerAlert', 'Account created! Redirecting…', 'success');
         setTimeout(() => window.location.href = 'dashboard.html', 900);
       } else {
@@ -355,6 +405,56 @@
       showAlert('registerAlert', 'Network error. Please try again.');
     } finally {
       setBtn('registerBtn', false);
+    }
+  }
+
+  function toggleReset() {
+    const panel = document.getElementById('resetPanel');
+    const link  = document.getElementById('resetLink');
+    const shown = panel.style.display !== 'none';
+    panel.style.display = shown ? 'none' : 'block';
+    link.textContent    = shown ? 'Forgot password?' : 'Cancel reset';
+    if (!shown) {
+      document.getElementById('resetEmail').value  = document.getElementById('loginEmail')?.value || '';
+    }
+  }
+
+  async function doReset() {
+    const email    = document.getElementById('resetEmail')?.value?.trim();
+    const oldPwd   = document.getElementById('resetOldPwd')?.value;
+    const newPwd   = document.getElementById('resetNewPwd')?.value;
+    if (!email || !oldPwd || !newPwd) {
+      showAlert('resetAlert', 'Please fill in all fields'); return;
+    }
+    if (newPwd.length < 8) {
+      showAlert('resetAlert', 'New password must be at least 8 characters'); return;
+    }
+
+    const btn = document.querySelector('#resetPanel .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Resetting…'; }
+
+    try {
+      const res  = await fetch('https://rathious-safeaiscan.hf.space/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, old_password: oldPwd, new_password: newPwd })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showAlert('resetAlert', data?.detail?.error || data?.detail || 'Reset failed');
+        return;
+      }
+      const token = data?.data?.access_token;
+      if (token) {
+        localStorage.setItem('access_token', token);
+        localStorage.setItem('user_id', data?.data?.user_id || '');
+      }
+      showAlert('resetAlert', 'Password reset! Redirecting…', 'success');
+      setTimeout(() => window.location.href = 'dashboard.html', 900);
+    } catch (err) {
+      showAlert('resetAlert', 'Network error. Please try again.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Reset Password'; }
     }
   }
 
