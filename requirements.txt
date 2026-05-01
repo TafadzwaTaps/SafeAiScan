@@ -1,13 +1,28 @@
-fastapi
-uvicorn[standard]
-python-multipart
-python-jose[cryptography]
-passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
-supabase
-httpx
-pydantic
-PyGithub
-reportlab
-python-dotenv
-bandit
+# SecretScan — Python dependencies
+# Install: pip install -r requirements.txt
+
+# ── Web framework ──────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0         # ASGI server
+
+# ── Auth ───────────────────────────────────────────────────────
+python-jose[cryptography]>=3.3.0  # JWT
+passlib[bcrypt]>=1.7.4            # Password hashing
+
+# ── Database ───────────────────────────────────────────────────
+supabase>=2.4.0
+
+# ── File uploads ───────────────────────────────────────────────
+python-multipart>=0.0.9           # Required for UploadFile
+
+# ── HTTP client (PayPal API calls) ────────────────────────────
+httpx>=0.27.0
+
+# ── PDF generation ─────────────────────────────────────────────
+reportlab>=4.1.0
+
+# ── Request validation ─────────────────────────────────────────
+pydantic>=2.7.0
+
+# ── Local dev only ─────────────────────────────────────────────
+python-dotenv>=1.0.0              # Auto-loads .env in development

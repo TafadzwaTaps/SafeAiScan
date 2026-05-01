@@ -3,405 +3,90 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SafeAIScan — Checkout</title>
+  <title>SecretScan — Upgrade to Pro</title>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 
-  <!-- Stripe.js — load before anything else -->
-  <script src="https://js.stripe.com/v3/"></script>
-
   <style>
-    .checkout-page {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      background: var(--bg-base);
-    }
-
-    /* ---- NAV ---- */
+    .checkout-page { min-height:100vh; display:flex; flex-direction:column; background:var(--bg-base); }
     .checkout-nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 28px;
-      height: 54px;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-1);
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      display:flex; align-items:center; justify-content:space-between;
+      padding:0 28px; height:54px; border-bottom:1px solid var(--border);
+      background:var(--bg-1); position:sticky; top:0; z-index:100;
     }
-
-    .nav-brand {
-      font-family: 'Syne', sans-serif;
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      text-decoration: none;
-      color: var(--text-primary);
-    }
-
-    .secure-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .secure-badge i { color: var(--success); }
-
-    /* ---- LAYOUT ---- */
+    .nav-brand { font-family:"Syne",sans-serif; font-size:15px; font-weight:800;
+      letter-spacing:-0.03em; text-decoration:none; color:var(--text-primary); }
+    .secure-badge { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); }
+    .secure-badge i { color:var(--success); }
     .checkout-body {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 420px;
-      gap: 0;
-      max-width: 1000px;
-      margin: 0 auto;
-      width: 100%;
-      padding: 48px 24px;
-      gap: 48px;
-      align-items: start;
+      flex:1; display:grid; grid-template-columns:1fr 400px;
+      gap:48px; max-width:960px; margin:0 auto; width:100%;
+      padding:48px 24px; align-items:start;
     }
-
-    @media (max-width: 768px) {
-      .checkout-body {
-        grid-template-columns: 1fr;
-        padding: 24px 16px;
-        gap: 24px;
-      }
-      .order-summary { order: -1; }
-    }
-
-    /* ---- ORDER SUMMARY ---- */
+    @media(max-width:768px){ .checkout-body{ grid-template-columns:1fr; padding:24px 16px; gap:24px; } .order-summary{order:-1;} }
     .order-summary {
-      background: var(--bg-2);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 24px;
-      position: sticky;
-      top: 78px;
+      background:var(--bg-2); border:1px solid var(--border); border-radius:18px; padding:24px;
+      position:sticky; top:74px;
     }
-
-    .summary-title {
-      font-family: 'Syne', sans-serif;
-      font-size: 13px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: var(--text-muted);
-      margin-bottom: 18px;
-    }
-
-    .plan-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 16px;
-    }
-
+    .summary-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); margin-bottom:18px; }
+    .plan-row { display:flex; align-items:center; gap:12px; padding-bottom:16px; border-bottom:1px solid var(--border); margin-bottom:16px; }
     .plan-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, rgba(91,123,254,0.2), rgba(56,189,248,0.1));
-      border: 1px solid rgba(91,123,254,0.35);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      color: var(--accent);
-      flex-shrink: 0;
+      width:44px; height:44px; border-radius:12px; flex-shrink:0;
+      background:linear-gradient(135deg,rgba(91,123,254,0.2),rgba(56,189,248,0.1));
+      border:1px solid rgba(91,123,254,0.35); display:flex; align-items:center; justify-content:center;
+      font-size:20px; color:var(--accent);
     }
+    .plan-name-sm { font-family:"Syne",sans-serif; font-size:15px; font-weight:800; color:var(--text-primary); }
+    .plan-sub-sm { font-size:12px; color:var(--text-muted); margin-top:2px; }
+    .price-breakdown { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+    .price-line { display:flex; justify-content:space-between; font-size:13px; color:var(--text-muted); }
+    .price-line.total { font-size:15px; font-weight:700; color:var(--text-primary); padding-top:10px; border-top:1px solid var(--border); }
+    .feature-checklist { display:flex; flex-direction:column; gap:7px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+    .feature-check { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); }
+    .feature-check i { color:var(--success); font-size:12px; flex-shrink:0; }
 
-    .plan-details { flex: 1; }
-    .plan-name-sm {
-      font-family: 'Syne', sans-serif;
-      font-size: 15px;
-      font-weight: 800;
-      color: var(--text-primary);
+    /* Payment panel */
+    .payment-panel { }
+    .form-title { font-family:"Syne",sans-serif; font-size:22px; font-weight:800; letter-spacing:-0.03em; color:var(--text-primary); margin-bottom:6px; }
+    .form-sub { font-size:13px; color:var(--text-muted); margin-bottom:28px; line-height:1.6; }
+
+    /* PayPal button */
+    .paypal-btn {
+      width:100%; padding:16px; border-radius:12px; font-size:16px; font-weight:700;
+      font-family:"DM Sans",sans-serif; cursor:pointer; border:none;
+      background:linear-gradient(135deg,#ffd140,#ffb300);
+      color:#1a1a2e; box-shadow:0 8px 24px rgba(255,179,0,0.4);
+      transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:10px;
     }
-    .plan-sub-sm { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .paypal-btn:hover:not(:disabled) { box-shadow:0 12px 32px rgba(255,179,0,0.55); transform:translateY(-1px); }
+    .paypal-btn:disabled { opacity:0.65; cursor:not-allowed; transform:none; }
+    .paypal-logo { font-size:20px; font-weight:900; font-style:italic; letter-spacing:-1px; }
+    .paypal-logo .pp-P { color:#003087; }
+    .paypal-logo .pp-ay { color:#009cde; }
+    .paypal-logo .pp-pal { color:#012169; }
 
-    .price-breakdown { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-    .price-line {
-      display: flex;
-      justify-content: space-between;
-      font-size: 13px;
-      color: var(--text-muted);
-    }
-    .price-line.total {
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--text-primary);
-      padding-top: 10px;
-      border-top: 1px solid var(--border);
-      margin-top: 4px;
-    }
+    .divider-or { display:flex; align-items:center; gap:12px; margin:20px 0; color:var(--text-faint); font-size:11px; }
+    .divider-or::before, .divider-or::after { content:""; flex:1; height:1px; background:var(--border); }
 
-    .feature-checklist {
-      display: flex;
-      flex-direction: column;
-      gap: 7px;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid var(--border);
-    }
-
-    .feature-check {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-    .feature-check i { color: var(--success); font-size: 12px; flex-shrink: 0; }
-
-    /* ---- PAYMENT FORM ---- */
-    .payment-form { }
-
-    .form-title {
-      font-family: 'Syne', sans-serif;
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      color: var(--text-primary);
-      margin-bottom: 6px;
-    }
-
-    .form-sub {
-      font-size: 13px;
-      color: var(--text-muted);
-      margin-bottom: 28px;
-    }
-
-    /* Method tabs */
-    .method-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 24px;
-    }
-
-    .method-tab {
-      flex: 1;
-      padding: 11px 8px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: var(--bg-2);
-      color: var(--text-muted);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: center;
-      transition: all 0.15s;
-      font-family: 'DM Sans', sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    }
-
-    .method-tab:hover { border-color: var(--border-bright); color: var(--text-primary); }
-
-    .method-tab.active {
-      border-color: var(--accent);
-      background: rgba(91,123,254,0.1);
-      color: #93aaff;
-      box-shadow: 0 0 0 1px rgba(91,123,254,0.2);
-    }
-
-    .method-panel { display: none; }
-    .method-panel.active { display: block; animation: panelIn 0.2s ease both; }
-
-    @keyframes panelIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    /* Stripe element wrapper */
-    .stripe-field {
-      background: var(--bg-1);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 13px 14px;
-      margin-bottom: 12px;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-
-    .stripe-field.StripeElement--focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-glow);
-    }
-
-    .field-label {
-      font-size: 11px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.7px;
-      margin-bottom: 6px;
-      font-weight: 500;
-    }
-
-    /* BLIK input */
-    .blik-wrap {
-      text-align: center;
-      padding: 8px 0;
-    }
-
-    .blik-input {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 32px;
-      font-weight: 700;
-      letter-spacing: 12px;
-      text-align: center;
-      background: var(--bg-1);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      color: var(--text-primary);
-      padding: 16px 20px;
-      width: 100%;
-      margin-bottom: 8px;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-
-    .blik-input:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-glow);
-    }
-
-    .blik-hint {
-      font-size: 12px;
-      color: var(--text-faint);
-      margin-top: 4px;
-    }
-
-    .blik-timer {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 12px;
-      color: var(--warning);
-      margin-top: 8px;
-    }
-
-    /* Submit button */
-    .pay-btn {
-      width: 100%;
-      padding: 15px;
-      border-radius: 12px;
-      font-size: 15px;
-      font-weight: 700;
-      font-family: 'DM Sans', sans-serif;
-      cursor: pointer;
-      border: none;
-      background: linear-gradient(135deg, #5b7bfe, #4361ee);
-      color: #fff;
-      box-shadow: 0 8px 24px rgba(91,123,254,0.4);
-      transition: all 0.2s;
-      margin-top: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    .pay-btn:hover:not(:disabled) {
-      box-shadow: 0 12px 32px rgba(91,123,254,0.55);
-      transform: translateY(-1px);
-    }
-
-    .pay-btn:disabled {
-      opacity: 0.65;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    /* Error / success messages */
     .pay-error {
-      display: none;
-      background: rgba(244,63,94,0.08);
-      border: 1px solid rgba(244,63,94,0.25);
-      border-radius: 10px;
-      padding: 11px 14px;
-      font-size: 13px;
-      color: var(--danger);
-      margin-top: 12px;
+      display:none; background:rgba(244,63,94,0.08); border:1px solid rgba(244,63,94,0.25);
+      border-radius:10px; padding:11px 14px; font-size:13px; color:var(--danger); margin-top:12px;
     }
+    .trust-row { display:flex; justify-content:center; gap:18px; flex-wrap:wrap; margin-top:18px; }
+    .trust-item-sm { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-faint); }
+    .trust-item-sm i { color:var(--success); font-size:11px; }
+    .powered-by { text-align:center; margin-top:14px; font-size:11px; color:var(--text-faint); display:flex; align-items:center; justify-content:center; gap:5px; }
 
-    .pay-success {
-      display: none;
-      background: rgba(52,211,153,0.08);
-      border: 1px solid rgba(52,211,153,0.25);
-      border-radius: 10px;
-      padding: 16px;
-      font-size: 13px;
-      color: var(--success);
-      margin-top: 12px;
-      text-align: center;
-    }
-
-    /* Trust row */
-    .trust-row {
-      display: flex;
-      justify-content: center;
-      gap: 18px;
-      flex-wrap: wrap;
-      margin-top: 18px;
-    }
-
-    .trust-item-sm {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      color: var(--text-faint);
-    }
-
-    .trust-item-sm i { color: var(--success); font-size: 11px; }
-
-    /* Stripe logo row */
-    .powered-by {
-      text-align: center;
-      margin-top: 14px;
-      font-size: 11px;
-      color: var(--text-faint);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-    }
-
-    /* Success screen */
-    .success-screen {
-      display: none;
-      text-align: center;
-      padding: 40px 20px;
-    }
-
+    /* Success */
+    .success-screen { display:none; text-align:center; padding:40px 20px; }
     .success-icon {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      background: rgba(52,211,153,0.12);
-      border: 2px solid rgba(52,211,153,0.4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 32px;
-      color: var(--success);
-      margin: 0 auto 20px;
-      animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
+      width:72px; height:72px; border-radius:50%; margin:0 auto 20px;
+      background:rgba(52,211,153,0.12); border:2px solid rgba(52,211,153,0.4);
+      display:flex; align-items:center; justify-content:center; font-size:32px; color:var(--success);
+      animation:popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
     }
-
-    @keyframes popIn {
-      from { opacity: 0; transform: scale(0.7); }
-      to   { opacity: 1; transform: scale(1); }
-    }
+    @keyframes popIn { from{opacity:0;transform:scale(0.7)} to{opacity:1;transform:scale(1)} }
   </style>
 </head>
 <body>
@@ -411,197 +96,58 @@
   <!-- Nav -->
   <nav class="checkout-nav">
     <a href="pricing.html" class="nav-brand">
-      <span style="color:var(--accent);">Safe</span>AIScan
+      <span style="color:var(--accent);">Secret</span>Scan
       <span style="color:var(--border-bright);font-size:16px;margin-left:2px;">⬡</span>
     </a>
     <div class="secure-badge">
-      <i class="bi bi-lock-fill"></i>
-      Secured by Stripe · TLS 1.3
+      <i class="bi bi-shield-lock-fill"></i>
+      Secured by PayPal
     </div>
   </nav>
 
-  <!-- Body -->
   <div class="checkout-body">
 
-    <!-- LEFT: Payment form -->
-    <div class="payment-form">
+    <!-- LEFT: Payment -->
+    <div class="payment-panel">
       <div id="checkoutMain">
-        <div class="form-title">Complete your order</div>
-        <p class="form-sub">Your payment is processed securely by Stripe. We never store card details.</p>
+        <div class="form-title">Upgrade to Pro</div>
+        <p class="form-sub">
+          You're one click away from unlimited secret scanning, full findings, and PDF reports.
+          Payment is processed securely by PayPal — no card details ever touch our servers.
+        </p>
 
-        <!-- Method tabs -->
-        <div class="method-tabs" id="methodTabs">
-          <button class="method-tab active" data-method="card" onclick="setMethod('card')">
-            <i class="bi bi-credit-card"></i> Card
-          </button>
-          <button class="method-tab" data-method="blik" onclick="setMethod('blik')">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/BLIK_logo.svg/200px-BLIK_logo.svg.png"
-                 height="16" alt="BLIK" style="filter:brightness(0.8) invert(0.5);">
-            BLIK
-          </button>
-          <button class="method-tab" data-method="p24" onclick="setMethod('p24')">
-            <i class="bi bi-bank"></i> Przelewy24
-          </button>
-        </div>
-
-        <!-- CARD -->
-        <div class="method-panel active" id="panel-card">
-          <div class="field-label">Email</div>
-          <div style="position:relative;margin-bottom:12px;">
-            <i class="bi bi-envelope" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);
-               color:var(--text-faint);font-size:13px;pointer-events:none;"></i>
-            <input id="emailInput" type="email" class="form-control"
-              style="padding-left:36px;"
-              placeholder="you@company.com"
-              autocomplete="email"/>
-          </div>
-
-          <div class="field-label">Cardholder name</div>
-          <div style="position:relative;margin-bottom:12px;">
-            <i class="bi bi-person" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);
-               color:var(--text-faint);font-size:13px;pointer-events:none;"></i>
-            <input id="nameInput" type="text" class="form-control"
-              style="padding-left:36px;"
-              placeholder="Jane Smith"
-              autocomplete="name"/>
-          </div>
-
-          <div class="field-label">Card details</div>
-          <div class="stripe-field" id="cardElement"></div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-            <div>
-              <div class="field-label">Expiry</div>
-              <div class="stripe-field" id="cardExpiry"></div>
-            </div>
-            <div>
-              <div class="field-label">CVC</div>
-              <div class="stripe-field" id="cardCvc"></div>
-            </div>
-          </div>
-
-          <div class="field-label">Billing country</div>
-          <div style="position:relative;margin-bottom:12px;">
-            <i class="bi bi-globe" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);
-               color:var(--text-faint);font-size:13px;pointer-events:none;"></i>
-            <select id="countryInput" class="form-control" style="padding-left:36px;">
-              <option value="PL">🇵🇱 Poland</option>
-              <option value="US">🇺🇸 United States</option>
-              <option value="GB">🇬🇧 United Kingdom</option>
-              <option value="DE">🇩🇪 Germany</option>
-              <option value="FR">🇫🇷 France</option>
-              <option value="NL">🇳🇱 Netherlands</option>
-              <option value="SE">🇸🇪 Sweden</option>
-              <option value="NO">🇳🇴 Norway</option>
-              <option value="DK">🇩🇰 Denmark</option>
-              <option value="FI">🇫🇮 Finland</option>
-              <option value="UA">🇺🇦 Ukraine</option>
-              <option value="CZ">🇨🇿 Czech Republic</option>
-              <option value="SK">🇸🇰 Slovakia</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- BLIK -->
-        <div class="method-panel" id="panel-blik">
-          <div style="background:rgba(91,123,254,0.06);border:1px solid rgba(91,123,254,0.18);
-                      border-radius:12px;padding:16px 20px;margin-bottom:16px;">
-            <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">
-              <i class="bi bi-info-circle me-1" style="color:var(--accent);"></i>How to pay with BLIK
-            </div>
-            <ol style="font-size:12px;color:var(--text-muted);padding-left:16px;margin:0;line-height:2;">
-              <li>Open your banking app</li>
-              <li>Go to BLIK and generate a 6-digit code</li>
-              <li>Enter the code below and click Pay</li>
-              <li>Confirm the payment in your app</li>
-            </ol>
-          </div>
-
-          <div class="field-label">Email</div>
-          <div style="position:relative;margin-bottom:14px;">
-            <i class="bi bi-envelope" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);
-               color:var(--text-faint);font-size:13px;pointer-events:none;"></i>
-            <input id="blikEmail" type="email" class="form-control"
-              style="padding-left:36px;"
-              placeholder="you@company.com"
-              autocomplete="email"/>
-          </div>
-
-          <div class="field-label">BLIK code</div>
-          <input id="blikCode" class="blik-input" type="text" inputmode="numeric"
-                 maxlength="6" placeholder="000000"
-                 oninput="formatBLIK(this)"/>
-          <div class="blik-hint">Enter the 6-digit code from your banking app</div>
-          <div id="blikTimer" class="blik-timer" style="display:none;">
-            <i class="bi bi-clock"></i>
-            Code expires in <span id="blikCountdown">120</span>s
-          </div>
-        </div>
-
-        <!-- PRZELEWY24 -->
-        <div class="method-panel" id="panel-p24">
-          <div style="background:rgba(52,211,153,0.05);border:1px solid rgba(52,211,153,0.15);
-                      border-radius:12px;padding:16px 20px;margin-bottom:16px;">
-            <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">
-              <i class="bi bi-info-circle me-1" style="color:var(--success);"></i>Pay via Przelewy24
-            </div>
-            <div style="font-size:12px;color:var(--text-muted);line-height:1.7;">
-              You'll be redirected to the Przelewy24 portal to complete your payment via online banking.
-              Your order will be activated within minutes of payment confirmation.
-            </div>
-          </div>
-
-          <div class="field-label">Email</div>
-          <div style="position:relative;margin-bottom:14px;">
-            <i class="bi bi-envelope" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);
-               color:var(--text-faint);font-size:13px;pointer-events:none;"></i>
-            <input id="p24Email" type="email" class="form-control"
-              style="padding-left:36px;"
-              placeholder="you@company.com"
-              autocomplete="email"/>
-          </div>
-        </div>
-
-        <!-- Pay button -->
-        <button id="payBtn" class="pay-btn" onclick="handlePayment()">
-          <i class="bi bi-lock-fill" style="font-size:13px;"></i>
-          <span id="payBtnText">Pay $8.99 / month</span>
+        <!-- PayPal button -->
+        <button class="paypal-btn" id="paypalBtn" onclick="startPayPalCheckout()">
+          <span class="paypal-logo">
+            <span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span>
+          </span>
+          Pay $9.99 / month with PayPal
         </button>
 
-        <!-- Error -->
         <div class="pay-error" id="payError"></div>
 
-        <!-- Trust -->
         <div class="trust-row">
-          <div class="trust-item-sm"><i class="bi bi-shield-check"></i> SSL Encrypted</div>
+          <div class="trust-item-sm"><i class="bi bi-shield-check"></i> Cancel anytime</div>
           <div class="trust-item-sm"><i class="bi bi-arrow-counterclockwise"></i> 30-day refund</div>
-          <div class="trust-item-sm"><i class="bi bi-x-circle"></i> Cancel anytime</div>
+          <div class="trust-item-sm"><i class="bi bi-credit-card"></i> No hidden fees</div>
         </div>
 
         <div class="powered-by">
-          <i class="bi bi-lightning-charge" style="color:var(--accent);"></i>
-          Payments powered by Stripe
+          <i class="bi bi-lock-fill" style="color:var(--accent);"></i>
+          Payments processed by PayPal — we never store card details
         </div>
       </div>
 
-      <!-- Success screen (hidden until payment) -->
+      <!-- Success screen -->
       <div class="success-screen" id="successScreen">
-        <div class="success-icon">
-          <i class="bi bi-check-lg"></i>
-        </div>
-        <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:8px;">
-          You're all set! 🎉
-        </div>
+        <div class="success-icon"><i class="bi bi-check-lg"></i></div>
+        <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:8px;">You're on Pro! 🎉</div>
         <div style="font-size:14px;color:var(--text-muted);margin-bottom:24px;line-height:1.6;">
-          Your Pro plan is now active. A confirmation has been sent to your email.
+          Your Pro plan is now active. Start scanning without limits.
         </div>
         <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:0 auto;">
           <a href="dashboard.html" class="btn btn-primary" style="font-size:14px;padding:12px;">
             <i class="bi bi-shield-shaded me-1"></i>Go to Dashboard
-          </a>
-          <a href="minisky.html" class="btn btn-outline-light" style="font-size:13px;padding:10px;">
-            <i class="bi bi-play-circle me-1"></i>Start Scanning
           </a>
         </div>
       </div>
@@ -610,522 +156,105 @@
     <!-- RIGHT: Order summary -->
     <div class="order-summary">
       <div class="summary-title">Order Summary</div>
-
       <div class="plan-row">
-        <div class="plan-icon">
-          <i class="bi bi-lightning-charge-fill"></i>
-        </div>
-        <div class="plan-details">
-          <div class="plan-name-sm">SafeAIScan Pro</div>
-          <div class="plan-sub-sm" id="summaryBillingLabel">Billed monthly</div>
+        <div class="plan-icon"><i class="bi bi-lightning-charge-fill"></i></div>
+        <div>
+          <div class="plan-name-sm">SecretScan Pro</div>
+          <div class="plan-sub-sm">Billed monthly</div>
         </div>
       </div>
-
       <div class="price-breakdown">
-        <div class="price-line">
-          <span>Pro plan</span>
-          <span id="summaryBase">$8.99</span>
-        </div>
-        <div class="price-line" id="discountLine" style="display:none;color:var(--success);">
-          <span>Annual discount (–20%)</span>
-          <span id="summaryDiscount">–$1.80</span>
-        </div>
-        <div class="price-line">
-          <span>VAT / Tax</span>
-          <span style="color:var(--text-faint);">Calculated at checkout</span>
-        </div>
-        <div class="price-line total">
-          <span>Total today</span>
-          <span id="summaryTotal">$8.99</span>
-        </div>
+        <div class="price-line"><span>Pro plan</span><span>$9.99/mo</span></div>
+        <div class="price-line"><span>VAT / Tax</span><span style="color:var(--text-faint);">Calculated at checkout</span></div>
+        <div class="price-line total"><span>Total today</span><span>$9.99</span></div>
       </div>
-
       <div class="feature-checklist">
-        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> 100 scans / day</div>
+        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> Unlimited scans</div>
+        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> All findings revealed</div>
         <div class="feature-check"><i class="bi bi-check-circle-fill"></i> GitHub repo scanning</div>
-        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> Deep AI analysis</div>
-        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> CVE enrichment</div>
-        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> REST API access</div>
-        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> PDF report export</div>
+        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> PDF report download</div>
+        <div class="feature-check"><i class="bi bi-check-circle-fill"></i> 25+ secret type detection</div>
         <div class="feature-check"><i class="bi bi-check-circle-fill"></i> 30-day money-back guarantee</div>
       </div>
     </div>
 
   </div>
-
 </div>
 
 <script>
-// ============================================================
-//  CONFIGURATION
-//  Replace STRIPE_PUBLISHABLE_KEY with your actual key from
-//  https://dashboard.stripe.com/apikeys
-// ============================================================
-const STRIPE_PK = "pk_test_REPLACE_WITH_YOUR_STRIPE_PUBLISHABLE_KEY";
-const API_BASE  = "https://rathious-safeaiscan.hf.space";
+  const API_BASE = "https://rathious-safeaiscan.hf.space";
 
-// ---- READ QUERY PARAMS ----
-const params   = new URLSearchParams(window.location.search);
-const PLAN     = params.get("plan")    || "pro";
-const BILLING  = params.get("billing") || "monthly";
-
-// Price config
-const PRICES = {
-  monthly: { amount: 8.99,  label: "$8.99",  total: "$8.99",  period: "Billed monthly" },
-  annual:  { amount: 86.28, label: "$7.19",  total: "$86.28", period: "Billed annually ($86.28/year)" }
-};
-
-const priceConfig = PRICES[BILLING] || PRICES.monthly;
-
-// ---- INIT STRIPE ----
-let stripe, cardNumber, cardExpiry, cardCvc;
-
-function initStripe() {
-  // Guard: if key hasn't been replaced, show a friendly setup message
-  if (STRIPE_PK.includes("REPLACE_WITH_YOUR")) {
-    document.getElementById("checkoutMain").innerHTML = `
-      <div style="text-align:center;padding:40px 20px;">
-        <div style="font-size:40px;margin-bottom:16px;">🔧</div>
-        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text-primary);margin-bottom:10px;">
-          Stripe Setup Required
-        </div>
-        <div style="font-size:13px;color:var(--text-muted);line-height:1.7;max-width:360px;margin:0 auto 20px;">
-          To enable payments, replace <code style="color:var(--accent);">STRIPE_PUBLISHABLE_KEY</code>
-          in <code style="color:var(--accent);">checkout.html</code> with your key from the
-          <a href="https://dashboard.stripe.com/apikeys" target="_blank" style="color:var(--accent);">Stripe dashboard</a>.
-        </div>
-        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;
-                    padding:16px;font-size:12px;color:var(--text-muted);text-align:left;
-                    font-family:'JetBrains Mono',monospace;max-width:400px;margin:0 auto;">
-          <div style="color:var(--text-faint);margin-bottom:6px;">// checkout.html line ~178</div>
-          const STRIPE_PK = <span style="color:var(--success);">"pk_live_..."</span>;
-        </div>
-        <div style="margin-top:24px;font-size:12px;color:var(--text-faint);">
-          Also create a Price object in Stripe and wire up the
-          <code style="color:var(--accent);">/api/billing/create-session</code> backend endpoint.
-        </div>
-        <a href="pricing.html" style="display:inline-block;margin-top:20px;font-size:13px;color:var(--accent);">
-          ← Back to pricing
-        </a>
-      </div>`;
-    return;
-  }
-
-  try {
-    stripe = Stripe(STRIPE_PK);
-    const elements = stripe.elements({
-      appearance: {
-        theme: "night",
-        variables: {
-          colorPrimary: "#5b7bfe",
-          colorBackground: "#0b1120",
-          colorText: "#e8edf8",
-          colorDanger: "#f43f5e",
-          fontFamily: "DM Sans, system-ui, sans-serif",
-          borderRadius: "8px",
-        }
-      }
-    });
-
-    cardNumber = elements.create("cardNumber", { style: stripeStyle() });
-    cardExpiry = elements.create("cardExpiry", { style: stripeStyle() });
-    cardCvc    = elements.create("cardCvc",    { style: stripeStyle() });
-
-    cardNumber.mount("#cardElement");
-    cardExpiry.mount("#cardExpiry");
-    cardCvc.mount("#cardCvc");
-
-    // Add focus/blur styling to wrappers
-    [
-      { el: cardNumber, id: "cardElement" },
-      { el: cardExpiry, id: "cardExpiry" },
-      { el: cardCvc,    id: "cardCvc" }
-    ].forEach(({ el, id }) => {
-      el.on("focus", () => document.getElementById(id)?.classList.add("focused"));
-      el.on("blur",  () => document.getElementById(id)?.classList.remove("focused"));
-    });
-
-  } catch (e) {
-    console.error("Stripe init failed:", e);
-    showError("Payment system unavailable. Please try again later.");
-  }
-}
-
-function stripeStyle() {
-  return {
-    base: {
-      color: "#e8edf8",
-      fontFamily: "'DM Sans', system-ui, sans-serif",
-      fontSize: "14px",
-      fontSmoothing: "antialiased",
-      "::placeholder": { color: "#3f5273" },
-    },
-    invalid: { color: "#f43f5e", iconColor: "#f43f5e" }
-  };
-}
-
-// ---- UPDATE SUMMARY ----
-function updateSummary() {
-  const p = PRICES[BILLING] || PRICES.monthly;
-  const el = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
-  el("summaryBase",         p.label + "/mo");
-  el("summaryTotal",        p.total + (BILLING === "annual" ? "/yr" : "/mo"));
-  el("summaryBillingLabel", p.period);
-  el("payBtnText",          `Pay ${p.total} ${BILLING === "annual" ? "/ year" : "/ month"}`);
-
-  const dl = document.getElementById("discountLine");
-  if (dl) dl.style.display = BILLING === "annual" ? "flex" : "none";
-}
-
-// ---- METHOD SWITCHER ----
-let currentMethod = "card";
-
-function setMethod(method) {
-  currentMethod = method;
-  document.querySelectorAll(".method-tab").forEach(t => {
-    t.classList.toggle("active", t.dataset.method === method);
-  });
-  document.querySelectorAll(".method-panel").forEach(p => {
-    p.classList.toggle("active", p.id === `panel-${method}`);
-  });
-  clearError();
-
-  const payBtnText = document.getElementById("payBtnText");
-  const p = PRICES[BILLING] || PRICES.monthly;
-  if (method === "p24") {
-    payBtnText.textContent = `Continue to Przelewy24`;
-  } else if (method === "blik") {
-    payBtnText.textContent = `Pay with BLIK`;
-  } else {
-    payBtnText.textContent = `Pay ${p.total} ${BILLING === "annual" ? "/ year" : "/ month"}`;
-  }
-}
-
-// ---- BLIK FORMATTING ----
-let blikTimer = null;
-
-function formatBLIK(input) {
-  let v = input.value.replace(/\D/g, "").substring(0, 6);
-  input.value = v;
-  if (v.length === 6) startBlikTimer();
-}
-
-function startBlikTimer() {
-  clearInterval(blikTimer);
-  let t = 120;
-  const el   = document.getElementById("blikCountdown");
-  const wrap = document.getElementById("blikTimer");
-  if (wrap) wrap.style.display = "inline-flex";
-  blikTimer = setInterval(() => {
-    t--;
-    if (el) el.textContent = t;
-    if (t <= 0) {
-      clearInterval(blikTimer);
-      if (wrap) wrap.style.display = "none";
-      const codeInput = document.getElementById("blikCode");
-      if (codeInput) { codeInput.value = ""; codeInput.focus(); }
-      showError("BLIK code expired. Please generate a new one.");
+  // Check for PayPal return (success/cancel query params)
+  (function checkReturn() {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("upgraded") === "1") {
+      localStorage.setItem("is_pro", "true");
+      showSuccess();
+    } else if (p.get("cancelled") === "1") {
+      showError("Payment was cancelled. No charge was made.");
     }
-  }, 1000);
-}
+  })();
 
-// ---- PAYMENT HANDLER ----
-async function handlePayment() {
-  clearError();
-  const btn = document.getElementById("payBtn");
-  const token = localStorage.getItem("access_token");
-
-  // Require login
-  if (!token || token === "undefined" || token === "null") {
-    sessionStorage.setItem("pending_upgrade", PLAN);
-    window.location.href = "login.html";
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    if (currentMethod === "card") {
-      await handleCardPayment(token);
-    } else if (currentMethod === "blik") {
-      await handleBlikPayment(token);
-    } else if (currentMethod === "p24") {
-      await handleP24Payment(token);
-    }
-  } catch (err) {
-    console.error("Payment error:", err);
-    showError(err.message || "Payment failed. Please try again.");
-    setLoading(false);
-  }
-}
-
-async function handleCardPayment(token) {
-  if (!stripe || !cardNumber) {
-    throw new Error("Payment system not loaded. Please refresh the page.");
-  }
-
-  const email = document.getElementById("emailInput")?.value?.trim();
-  const name  = document.getElementById("nameInput")?.value?.trim();
-
-  if (!email || !email.includes("@")) throw new Error("Please enter a valid email address.");
-  if (!name) throw new Error("Please enter the cardholder name.");
-
-  // 1. Create a PaymentIntent on your backend
-  const session = await createPaymentSession({ method: "card", email, billing: BILLING });
-
-  // 2. Confirm the card payment with Stripe.js
-  const { error, paymentIntent } = await stripe.confirmCardPayment(session.client_secret, {
-    payment_method: {
-      card: cardNumber,
-      billing_details: { name, email }
-    }
-  });
-
-  if (error) throw new Error(error.message);
-  if (paymentIntent.status === "succeeded") {
-    await activatePlan(token, paymentIntent.id);
-    showSuccess();
-  } else {
-    throw new Error("Payment was not completed. Please try again.");
-  }
-}
-
-async function handleBlikPayment(token) {
-  if (!stripe) throw new Error("Payment system not loaded. Please refresh the page.");
-
-  const email = document.getElementById("blikEmail")?.value?.trim();
-  const code  = document.getElementById("blikCode")?.value?.trim();
-
-  if (!email || !email.includes("@")) throw new Error("Please enter a valid email address.");
-  if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
-    throw new Error("Please enter a valid 6-digit BLIK code.");
-  }
-
-  // Create PaymentIntent with BLIK
-  const session = await createPaymentSession({ method: "blik", email, billing: BILLING });
-
-  const { error, paymentIntent } = await stripe.confirmBlikPayment(session.client_secret, {
-    payment_method: {
-      blik: {},
-      billing_details: { email }
-    },
-    payment_method_options: {
-      blik: { code }
-    }
-  });
-
-  if (error) throw new Error(error.message);
-
-  // BLIK requires user confirmation in bank app — poll for completion
-  if (paymentIntent.status === "requires_action" || paymentIntent.status === "processing") {
-    await pollBlikConfirmation(token, paymentIntent.id);
-  } else if (paymentIntent.status === "succeeded") {
-    await activatePlan(token, paymentIntent.id);
-    showSuccess();
-  } else {
-    throw new Error("BLIK payment was not completed. Please try again.");
-  }
-}
-
-async function handleP24Payment(token) {
-  if (!stripe) throw new Error("Payment system not loaded. Please refresh the page.");
-
-  const email = document.getElementById("p24Email")?.value?.trim();
-  if (!email || !email.includes("@")) throw new Error("Please enter a valid email address.");
-
-  // Create PaymentIntent with P24
-  const session = await createPaymentSession({ method: "p24", email, billing: BILLING });
-
-  const { error } = await stripe.confirmP24Payment(session.client_secret, {
-    payment_method: {
-      p24: { bank: "ing" },
-      billing_details: { email }
-    },
-    return_url: `${window.location.origin}/checkout.html?success=1&plan=${PLAN}`
-  });
-
-  // confirmP24Payment redirects — if we reach here, there was an error
-  if (error) throw new Error(error.message);
-}
-
-// ---- BACKEND CALLS ----
-async function createPaymentSession({ method, email, billing }) {
-  const res = await fetch(`${API_BASE}/api/billing/create-session`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${localStorage.getItem("access_token") || ""}`
-    },
-    body: JSON.stringify({ plan: PLAN, billing, payment_method: method, email })
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.detail || body?.error || "Failed to create payment session.");
-  }
-
-  return res.json();
-}
-
-async function activatePlan(token, paymentIntentId) {
-  try {
-    const res = await fetch(`${API_BASE}/api/billing/activate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({ plan: PLAN, payment_intent_id: paymentIntentId })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.plan) localStorage.setItem("user_plan", data.plan);
-    }
-  } catch (e) {
-    // Non-fatal — plan will be activated via webhook
-    console.warn("Activate plan call failed, relying on webhook:", e);
-  }
-}
-
-async function pollBlikConfirmation(token, paymentIntentId) {
-  // Poll for up to 2 minutes (BLIK requires user action in their banking app)
-  const MAX = 48; // 48 × 2.5s = 2 min
-  let attempts = 0;
-
-  return new Promise((resolve, reject) => {
-    const iv = setInterval(async () => {
-      attempts++;
-      if (attempts > MAX) {
-        clearInterval(iv);
-        reject(new Error("BLIK confirmation timed out. Please check your banking app and try again."));
-        return;
-      }
-
-      try {
-        const res = await fetch(`${API_BASE}/api/billing/payment-status?payment_intent=${paymentIntentId}`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        const data = await res.json();
-
-        if (data?.status === "succeeded") {
-          clearInterval(iv);
-          await activatePlan(token, paymentIntentId);
-          showSuccess();
-          resolve();
-        } else if (data?.status === "requires_payment_method" || data?.status === "canceled") {
-          clearInterval(iv);
-          reject(new Error("BLIK payment was declined or cancelled. Please try again."));
-        }
-        // Otherwise keep polling (processing / requires_action)
-      } catch (e) {
-        clearInterval(iv);
-        reject(e);
-      }
-    }, 2500);
-  });
-}
-
-// ---- UI HELPERS ----
-function setLoading(loading) {
-  const btn  = document.getElementById("payBtn");
-  const text = document.getElementById("payBtnText");
-  if (!btn) return;
-  btn.disabled = loading;
-  if (loading) {
-    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Processing…`;
-  } else {
-    const p = PRICES[BILLING] || PRICES.monthly;
-    btn.innerHTML = `<i class="bi bi-lock-fill" style="font-size:13px;"></i>
-      <span id="payBtnText">Pay ${p.total} ${BILLING === "annual" ? "/ year" : "/ month"}</span>`;
-    setMethod(currentMethod);
-  }
-}
-
-function showError(msg) {
-  const el = document.getElementById("payError");
-  if (!el) return;
-  el.innerHTML = `<i class="bi bi-exclamation-circle me-1"></i>${msg}`;
-  el.style.display = "block";
-  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-function clearError() {
-  const el = document.getElementById("payError");
-  if (el) el.style.display = "none";
-}
-
-function showSuccess() {
-  setLoading(false);
-  document.getElementById("checkoutMain").style.display = "none";
-  document.getElementById("successScreen").style.display = "block";
-
-  // Update cached plan
-  localStorage.setItem("user_plan", "pro");
-
-  // Confetti-style dots for fun
-  for (let i = 0; i < 20; i++) {
-    setTimeout(() => spawnConfettiDot(), i * 60);
-  }
-}
-
-function spawnConfettiDot() {
-  const dot = document.createElement("div");
-  const colors = ["#5b7bfe","#34d399","#38bdf8","#e879f9","#fb923c"];
-  dot.style.cssText = `
-    position:fixed;
-    left:${20 + Math.random() * 60}vw;
-    top:-10px;
-    width:${6 + Math.random() * 8}px;
-    height:${6 + Math.random() * 8}px;
-    border-radius:${Math.random() > 0.5 ? "50%" : "2px"};
-    background:${colors[Math.floor(Math.random() * colors.length)]};
-    pointer-events:none;
-    z-index:99999;
-    animation:confettiFall ${1.2 + Math.random() * 1.5}s ease-in forwards;
-  `;
-  const style = document.getElementById("confettiStyle");
-  if (!style) {
-    const s = document.createElement("style");
-    s.id = "confettiStyle";
-    s.textContent = `@keyframes confettiFall {
-      0%   { transform:translateY(0) rotate(0deg);   opacity:1; }
-      100% { transform:translateY(100vh) rotate(720deg); opacity:0; }
-    }`;
-    document.head.appendChild(s);
-  }
-  document.body.appendChild(dot);
-  setTimeout(() => dot.remove(), 3000);
-}
-
-// ---- CHECK FOR P24 RETURN ----
-function checkP24Return() {
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get("success") === "1") {
+  async function startPayPalCheckout() {
     const token = localStorage.getItem("access_token");
-    const piId  = urlParams.get("payment_intent");
-    if (token && piId) activatePlan(token, piId);
-    showSuccess();
+    if (!token || token === "undefined") {
+      // Not logged in — go to login first
+      sessionStorage.setItem("pending_upgrade", "pro");
+      window.location.href = "login.html";
+      return;
+    }
+
+    const btn = document.getElementById("paypalBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Connecting to PayPal…`;
+    clearError();
+
+    try {
+      const res = await fetch(API_BASE + "/payment/create", {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      const body = await res.json();
+
+      if (!res.ok) {
+        throw new Error(body?.detail?.error || body?.error || `Error ${res.status}`);
+      }
+
+      const approveUrl = body?.data?.approve_url || body?.approve_url;
+      if (!approveUrl) throw new Error("PayPal did not return a payment URL. Please try again.");
+
+      // Redirect user to PayPal to approve payment
+      window.location.href = approveUrl;
+
+    } catch (err) {
+      btn.disabled = false;
+      btn.innerHTML = `
+        <span class="paypal-logo">
+          <span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span>
+        </span>
+        Pay $9.99 / month with PayPal`;
+      showError(err.message || "Payment failed. Please try again.");
+    }
   }
-}
 
-// ---- BOOT ----
-document.addEventListener("DOMContentLoaded", () => {
-  updateSummary();
-  initStripe();
-  checkP24Return();
+  function showError(msg) {
+    const el = document.getElementById("payError");
+    if (el) { el.innerHTML = `<i class="bi bi-exclamation-circle me-1"></i>${msg}`; el.style.display = "block"; }
+  }
 
-  // Pre-fill email from localStorage
-  const storedEmail = localStorage.getItem("user_email") || "";
-  ["emailInput","blikEmail","p24Email"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el && storedEmail) el.value = storedEmail;
-  });
+  function clearError() {
+    const el = document.getElementById("payError");
+    if (el) el.style.display = "none";
+  }
 
-  // Enter key on BLIK submits
-  document.getElementById("blikCode")?.addEventListener("keydown", e => {
-    if (e.key === "Enter") handlePayment();
-  });
-});
+  function showSuccess() {
+    document.getElementById("checkoutMain").style.display = "none";
+    document.getElementById("successScreen").style.display = "block";
+  }
 </script>
 
 </body>

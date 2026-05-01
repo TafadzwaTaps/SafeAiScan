@@ -1,374 +1,261 @@
 """
-db.py — Resilient Supabase service layer
-- Retry with exponential backoff on network errors
-- Per-request in-memory cache (no Redis required)
-- Batched dashboard query to minimize round-trips
-- Never crashes the request — always returns safe fallbacks
+db.py — Database Layer
+=======================
+All database operations for SecretScan in one place.
+Backed by Supabase (Postgres under the hood).
+
+Required Supabase tables:
+
+  users
+  ─────
+  id            UUID  PRIMARY KEY  DEFAULT gen_random_uuid()
+  email         TEXT  UNIQUE NOT NULL
+  password_hash TEXT  NOT NULL
+  is_pro        BOOL  NOT NULL DEFAULT false
+  scans_today   INT   NOT NULL DEFAULT 0
+  last_scan_date DATE
+  paypal_order_id TEXT             -- set after successful PayPal payment
+  created_at    TIMESTAMPTZ DEFAULT now()
+
+  scans
+  ─────
+  id            UUID  PRIMARY KEY  DEFAULT gen_random_uuid()
+  user_id       UUID  REFERENCES users(id) ON DELETE CASCADE
+  source        TEXT                        -- "zip_upload" or repo URL
+  risk_level    TEXT                        -- HIGH | MEDIUM | LOW | NONE
+  total_secrets INT   NOT NULL DEFAULT 0
+  result_json   JSONB NOT NULL              -- full build_result() dict
+  created_at    TIMESTAMPTZ DEFAULT now()
+
+  scan_tasks                                -- for async repo scans
+  ──────────
+  id            UUID  PRIMARY KEY
+  user_id       UUID  REFERENCES users(id)
+  repo_url      TEXT
+  state         TEXT  DEFAULT 'QUEUED'      -- QUEUED|CLONING|SCANNING|DONE|FAILED
+  progress      INT   DEFAULT 0
+  message       TEXT
+  result_json   JSONB
+  created_at    TIMESTAMPTZ DEFAULT now()
+  updated_at    TIMESTAMPTZ
+
+Every function returns data or None — never raises to the caller.
+Errors are logged so the endpoint can still return a graceful response.
 """
 
 import os
-import time
 import logging
-import functools
-from typing import Any, Optional
+from datetime import date
 from supabase import create_client, Client
 
-logger = logging.getLogger("safeaiscan.db")
+logger = logging.getLogger("secretscan.db")
 
-# ============================================================
-# CLIENT
-# ============================================================
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+# ──────────────────────────────────────────────────────────────
+#  CLIENT — initialised once at module load
+# ──────────────────────────────────────────────────────────────
 
-if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-    raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+_URL = os.getenv("SUPABASE_URL")
+_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+if not _URL or not _KEY:
+    raise EnvironmentError(
+        "SUPABASE_URL and SUPABASE_KEY must be set as environment variables."
+    )
 
-def get_client() -> Client:
-    return _client
+_db: Client = create_client(_URL, _KEY)
 
-# ============================================================
-# RETRY DECORATOR
-# ============================================================
-def _is_retryable(exc: Exception) -> bool:
-    msg = str(exc).lower()
-    return any(k in msg for k in (
-        "server disconnected", "connection", "timeout",
-        "remotedisconnected", "remote protocol", "eof",
-        "connectionreset", "broken pipe"
-    ))
 
-def with_retry(max_attempts: int = 3, base_delay: float = 0.4):
-    """Exponential backoff retry for Supabase calls."""
-    def decorator(fn):
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            last_exc = None
-            for attempt in range(max_attempts):
-                try:
-                    return fn(*args, **kwargs)
-                except Exception as exc:
-                    last_exc = exc
-                    if not _is_retryable(exc) or attempt == max_attempts - 1:
-                        raise
-                    delay = base_delay * (2 ** attempt)
-                    logger.warning(
-                        f"[retry] {fn.__name__} attempt {attempt+1}/{max_attempts} "
-                        f"failed: {exc}. Retrying in {delay:.1f}s"
-                    )
-                    time.sleep(delay)
-            raise last_exc
-        return wrapper
-    return decorator
+def _one(response) -> dict | None:
+    """Return first row from a Supabase response, or None."""
+    data = response.data
+    return data[0] if data else None
 
-# ============================================================
-# IN-MEMORY SHORT-TTL CACHE (replaces Redis for single-process)
-# ============================================================
-_cache: dict[str, tuple[float, Any]] = {}
-_CACHE_TTL = 8.0  # seconds — dashboard data freshness window
 
-def _cache_get(key: str) -> Optional[Any]:
-    if key in _cache:
-        ts, val = _cache[key]
-        if time.monotonic() - ts < _CACHE_TTL:
-            return val
-        del _cache[key]
-    return None
+# ──────────────────────────────────────────────────────────────
+#  USERS
+# ──────────────────────────────────────────────────────────────
 
-def _cache_set(key: str, val: Any):
-    _cache[key] = (time.monotonic(), val)
-
-def cache_invalidate(prefix: str):
-    """Invalidate all cache keys starting with prefix."""
-    keys = [k for k in _cache if k.startswith(prefix)]
-    for k in keys:
-        del _cache[k]
-
-# ============================================================
-# USER QUERIES
-# ============================================================
-@with_retry()
-def fetch_user_by_id(user_id: str) -> Optional[dict]:
-    cache_key = f"user:{user_id}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
-
-    res = _client.table("users").select("*").eq("id", user_id).execute()
-    user = res.data[0] if res.data else None
-    if user:
-        _cache_set(cache_key, user)
-    return user
-
-@with_retry()
-def fetch_user_by_email(email: str) -> Optional[dict]:
-    res = _client.table("users").select("*").eq("email", email).execute()
-    return res.data[0] if res.data else None
-
-@with_retry()
-def update_user(user_id: str, payload: dict) -> bool:
-    _client.table("users").update(payload).eq("id", user_id).execute()
-    cache_invalidate(f"user:{user_id}")
-    return True
-
-@with_retry()
-def insert_user(row: dict) -> bool:
-    _client.table("users").insert(row).execute()
-    return True
-
-@with_retry()
-def user_email_exists(email: str) -> bool:
-    res = _client.table("users").select("id").eq("email", email).execute()
-    return bool(res.data)
-
-# ============================================================
-# ORG QUERIES
-# ============================================================
-@with_retry()
-def fetch_org_by_id(org_id: str) -> Optional[dict]:
-    if not org_id:
+def get_user_by_id(user_id: str) -> dict | None:
+    try:
+        return _one(_db.table("users").select("*").eq("id", user_id).limit(1).execute())
+    except Exception as e:
+        logger.error(f"get_user_by_id({user_id}): {e}")
         return None
 
-    cache_key = f"org:{org_id}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
 
+def get_user_by_email(email: str) -> dict | None:
     try:
-        res = _client.table("organizations").select("*").eq("id", org_id).execute()
-        org = res.data[0] if res.data else None
-        _cache_set(cache_key, org)
-        return org
-    except Exception as exc:
-        logger.warning(f"fetch_org_by_id({org_id}) failed: {exc} — returning None")
+        return _one(_db.table("users").select("*").eq("email", email).limit(1).execute())
+    except Exception as e:
+        logger.error(f"get_user_by_email: {e}")
         return None
 
-@with_retry()
-def insert_org(row: dict) -> bool:
-    _client.table("organizations").insert(row).execute()
-    return True
 
-@with_retry()
-def fetch_org_members(org_id: str) -> list:
+def email_exists(email: str) -> bool:
+    return get_user_by_email(email) is not None
+
+
+def create_user(email: str, password_hash: str) -> dict | None:
+    """Insert a new user row and return it."""
     try:
-        res = _client.table("users") \
-            .select("id,email,plan,role,created_at,last_login") \
-            .eq("org_id", org_id) \
-            .execute()
-        return res.data or []
-    except Exception as exc:
-        logger.error(f"fetch_org_members({org_id}): {exc}")
-        return []
+        return _one(
+            _db.table("users").insert({
+                "email":         email,
+                "password_hash": password_hash,
+                "is_pro":        False,
+            }).execute()
+        )
+    except Exception as e:
+        logger.error(f"create_user({email}): {e}")
+        return None
 
-# ============================================================
-# USAGE QUERIES
-# ============================================================
-@with_retry()
-def fetch_usage_today(user_id: str, date_str: str) -> Optional[dict]:
-    res = _client.table("usage_metrics") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .eq("date", date_str) \
-        .execute()
-    return res.data[0] if res.data else None
 
-@with_retry()
-def upsert_usage(user_id: str, org_id: str, date_str: str, count: int) -> bool:
-    existing = fetch_usage_today(user_id, date_str)
-    if existing:
-        _client.table("usage_metrics") \
-            .update({"request_count": count}) \
-            .eq("id", existing["id"]) \
-            .execute()
-    else:
-        import uuid
-        _client.table("usage_metrics").insert({
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "org_id": org_id,
-            "date": date_str,
-            "request_count": count
-        }).execute()
-    return True
-
-@with_retry()
-def fetch_usage_history(user_id: str, limit: int = 30) -> list:
+def update_user(user_id: str, fields: dict) -> bool:
+    """Partial update on any user fields. Returns True on success."""
     try:
-        res = _client.table("usage_metrics") \
-            .select("date,request_count") \
-            .eq("user_id", user_id) \
-            .order("date", desc=True) \
-            .limit(limit) \
-            .execute()
-        return res.data or []
-    except Exception as exc:
-        logger.error(f"fetch_usage_history: {exc}")
-        return []
-
-# ============================================================
-# HISTORY QUERIES
-# ============================================================
-
-# Columns that definitely exist — safe subset used everywhere
-_HISTORY_SAFE_COLS = "id,risk,score,timestamp"
-
-# Extended columns — used when migration has been applied
-_HISTORY_FULL_COLS = "id,risk,score,findings_count,timestamp"
-
-@with_retry()
-def fetch_scan_history(user_id: str, limit: int = 20) -> list:
-    """
-    Tries full columns first; falls back to safe subset if
-    findings_count column doesn't exist yet (pre-migration).
-    """
-    for cols in (_HISTORY_FULL_COLS, _HISTORY_SAFE_COLS):
-        try:
-            res = _client.table("analysis_history") \
-                .select(cols) \
-                .eq("user_id", user_id) \
-                .order("timestamp", desc=True) \
-                .limit(limit) \
-                .execute()
-            return res.data or []
-        except Exception as exc:
-            err_str = str(exc)
-            if "findings_count" in err_str or "PGRST204" in err_str or "column" in err_str.lower():
-                logger.warning(f"findings_count column missing, falling back to safe cols: {exc}")
-                continue
-            logger.error(f"fetch_scan_history: {exc}")
-            return []
-    return []
-
-@with_retry()
-def insert_scan_history(row: dict) -> bool:
-    """
-    Tries inserting full row; if findings_count column missing,
-    retries without it. Scan never fails because of a missing column.
-    """
-    try:
-        _client.table("analysis_history").insert(row).execute()
+        _db.table("users").update(fields).eq("id", user_id).execute()
         return True
-    except Exception as exc:
-        err_str = str(exc)
-        if "findings_count" in err_str or "PGRST204" in err_str:
-            logger.warning("findings_count missing — inserting without it")
-            fallback = {k: v for k, v in row.items() if k != "findings_count"}
-            try:
-                _client.table("analysis_history").insert(fallback).execute()
-                return True
-            except Exception as exc2:
-                logger.error(f"History insert fallback failed: {exc2}")
-                return False
-        logger.error(f"History insert failed: {exc}")
+    except Exception as e:
+        logger.error(f"update_user({user_id}): {e}")
         return False
 
-# ============================================================
-# SCAN TASKS
-# ============================================================
-@with_retry()
-def insert_scan_task(row: dict) -> bool:
-    _client.table("scan_tasks").insert(row).execute()
-    return True
 
-@with_retry()
-def fetch_scan_task(task_id: str) -> Optional[dict]:
-    res = _client.table("scan_tasks") \
-        .select("*") \
-        .eq("id", task_id) \
-        .single() \
-        .execute()
-    return res.data
+def mark_user_pro(user_id: str, paypal_order_id: str = "") -> bool:
+    """Flip is_pro=True and record the PayPal order ID."""
+    return update_user(user_id, {
+        "is_pro":          True,
+        "paypal_order_id": paypal_order_id,
+    })
 
-# ============================================================
-# CVE CACHE
-# ============================================================
-@with_retry()
-def fetch_cve_cache(query: str) -> Optional[dict]:
+
+def check_and_increment_scan(user_id: str) -> tuple[bool, str]:
+    """
+    Rate-limit free users to 1 scan per day.
+    Pro users are always allowed.
+
+    Returns:
+        (allowed: bool, reason: str)
+    """
+    user = get_user_by_id(user_id)
+    if not user:
+        return False, "User not found."
+
+    if user.get("is_pro"):
+        return True, "ok"   # pro users have unlimited scans
+
+    today = str(date.today())
+    last  = user.get("last_scan_date", "")
+    count = user.get("scans_today", 0)
+
+    if last != today:
+        # New day — reset counter
+        update_user(user_id, {"scans_today": 1, "last_scan_date": today})
+        return True, "ok"
+
+    if count >= 1:
+        return False, "Free plan allows 1 scan per day. Upgrade to Pro for unlimited scans."
+
+    update_user(user_id, {"scans_today": count + 1})
+    return True, "ok"
+
+
+# ──────────────────────────────────────────────────────────────
+#  SCANS
+# ──────────────────────────────────────────────────────────────
+
+def save_scan(user_id: str, source: str, result: dict) -> str | None:
+    """
+    Persist a completed scan result.
+
+    Returns the new scan UUID, or None on failure.
+    """
     try:
-        res = _client.table("cve_cache").select("result").eq("query", query).execute()
-        return res.data[0]["result"] if res.data else None
-    except Exception:
+        row = _one(
+            _db.table("scans").insert({
+                "user_id":       user_id,
+                "source":        source,
+                "risk_level":    result.get("risk_level", "NONE"),
+                "total_secrets": result.get("total_secrets", 0),
+                "result_json":   result,
+            }).execute()
+        )
+        return row["id"] if row else None
+    except Exception as e:
+        logger.error(f"save_scan({user_id}): {e}")
         return None
 
-@with_retry()
-def store_cve_cache(query: str, result: dict) -> bool:
+
+def get_scan(scan_id: str, user_id: str) -> dict | None:
+    """Fetch a scan by ID, scoped to the requesting user."""
     try:
-        _client.table("cve_cache").insert({"query": query, "result": result}).execute()
+        return _one(
+            _db.table("scans")
+            .select("*")
+            .eq("id", scan_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"get_scan({scan_id}): {e}")
+        return None
+
+
+def list_scans(user_id: str, limit: int = 20) -> list:
+    """Return the most recent scans for a user, newest first."""
+    try:
+        res = (
+            _db.table("scans")
+            .select("id, source, risk_level, total_secrets, created_at")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        logger.error(f"list_scans({user_id}): {e}")
+        return []
+
+
+# ──────────────────────────────────────────────────────────────
+#  SCAN TASKS (async repo scans)
+# ──────────────────────────────────────────────────────────────
+
+def create_scan_task(task_id: str, user_id: str, repo_url: str) -> bool:
+    try:
+        _db.table("scan_tasks").insert({
+            "id":       task_id,
+            "user_id":  user_id,
+            "repo_url": repo_url,
+            "state":    "QUEUED",
+            "progress": 0,
+            "message":  "Queued for scanning…",
+        }).execute()
         return True
-    except Exception:
+    except Exception as e:
+        logger.error(f"create_scan_task({task_id}): {e}")
         return False
 
-# ============================================================
-# AUDIT LOGS
-# ============================================================
-def write_audit_log(
-    user_id: str,
-    action: str,
-    org_id: Optional[str] = None,
-    resource: Optional[str] = None,
-    ip_address: Optional[str] = None,
-    status: str = "success",
-    metadata: Optional[dict] = None
-):
-    """Fire-and-forget audit log. Never raises."""
-    import uuid
+
+def update_scan_task(task_id: str, fields: dict) -> None:
+    """Best-effort update — logs failure but never raises."""
     try:
-        _client.table("audit_logs").insert({
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "org_id": org_id,
-            "action": action,
-            "resource": resource,
-            "ip_address": ip_address,
-            "status": status,
-            "metadata": metadata or {}
-        }).execute()
-    except Exception as exc:
-        logger.warning(f"Audit log write failed (non-fatal): {exc}")
+        _db.table("scan_tasks").update(fields).eq("id", task_id).execute()
+    except Exception as e:
+        logger.error(f"update_scan_task({task_id}): {e}")
 
-# ============================================================
-# DASHBOARD — BATCHED QUERY (single function, minimum round-trips)
-# ============================================================
-def fetch_dashboard_data(user_id: str, org_id: Optional[str], plan: str) -> dict:
-    """
-    Gathers everything the dashboard needs in 3 parallel-safe calls:
-      1. usage_metrics  (last 30 days)
-      2. analysis_history (last N based on plan)
-      3. org members if applicable
 
-    Returns a safe dict — never raises.
-    """
-    from plans import get_plan_limits
-    limits = get_plan_limits(plan)
-    history_limit = limits["history_limit"]
-
-    usage_data   = []
-    history_data = []
-    org_members  = []
-
-    # Usage
+def get_scan_task(task_id: str, user_id: str) -> dict | None:
     try:
-        usage_data = fetch_usage_history(user_id, limit=30)
-    except Exception as exc:
-        logger.error(f"Dashboard usage fetch: {exc}")
-
-    # History
-    try:
-        history_data = fetch_scan_history(user_id, limit=min(history_limit, 20))
-    except Exception as exc:
-        logger.error(f"Dashboard history fetch: {exc}")
-
-    # Team members (only for paid plans)
-    if org_id and plan in ("pro", "enterprise"):
-        try:
-            org_members = fetch_org_members(org_id)
-        except Exception as exc:
-            logger.error(f"Dashboard org members fetch: {exc}")
-
-    return {
-        "usage":   usage_data,
-        "history": history_data,
-        "team":    org_members,
-    }
+        return _one(
+            _db.table("scan_tasks")
+            .select("*")
+            .eq("id", task_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"get_scan_task({task_id}): {e}")
+        return None

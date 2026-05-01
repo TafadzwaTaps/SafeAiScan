@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SafeAIScan — Login</title>
+  <title>SecretScan — Login</title>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
@@ -132,10 +132,10 @@
     <!-- Brand -->
     <div style="text-align:center;margin-bottom:28px;">
       <div class="login-brand">
-        <span style="color:var(--accent);">Safe</span>AIScan
+        <span style="color:var(--accent);">Secret</span>Scan
         <span style="color:var(--border-bright);font-size:20px;margin-left:2px;">⬡</span>
       </div>
-      <div class="login-tagline">AI-Powered Security Intelligence Platform</div>
+      <div class="login-tagline">Hardcoded Secrets Detection</div>
     </div>
 
     <div class="login-card">
@@ -176,21 +176,15 @@
       <div class="form-panel" id="panel-register">
 
         <div class="feature-list">
-          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> Free 20 scans/day forever</div>
-          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> AI-powered vulnerability detection</div>
-          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> GitHub repository scanning</div>
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> Free scan every day — no credit card</div>
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> Detects 25+ secret types instantly</div>
+          <div class="feature-item"><i class="bi bi-check-circle-fill"></i> ZIP upload or GitHub repo scan</div>
         </div>
 
         <div class="input-wrap">
           <div class="input-label">Email</div>
           <i class="bi bi-envelope input-icon"></i>
           <input id="regEmail" type="email" class="form-control" placeholder="you@company.com" autocomplete="email">
-        </div>
-
-        <div class="input-wrap">
-          <div class="input-label">Organization</div>
-          <i class="bi bi-building input-icon"></i>
-          <input id="regOrg" type="text" class="form-control" placeholder="Acme Corp">
         </div>
 
         <div class="input-wrap">
@@ -214,7 +208,7 @@
 
       </div>
 
-      <div class="divider">secured with JWT + AES-256</div>
+      <div class="divider">secured with JWT · no card required to start</div>
       <div style="text-align:center;font-size:11px;color:var(--text-faint);">
         By continuing you agree to our <a href="#" style="color:var(--accent);text-decoration:none;">Terms of Service</a>
       </div>
@@ -303,16 +297,13 @@
      
       // 
       if (!res.ok || !data?.access_token) {
-          showAlert('loginAlert', raw.detail || 'Invalid credentials');
+          showAlert('loginAlert', raw.detail?.error || raw.detail || 'Invalid credentials');
             return;
           }
           
           localStorage.setItem('access_token', data.access_token);
           localStorage.setItem('user_id', data.user_id);
-          localStorage.setItem('org_id', data.org_id);
-          localStorage.setItem('user_plan', data.plan);
-          
-          if (data.api_key) localStorage.setItem('api_key', data.api_key);
+          localStorage.setItem('is_pro', data.is_pro ? 'true' : 'false');
 
                showAlert('loginAlert', 'Login successful! Redirecting…', 'success');
                setTimeout(() => window.location.href = 'dashboard.html', 800);
@@ -326,10 +317,10 @@
 
   async function doRegister() {
     const email    = document.getElementById('regEmail')?.value?.trim();
-    const org_name = document.getElementById('regOrg')?.value?.trim();
+
     const password = document.getElementById('regPassword')?.value;
 
-    if (!email || !password || !org_name) { showAlert('registerAlert', 'Please fill in all fields'); return; }
+    if (!email || !password) { showAlert('registerAlert', 'Please fill in all fields'); return; }
     if (!email.includes('@'))  { showAlert('registerAlert', 'Enter a valid email address'); return; }
     if (password.length < 8)   { showAlert('registerAlert', 'Password must be at least 8 characters'); return; }
 
@@ -339,7 +330,7 @@
       const res  = await fetch('https://rathious-safeaiscan.hf.space/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, org_name })
+        body: JSON.stringify({ email, password })
       });
 
       const data = await res.json();
@@ -351,7 +342,8 @@
 
       if (data.access_token) {
         localStorage.setItem('access_token', data.access_token);
-        if (data.api_key) localStorage.setItem('api_key', data.api_key);
+        localStorage.setItem('user_id', data.user_id || '');
+        localStorage.setItem('is_pro', 'false'); // new users start on free
         showAlert('registerAlert', 'Account created! Redirecting…', 'success');
         setTimeout(() => window.location.href = 'dashboard.html', 900);
       } else {

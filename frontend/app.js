@@ -29,8 +29,6 @@ async function scan() {
     updateUsageMeter(data.usage_today, data.usage_limit);
     loadUsageChart();
 
-    if (findings.length > 0) enrichCVE(findings);
-
     stopLiveProgress();
     showToast(
       `Scan complete — ${findings.length} issue(s) found`,
@@ -58,12 +56,6 @@ async function scan() {
 //  REPO SCAN
 // ============================================================
 async function scanRepo() {
-  // Check plan before even prompting
-  if (!canAccessFeature("repo_scan")) {
-    showUpgradePrompt("Repo scanning requires a Pro or Enterprise plan. Upgrade to unlock full repository analysis.");
-    return;
-  }
-
   const repoUrl = prompt("Enter GitHub repo URL (https://github.com/user/repo):");
   if (!repoUrl?.trim()) return;
 
@@ -166,7 +158,7 @@ function startLiveProgress() {
   const text = document.getElementById("scanProgressText");
   const steps = [
     "Parsing code…", "Running static analysis…", "Checking vulnerability patterns…",
-    "AI risk modeling…", "Mapping CVE database…", "Finalizing report…"
+    "Analyzing patterns…", "Detecting secrets…", "Finalizing report…"
   ];
   let stepIdx = 0;
 
@@ -236,7 +228,7 @@ function showLimitBanner() {
       <div>
         <div style="font-size:13px;font-weight:600;color:var(--warning);">Daily scan limit reached</div>
         <div style="font-size:11px;color:var(--text-muted);">
-          ${plan === "free" ? "Free plan: 10 scans/day. " : ""}Upgrade for more scans.
+          ${plan === "free" ? "Free plan: 1 scan/day, first 5 findings shown. " : ""}Upgrade for more scans.
         </div>
       </div>
     </div>
@@ -344,10 +336,10 @@ async function loadPlan() {
     `;
     const devLimits = {
       daily_scans: 999999, repo_scan: true,
-      team_management: true, cve_enrichment: true, api_access: true
     };
-    applyPlanGating("enterprise", devLimits);
-    if (typeof window.applyNavGating === "function") window.applyNavGating("enterprise");
+    localStorage.setItem("is_pro", "true");
+    applyPlanGating("pro", devLimits);
+    if (typeof window.applyNavGating === "function") window.applyNavGating("pro");
     return;
   }
 
@@ -356,34 +348,28 @@ async function loadPlan() {
     const plan   = (data.plan || "free").toLowerCase();
     const limits = data.limits || {};
 
-    const planColors = {
-      free:       "sev-low",
-      pro:        "sev-high",
-      enterprise: "sev-critical"
-    };
-    const planIcons = {
-      free:       "bi-person",
-      pro:        "bi-lightning-charge",
-      enterprise: "bi-building"
-    };
+    const isPro  = data.is_pro || false;
+    const label  = isPro ? "PRO" : "FREE";
+    const badge  = isPro ? "sev-high" : "sev-low";
+    const icon   = isPro ? "bi-lightning-charge" : "bi-person";
 
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="badge-pill ${planColors[plan] || "sev-low"}" style="padding:4px 10px;font-size:11px;">
-          <i class="bi ${planIcons[plan] || "bi-person"} me-1"></i>${plan.toUpperCase()}
+        <span class="badge-pill ${badge}" style="padding:4px 10px;font-size:11px;">
+          <i class="bi ${icon} me-1"></i>${label}
         </span>
         <span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;" title="${escHtml(data.email || "")}">
           ${escHtml(data.email || "")}
         </span>
       </div>
       <div style="margin-top:8px;font-size:11px;color:var(--text-faint);">
-        <i class="bi bi-bar-chart me-1"></i>${limits.daily_scans < 999999 ? limits.daily_scans + " scans/day" : "Unlimited scans"}
+        <i class="bi bi-bar-chart me-1"></i>${isPro ? "Unlimited scans · PDF reports" : "1 scan/day · 5 findings shown"}
       </div>
     `;
 
-    localStorage.setItem("user_plan", plan);
-    applyPlanGating(plan, limits);
-    if (typeof window.applyNavGating === "function") window.applyNavGating(plan);
+    localStorage.setItem("is_pro", isPro ? "true" : "false");
+    applyPlanGating(isPro ? "pro" : "free", {});
+    if (typeof window.applyNavGating === "function") window.applyNavGating(isPro ? "pro" : "free");
 
   } catch {
     el.innerHTML = `<span class="badge-pill sev-low"><i class="bi bi-person me-1"></i>FREE</span>`;
@@ -408,7 +394,7 @@ function applyPlanGating(plan, limits) {
     if (!isPro) {
       repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan Repo`;
       repoBtn.style.opacity = "0.6";
-      repoBtn.title = "Requires Pro plan";
+      repoBtn.title = "Upgrade to Pro for unlimited scans";
     } else {
       repoBtn.innerHTML = `<i class="bi bi-github me-1"></i>Scan Repo`;
       repoBtn.style.opacity = "";
@@ -432,7 +418,7 @@ async function loadTeam() {
   if (!list) return;
 
   const plan = getUserPlan();
-  if (plan === "free") {
+  if (!isProUser()) {
     list.innerHTML = `<li style="color:var(--text-faint);font-size:12px;">
       <i class="bi bi-lock me-1"></i>Team management requires Pro
     </li>`;
@@ -440,7 +426,7 @@ async function loadTeam() {
   }
 
   try {
-    const res  = await apiRequest("/api/org/users");
+    const res  = await apiRequest("/scan/history"  // team management removed — showing scan history instead);
     const data = await safeJson(res);
     list.innerHTML = (data || []).map(u => `
       <li style="font-size:12px;color:var(--text-muted);padding:5px 0;display:flex;align-items:center;gap:8px;">
@@ -580,7 +566,7 @@ function renderAIInsights(data) {
 
       ${isBasic ? `
         <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
-          <a href="#" onclick="showUpgradePrompt('Get full AI-powered vulnerability analysis, actionable code fixes, and CVE mapping with Pro.')" style="
+          <a href="#" onclick="showUpgradePrompt('Upgrade to Pro to unlock full scan results and PDF reports.')" style="
             font-size:11px;color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:5px;">
             <i class="bi bi-lightning-charge"></i>
             Upgrade to Pro for full AI analysis & fixes
@@ -627,37 +613,10 @@ function renderSeverityTabs(data) {
 }
 
 // ============================================================
-//  CVE ENRICHMENT — Pro/Enterprise + DEV_MODE, background, non-blocking
+//  CVE ENRICHMENT — removed in MVP refactor (no /api/cve/search endpoint)
 // ============================================================
-async function enrichCVE(findingsList) {
-  if (!window.DEV_MODE) {
-    const plan = getUserPlan();
-    if (!["pro", "enterprise"].includes(plan)) return;
-  }
-  for (let i = 0; i < findingsList.length && i < 5; i++) {
-    const vuln = findingsList[i];
-    const box  = document.getElementById(`cve-${i}`);
-    if (!box || !vuln.title || (vuln.cve && vuln.cve !== "N/A")) continue;
-
-    try {
-      const res  = await apiRequest(`/api/cve/search?query=${encodeURIComponent(vuln.title)}`);
-      const data = await safeJson(res);
-      const cves = data?.cves || [];
-
-      if (cves.length) {
-        const top = cves[0];
-        box.innerHTML = `
-          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;
-                      padding:6px 8px;background:rgba(56,189,248,0.06);border-radius:6px;
-                      border:1px solid rgba(56,189,248,0.12);">
-            <i class="bi bi-shield-exclamation me-1" style="color:var(--warning);"></i>
-            <strong style="color:var(--accent-2);">${escHtml(top.id || "")}</strong>
-            ${top.cvss != null ? `· CVSS <strong>${top.cvss}</strong>` : ""}
-            ${top.description ? ` · <span style="color:var(--text-faint);">${escHtml(top.description.substring(0, 100))}…</span>` : ""}
-          </div>`;
-      }
-    } catch { /* silent — CVE enrichment is optional */ }
-  }
+async function enrichCVE() {
+  // No-op — CVE lookup not available in this version.
 }
 
 // ============================================================

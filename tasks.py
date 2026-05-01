@@ -1,103 +1,91 @@
-import os
-import shutil
+"""
+tasks.py — Background Scan Worker
+===================================
+Runs async repo scans as FastAPI BackgroundTasks.
+No plan gating, no org logic — just clone → validate → scan → save.
+
+State machine:  QUEUED → CLONING → VALIDATING → SCANNING → DONE
+                                                          ↘ FAILED
+"""
+
+import logging
 import traceback
-from scanner import safe_clone, validate_repo, full_scan
-from supabase import create_client
+from datetime import datetime, timezone
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+import db
+from scanner import safe_clone, validate_repo_size, scan_directory, build_result
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise Exception("Missing Supabase credentials")
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-TABLE = "scan_tasks"
+logger = logging.getLogger("secretscan.tasks")
 
 
-# =========================
-# SAFE UPDATE (CRITICAL FIX)
-# =========================
-def update_task(task_id: str, payload: dict):
+def run_repo_scan(task_id: str, repo_url: str, user_id: str, is_pro: bool) -> None:
+    """
+    Full async pipeline for scanning a GitHub repository.
+
+    Called by FastAPI's BackgroundTasks — runs in a thread after the
+    HTTP response has already been sent to the client.
+
+    The client polls GET /scan/status/{task_id} for progress.
+    """
+    import shutil
+    clone_dir = None
+
+    def _update(state: str, message: str, progress: int, result_json=None):
+        """Helper: persist task state to the DB."""
+        fields = {
+            "state":      state,
+            "message":    message,
+            "progress":   progress,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if result_json is not None:
+            fields["result_json"] = result_json
+        db.update_scan_task(task_id, fields)
+
     try:
-        supabase.table(TABLE).update(payload).eq("id", task_id).execute()
-    except Exception as e:
-        print("🔥 SUPABASE UPDATE FAILED:", str(e))
+        # ── 1. Clone ──────────────────────────────────────────
+        logger.info(f"[{task_id}] Starting repo scan: {repo_url}")
+        _update("CLONING", "Cloning repository…", 10)
+
+        clone_dir = safe_clone(repo_url)
+
+        # ── 2. Validate size ──────────────────────────────────
+        _update("VALIDATING", "Checking repository size…", 30)
+        validate_repo_size(clone_dir)
+
+        # ── 3. Scan for secrets ───────────────────────────────
+        _update("SCANNING", "Scanning for hardcoded secrets…", 60)
+        findings = scan_directory(clone_dir)
+
+        # ── 4. Build result and save ──────────────────────────
+        _update("SCANNING", "Preparing report…", 90)
+        result = build_result(findings, source=repo_url, is_pro=is_pro)
+
+        # Persist to scans table so GET /report/{id} works
+        scan_id = db.save_scan(user_id, repo_url, result)
+
+        _update("DONE", "Scan complete", 100, result_json={
+            **result,
+            "scan_id": scan_id,
+        })
+
+        logger.info(
+            f"[{task_id}] Done — {result['total_secrets']} secret(s), "
+            f"risk={result['risk_level']}"
+        )
+
+    except (ValueError, RuntimeError) as exc:
+        # Expected failures: bad URL, repo too large, clone failed
+        logger.warning(f"[{task_id}] Scan error: {exc}")
+        _update("FAILED", str(exc), 0, result_json={"error": str(exc)})
+
+    except Exception as exc:
+        # Unexpected failures — log full traceback for debugging
+        logger.error(f"[{task_id}] Unexpected error: {exc}")
         traceback.print_exc()
-
-
-# =========================
-# SCAN WORKER
-# =========================
-def run_scan(task_id, repo_url, user_id, org_id):
-    path = None
-
-    try:
-        update_task(task_id, {
-            "state": "CLONING",
-            "message": "Cloning repository...",
-            "progress": 10
-        })
-
-        path = safe_clone(repo_url)
-
-        update_task(task_id, {
-            "state": "VALIDATING",
-            "message": "Validating repository...",
-            "progress": 30
-        })
-
-        validate_repo(path)
-
-        update_task(task_id, {
-            "state": "SCANNING",
-            "message": "Running security scan...",
-            "progress": 60
-        })
-
-        results = full_scan(path)
-
-        update_task(task_id, {
-            "state": "FINALIZING",
-            "message": "Preparing results...",
-            "progress": 90
-        })
-
-        # ✅ FORCE NORMALIZED FORMAT (IMPORTANT FIX)
-        findings = []
-
-        if isinstance(results, dict):
-            findings = results.get("findings", [])
-        elif isinstance(results, list):
-            findings = results
-        else:
-            findings = []
-
-        update_task(task_id, {
-            "state": "DONE",
-            "message": "Scan complete",
-            "progress": 100,
-            "result": {
-                "findings": findings
-            }
-        })
-
-        print(f"✅ SCAN DONE: {task_id}")
-
-    except Exception as e:
-        error = str(e)
-
-        print("🔥 SCAN ERROR:", error)
-        traceback.print_exc()
-
-        update_task(task_id, {
-            "state": "FAILED",
-            "message": "Scan failed",
-            "result": {
-                "error": error
-            }
-        })
+        _update("FAILED", "An unexpected error occurred.", 0,
+                result_json={"error": "Scan failed unexpectedly."})
 
     finally:
-        if path and os.path.exists(path):
-            shutil.rmtree(path, ignore_errors=True)
+        if clone_dir:
+            shutil.rmtree(clone_dir, ignore_errors=True)

@@ -1,33 +1,65 @@
+"""
+auth.py — JWT Authentication
+==============================
+Stateless JWT-based auth. No roles, no enterprise tiers.
+Tokens carry only the user's ID (sub claim).
+
+Kept intentionally minimal — bcrypt hashing lives in app.py
+so this module has zero FastAPI imports and is easy to unit-test.
+"""
+
 import os
 import logging
-from jose import jwt, JWTError
 from datetime import datetime, timedelta, timezone
+from jose import jwt, JWTError
 
-logger = logging.getLogger("safeaiscan.auth")
+logger = logging.getLogger("secretscan.auth")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "!Safe_Ai_Scan@2026")
+# Read from env; fall back to a dev-only default (override in production!)
+SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production-use-a-long-random-string")
 ALGORITHM  = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 90  # 1.5 hours
+TOKEN_TTL_MINUTES = 60 * 24   # 24 hours — long enough to avoid friction
 
 
-def create_access_token(data: dict, expires_minutes: int = ACCESS_TOKEN_EXPIRE_MINUTES) -> str:
-    to_encode = data.copy()
-    expire    = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
-    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+def create_access_token(user_id: str) -> str:
+    """
+    Create a signed JWT for the given user ID.
+
+    The token contains:
+      sub  — user UUID (primary claim, used by get_current_user)
+      iat  — issued-at timestamp
+      exp  — expiry timestamp
+    """
+    now    = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=TOKEN_TTL_MINUTES)
+
+    payload = {
+        "sub": str(user_id),
+        "iat": now,
+        "exp": expire,
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def verify_token(token: str) -> dict | None:
+    """
+    Decode and validate a JWT.
+
+    Returns the full payload dict on success, or None if the token is
+    missing, expired, or tampered with.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        # Validate required fields
+
         if not payload.get("sub"):
             logger.warning("Token missing 'sub' claim")
             return None
+
         return payload
+
     except JWTError as e:
         logger.debug(f"JWT verification failed: {e}")
         return None
     except Exception as e:
-        logger.error(f"Token error: {e}")
+        logger.error(f"Unexpected token error: {e}")
         return None
