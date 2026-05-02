@@ -26,4 +26,4 @@ pydantic>=2.7.0
 
 # ── Local dev only ─────────────────────────────────────────────
 python-dotenv>=1.0.0              # Auto-loads .env in development
-github
+PyGithub
