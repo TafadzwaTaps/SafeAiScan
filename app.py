@@ -57,52 +57,38 @@ def ok(data=None, **extra):
 def fail(message: str, code: int = 400):
     raise HTTPException(status_code=code, detail={"success": False, "error": message})
 
-from passlib.context import CryptContext
-
-# ── Bcrypt version compatibility fix ──────────────────────────────────────────
-# Newer bcrypt (4.x) removed __about__.__version__, which causes passlib to log
-# a trapped AttributeError and then silently fail verify() — returning False for
-# every correct password, causing every login attempt to 401.
-#
-# Fix: monkey-patch __about__ back onto bcrypt so passlib's version-sniffing
-# succeeds, OR fall back to calling bcrypt directly if the patch also fails.
-import bcrypt as _bcrypt_lib
+# ── bcrypt version compatibility ──────────────────────────────────────────────
+# bcrypt 4.x removed __about__.__version__. passlib reads that attribute at
+# startup; when it's missing passlib marks bcrypt as "unavailable" and
+# pwd_context.verify() silently returns False for every password, causing
+# every login to 401.  Fix: monkey-patch __about__ back, then fall back to
+# calling bcrypt directly if passlib still can't initialise.
+import bcrypt as _bcrypt
 
 try:
-    # Ensure passlib can read the version without crashing
-    if not hasattr(_bcrypt_lib, "__about__"):
-        class _FakeAbout:
-            __version__ = getattr(_bcrypt_lib, "__version__", "4.0.0")
-        _bcrypt_lib.__about__ = _FakeAbout()
+    if not hasattr(_bcrypt, "__about__"):
+        class _A:
+            __version__ = getattr(_bcrypt, "__version__", "4.0.0")
+        _bcrypt.__about__ = _A()
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    # Quick smoke-test — if this raises, we fall back to raw bcrypt below
-    pwd_context.hash("probe")
+    pwd_context.hash("probe")          # smoke-test
     _USE_PASSLIB = True
 except Exception:
+    pwd_context  = None
     _USE_PASSLIB = False
 
 def hash_password(pw: str) -> str:
-    """Hash a password with bcrypt. Works with bcrypt 3.x and 4.x."""
     if _USE_PASSLIB:
         return pwd_context.hash(pw[:72])
-    # Fallback: call bcrypt directly — always works regardless of version
-    return _bcrypt_lib.hashpw(
-        pw[:72].encode("utf-8"),
-        _bcrypt_lib.gensalt()
-    ).decode("utf-8")
+    return _bcrypt.hashpw(pw[:72].encode(), _bcrypt.gensalt()).decode()
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Verify a bcrypt password. Never raises — returns False on any error."""
     try:
         if _USE_PASSLIB:
             return pwd_context.verify(plain, hashed)
-        # Fallback: call bcrypt directly
-        return _bcrypt_lib.checkpw(
-            plain[:72].encode("utf-8"),
-            hashed.encode("utf-8")
-        )
-    except Exception as exc:
-        logger.warning(f"verify_password error: {exc}")
+        return _bcrypt.checkpw(plain[:72].encode(), hashed.encode())
+    except Exception as e:
+        logger.warning(f"verify_password error: {e}")
         return False
 
 def hash_key(key: str) -> str:
@@ -332,17 +318,9 @@ def register(req: RegisterRequest, request: Request):
         except Exception:
             DB.insert_user(base_row)
         token = create_access_token({"sub": user_id})
-        try:
-            DB.write_audit_log(user_id, "register", org_id=org_id, ip_address=request.client.host)
-        except Exception:
-            pass  # audit log is non-fatal
+        DB.write_audit_log(user_id, "register", org_id=org_id, ip_address=request.client.host)
         logger.info(f"Registered: {req.email} user_id={user_id}")
-        return ok({
-            "access_token": token,
-            "user_id":      user_id,
-            "plan":         "free",
-            "is_pro":       False,
-        })
+        return ok({"access_token": token, "api_key": raw_key, "plan": "free", "is_pro": False, "user_id": user_id})
     except HTTPException:
         raise
     except Exception as exc:
@@ -355,18 +333,18 @@ def login(req: LoginRequest, request: Request):
         user = DB.fetch_user_by_email(req.email)
 
         if not user:
-            logger.warning(f"Login failed — email not found: {req.email}")
+            logger.warning(f"Login: email not found — {req.email}")
             raise HTTPException(401, detail={"success": False, "error": "Invalid email or password."})
 
         stored_hash = user.get("password_hash", "")
         if not stored_hash:
-            logger.error(f"Login failed — user {req.email} has no password_hash in DB")
+            logger.error(f"Login: no password_hash in DB for {req.email}")
             raise HTTPException(401, detail={"success": False, "error": "Account setup incomplete. Please re-register."})
 
-        password_ok = verify_password(req.password, stored_hash)
-        logger.info(f"Login attempt: email={req.email} password_ok={password_ok} hash_prefix={stored_hash[:10]}…")
+        ok_pw = verify_password(req.password, stored_hash)
+        logger.info(f"Login attempt: {req.email} password_ok={ok_pw} hash_prefix={stored_hash[:10]}")
 
-        if not password_ok:
+        if not ok_pw:
             raise HTTPException(401, detail={"success": False, "error": "Invalid email or password."})
 
         if not user.get("is_active", True):
@@ -374,82 +352,38 @@ def login(req: LoginRequest, request: Request):
 
         token = create_access_token({"sub": user["id"]})
 
+        # Best-effort side-effects — never fail the login response
+        raw_key = None
+        if not user.get("api_key_hash"):
+            try:
+                raw_key = f"saas_{uuid.uuid4().hex}"
+                DB.update_user(user["id"], {"api_key_hash": hash_key(raw_key)})
+            except Exception as exc:
+                logger.warning(f"API key auto-issue failed: {exc}")
+                raw_key = None
         try:
             DB.update_user(user["id"], {"last_login": datetime.now(timezone.utc).isoformat()})
         except Exception:
             pass
-
         try:
             DB.write_audit_log(user["id"], "login", org_id=user.get("org_id"), ip_address=request.client.host)
         except Exception:
             pass
 
         logger.info(f"Login successful: {req.email} user_id={user['id']}")
-
         return ok({
             "access_token": token,
             "user_id":      user["id"],
             "org_id":       user.get("org_id"),
             "plan":         user.get("plan", "free"),
             "is_pro":       user.get("is_pro", False),
+            "api_key":      raw_key,
         })
-
-class ResetPasswordRequest(BaseModel):
-    email:        str
-    old_password: str
-    new_password: str
-
-    @_fv("new_password")
-    @classmethod
-    def strong_new_password(cls, v):
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        return v
-
-@app.post("/auth/reset-password", summary="Reset password (also fixes bcrypt compatibility)")
-def reset_password(req: ResetPasswordRequest):
-    """
-    Allows a user to change their password.
-    Also serves as a recovery path for accounts whose password_hash was stored
-    with an incompatible bcrypt version — this endpoint always re-hashes with
-    the current bcrypt, so login will work immediately afterwards.
-    """
-    try:
-        user = DB.fetch_user_by_email(req.email.lower().strip())
-        if not user:
-            # Generic message — don't reveal whether email exists
-            raise HTTPException(401, detail={"success": False, "error": "Invalid credentials."})
-
-        stored_hash = user.get("password_hash", "")
-
-        # Attempt verification with the current bcrypt; if it fails due to the
-        # version mismatch bug, we can't validate old_password at all, so we
-        # must require the user to contact support or re-register.
-        if stored_hash and not verify_password(req.old_password, stored_hash):
-            raise HTTPException(401, detail={"success": False, "error": "Current password is incorrect."})
-
-        new_hash = hash_password(req.new_password)
-        DB.update_user(user["id"], {"password_hash": new_hash})
-        logger.info(f"Password reset successful for {req.email} — hash re-generated with current bcrypt")
-
-        # Issue a new token so the user is logged in immediately
-        token = create_access_token({"sub": user["id"]})
-        return ok({
-            "access_token": token,
-            "user_id":      user["id"],
-            "message":      "Password updated successfully. You are now logged in.",
-        })
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(f"reset_password error: {exc}")
-        fail("Password reset failed. Please try again.", 500)
     except HTTPException:
         raise
     except Exception as exc:
         logger.error(f"Login error: {exc}")
-        raise HTTPException(500, detail={"success": False, "error": "Login failed"})
+        raise HTTPException(500, detail={"success": False, "error": "Login failed."})
 
 @app.post("/api/auth/rotate-key")
 def rotate_api_key(auth=Depends(get_user)):
@@ -464,13 +398,58 @@ def rotate_api_key(auth=Depends(get_user)):
         logger.error(f"Key rotation: {exc}")
         fail("Key rotation failed", 500)
 
+
+@app.post("/auth/reset-password")
+def reset_password(request: Request):
+    """
+    Allows a user to change their password.
+    Recovery path for accounts whose hash was stored with a broken bcrypt version.
+    Accepts JSON: { email, old_password, new_password }
+    """
+    import asyncio
+    body = None
+    try:
+        # Read body synchronously via starlette
+        body_bytes = asyncio.get_event_loop().run_until_complete(request.body())
+        import json
+        body = json.loads(body_bytes)
+    except Exception:
+        fail("Invalid JSON body", 400)
+
+    email    = (body.get("email") or "").lower().strip()
+    old_pw   = body.get("old_password") or body.get("oldPassword") or ""
+    new_pw   = body.get("new_password") or body.get("newPassword") or ""
+
+    if not email or not old_pw or not new_pw:
+        fail("email, old_password, and new_password are required", 400)
+    if len(new_pw) < 8:
+        fail("New password must be at least 8 characters", 400)
+
+    user = DB.fetch_user_by_email(email)
+    if not user:
+        # Generic message — don't reveal whether email exists
+        raise HTTPException(401, detail={"success": False, "error": "Invalid credentials."})
+
+    stored = user.get("password_hash", "")
+    # If old_password doesn't verify, block the reset
+    if stored and not verify_password(old_pw, stored):
+        raise HTTPException(401, detail={"success": False, "error": "Current password is incorrect."})
+
+    new_hash = hash_password(new_pw)
+    DB.update_user(user["id"], {"password_hash": new_hash})
+    logger.info(f"Password reset for {email} — re-hashed with current bcrypt")
+
+    token = create_access_token({"sub": user["id"]})
+    return ok({"access_token": token, "user_id": user["id"], "message": "Password updated. You are now logged in."})
+
+
 @app.get("/api/me")
 def get_me(auth=Depends(get_user)):
     user   = auth["user"]
     org    = auth.get("org")
     plan   = user.get("plan", "free").lower()
     limits = get_plan_limits(user.get("plan", "free"))
-    return ok({"user_id": user["id"], "email": user.get("email"), "plan": plan, "role": user.get("role", "member"), "org_name": org["name"] if org else None, "limits": limits})
+    return ok({"user_id": user["id"], "email": user.get("email"), "plan": plan, "is_pro": user.get("is_pro", False), "role": user.get("role", "member"), "org_name": org["name"] if org else None, "limits": limits})
 
 @app.get("/api/org/users")
 def get_org_users(auth=Depends(get_user)):
