@@ -89,3 +89,9 @@ def run_repo_scan(task_id: str, repo_url: str, user_id: str, is_pro: bool) -> No
     finally:
         if clone_dir:
             shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+# ── Backwards-compatibility alias ─────────────────────────────────────────────
+# app.py imports `run_scan` (old name). The function was renamed to
+# run_repo_scan but the alias keeps the import working without touching app.py.
+run_scan = run_repo_scan

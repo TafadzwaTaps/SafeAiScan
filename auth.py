@@ -21,20 +21,30 @@ ALGORITHM  = "HS256"
 TOKEN_TTL_MINUTES = 60 * 24   # 24 hours — long enough to avoid friction
 
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id) -> str:
     """
     Create a signed JWT for the given user ID.
+
+    Accepts either:
+      - a plain string user UUID  (new style: create_access_token(user_id))
+      - a dict with a "sub" key   (old style: create_access_token({"sub": user_id}))
 
     The token contains:
       sub  — user UUID (primary claim, used by get_current_user)
       iat  — issued-at timestamp
       exp  — expiry timestamp
     """
+    # Support both calling conventions without breaking either
+    if isinstance(user_id, dict):
+        sub = str(user_id.get("sub", ""))
+    else:
+        sub = str(user_id)
+
     now    = datetime.now(timezone.utc)
     expire = now + timedelta(minutes=TOKEN_TTL_MINUTES)
 
     payload = {
-        "sub": str(user_id),
+        "sub": sub,
         "iat": now,
         "exp": expire,
     }
