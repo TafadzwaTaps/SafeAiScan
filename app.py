@@ -6,8 +6,6 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from config import DEV_MODE
-
 # FIX: load .env file automatically if present
 try:
     from dotenv import load_dotenv
@@ -36,11 +34,63 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 from auth import create_access_token, verify_token
-# FIX: removed duplicate "from fastapi import Request"
-from access import enforce_feature, has_feature, get_ai_depth, get_daily_limit, within_limit
-from plans import get_plan_limits
 from tasks import run_scan
 import db as DB
+
+# ── Inline replacements for removed modules ────────────────────────────────
+# config.py  → DEV_MODE removed; all features available to authenticated users
+# access.py  → enforce_feature / has_feature / get_ai_depth / within_limit removed
+# plans.py   → get_plan_limits removed; limits are now hard-coded here
+
+_PLAN_LIMITS = {
+    "free": {
+        "daily_scans":   10,
+        "history_limit": 10,
+        "ai_depth":      "basic",
+        "repo_scan":     False,
+    },
+    "pro": {
+        "daily_scans":   100,
+        "history_limit": 100,
+        "ai_depth":      "full",
+        "repo_scan":     True,
+    },
+    "enterprise": {
+        "daily_scans":   1000,
+        "history_limit": 1000,
+        "ai_depth":      "full",
+        "repo_scan":     True,
+    },
+}
+
+def get_plan_limits(plan: str) -> dict:
+    """Return limits dict for a plan name. Falls back to free limits."""
+    return _PLAN_LIMITS.get((plan or "free").lower(), _PLAN_LIMITS["free"]).copy()
+
+def within_limit(user: dict, usage_count: int) -> bool:
+    """Return True if the user has not exceeded their daily scan limit."""
+    plan  = user.get("plan", "free").lower()
+    limit = get_plan_limits(plan)["daily_scans"]
+    return usage_count <= limit
+
+def get_ai_depth(user: dict) -> str:
+    """Return the AI analysis depth for this user's plan."""
+    return get_plan_limits(user.get("plan", "free"))["ai_depth"]
+
+def enforce_feature(user: dict, feature: str) -> None:
+    """Raise 403 if the user's plan does not include the feature."""
+    plan   = user.get("plan", "free").lower()
+    limits = get_plan_limits(plan)
+    if not limits.get(feature, False):
+        raise HTTPException(
+            403,
+            detail={"success": False, "error": f"'{feature}' requires a Pro or Enterprise plan."}
+        )
+
+def has_feature(user: dict, feature: str) -> bool:
+    """Return True if the user's plan includes the feature."""
+    return bool(get_plan_limits(user.get("plan", "free")).get(feature, False))
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger("safeaiscan")
@@ -58,44 +108,43 @@ def ok(data=None, **extra):
 def fail(message: str, code: int = 400):
     raise HTTPException(status_code=code, detail={"success": False, "error": message})
 
-# ── bcrypt version compatibility ──────────────────────────────────────────────
-# bcrypt 4.x removed __about__.__version__. passlib reads that attribute at
-# startup; when it's missing passlib marks bcrypt as "unavailable" and
-# pwd_context.verify() silently returns False for every password, causing
-# every login to 401.  Fix: monkey-patch __about__ back, then fall back to
-# calling bcrypt directly if passlib still can't initialise.
-import bcrypt as _bcrypt
-
+# ── bcrypt version compatibility fix ──────────────────────────────────────
+# bcrypt 4.x removed __about__.__version__ which passlib reads at startup.
+# When missing, passlib silently marks bcrypt unavailable and verify()
+# returns False for every password → every login 401s.
+# Fix: patch __about__ back, fall back to raw bcrypt if passlib still fails.
+import bcrypt as _bcrypt_lib
 try:
-    if not hasattr(_bcrypt, "__about__"):
-        class _A:
-            __version__ = getattr(_bcrypt, "__version__", "4.0.0")
-        _bcrypt.__about__ = _A()
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    pwd_context.hash("probe")          # smoke-test
-    _USE_PASSLIB = True
+    if not hasattr(_bcrypt_lib, "__about__"):
+        class _BcryptAbout:
+            __version__ = getattr(_bcrypt_lib, "__version__", "4.0.0")
+        _bcrypt_lib.__about__ = _BcryptAbout()
+    _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    _pwd_ctx.hash("probe")   # smoke-test — raises if broken
+    _PASSLIB_OK = True
 except Exception:
-    pwd_context  = None
-    _USE_PASSLIB = False
+    _pwd_ctx   = None
+    _PASSLIB_OK = False
 
 def hash_password(pw: str) -> str:
-    if _USE_PASSLIB:
-        return pwd_context.hash(pw[:72])
-    return _bcrypt.hashpw(pw[:72].encode(), _bcrypt.gensalt()).decode()
+    if _PASSLIB_OK:
+        return _pwd_ctx.hash(pw[:72])
+    return _bcrypt_lib.hashpw(pw[:72].encode(), _bcrypt_lib.gensalt()).decode()
 
 def verify_password(plain: str, hashed: str) -> bool:
     try:
-        if _USE_PASSLIB:
-            return pwd_context.verify(plain, hashed)
-        return _bcrypt.checkpw(plain[:72].encode(), hashed.encode())
-    except Exception as e:
-        logger.warning(f"verify_password error: {e}")
+        if _PASSLIB_OK:
+            return _pwd_ctx.verify(plain, hashed)
+        return _bcrypt_lib.checkpw(plain[:72].encode(), hashed.encode())
+    except Exception as exc:
+        logger.warning(f"verify_password error: {exc}")
         return False
 
 def hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 def require_feature(auth, feature: str):
+    """Convenience wrapper used by route handlers."""
     enforce_feature(auth["user"], feature)
 
 # ---- MODELS ----
@@ -301,7 +350,8 @@ async def ai_enrich(text: str, findings: list, depth: str = "full") -> dict:
 # ---- ROUTES ----
 @app.get("/api/dev/mode")
 def dev_mode_status():
-    return {"dev_mode": DEV_MODE, "status": "ALL FEATURES UNLOCKED" if DEV_MODE else "PRODUCTION MODE"}
+    # config.py removed — DEV_MODE no longer applicable
+    return {"dev_mode": False, "status": "PRODUCTION MODE"}
 
 @app.post("/auth/register")
 def register(req: RegisterRequest, request: Request):
@@ -340,7 +390,7 @@ def login(req: LoginRequest, request: Request):
         stored_hash = user.get("password_hash", "")
         if not stored_hash:
             logger.error(f"Login: no password_hash in DB for {req.email}")
-            raise HTTPException(401, detail={"success": False, "error": "Account setup incomplete. Please re-register."})
+            raise HTTPException(401, detail={"success": False, "error": "Account incomplete. Please re-register."})
 
         ok_pw = verify_password(req.password, stored_hash)
         logger.info(f"Login attempt: {req.email} password_ok={ok_pw} hash_prefix={stored_hash[:10]}")
@@ -353,7 +403,6 @@ def login(req: LoginRequest, request: Request):
 
         token = create_access_token({"sub": user["id"]})
 
-        # Best-effort side-effects — never fail the login response
         raw_key = None
         if not user.get("api_key_hash"):
             try:
@@ -362,10 +411,12 @@ def login(req: LoginRequest, request: Request):
             except Exception as exc:
                 logger.warning(f"API key auto-issue failed: {exc}")
                 raw_key = None
+
         try:
             DB.update_user(user["id"], {"last_login": datetime.now(timezone.utc).isoformat()})
         except Exception:
             pass
+
         try:
             DB.write_audit_log(user["id"], "login", org_id=user.get("org_id"), ip_address=request.client.host)
         except Exception:
@@ -386,6 +437,45 @@ def login(req: LoginRequest, request: Request):
         logger.error(f"Login error: {exc}")
         raise HTTPException(500, detail={"success": False, "error": "Login failed."})
 
+
+
+@app.post("/auth/reset-password")
+async def reset_password(request: Request):
+    """
+    Change password. Also fixes accounts whose hash was stored
+    during the broken bcrypt window — always re-hashes on success.
+    Body JSON: { email, old_password, new_password }
+    """
+    try:
+        body     = await request.json()
+        email    = (body.get("email") or "").lower().strip()
+        old_pw   = body.get("old_password") or body.get("oldPassword") or ""
+        new_pw   = body.get("new_password") or body.get("newPassword") or ""
+
+        if not email or not old_pw or not new_pw:
+            fail("email, old_password, and new_password are required", 400)
+        if len(new_pw) < 8:
+            fail("New password must be at least 8 characters", 400)
+
+        user = DB.fetch_user_by_email(email)
+        if not user:
+            raise HTTPException(401, detail={"success": False, "error": "Invalid credentials."})
+
+        stored = user.get("password_hash", "")
+        if stored and not verify_password(old_pw, stored):
+            raise HTTPException(401, detail={"success": False, "error": "Current password is incorrect."})
+
+        DB.update_user(user["id"], {"password_hash": hash_password(new_pw)})
+        logger.info(f"Password reset for {email} — re-hashed with current bcrypt")
+
+        token = create_access_token({"sub": user["id"]})
+        return ok({"access_token": token, "user_id": user["id"],
+                   "message": "Password updated. You are now logged in."})
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"reset_password: {exc}")
+        fail("Password reset failed. Please try again.", 500)
 @app.post("/api/auth/rotate-key")
 def rotate_api_key(auth=Depends(get_user)):
     user    = auth["user"]
@@ -398,51 +488,6 @@ def rotate_api_key(auth=Depends(get_user)):
     except Exception as exc:
         logger.error(f"Key rotation: {exc}")
         fail("Key rotation failed", 500)
-
-
-@app.post("/auth/reset-password")
-def reset_password(request: Request):
-    """
-    Allows a user to change their password.
-    Recovery path for accounts whose hash was stored with a broken bcrypt version.
-    Accepts JSON: { email, old_password, new_password }
-    """
-    import asyncio
-    body = None
-    try:
-        # Read body synchronously via starlette
-        body_bytes = asyncio.get_event_loop().run_until_complete(request.body())
-        import json
-        body = json.loads(body_bytes)
-    except Exception:
-        fail("Invalid JSON body", 400)
-
-    email    = (body.get("email") or "").lower().strip()
-    old_pw   = body.get("old_password") or body.get("oldPassword") or ""
-    new_pw   = body.get("new_password") or body.get("newPassword") or ""
-
-    if not email or not old_pw or not new_pw:
-        fail("email, old_password, and new_password are required", 400)
-    if len(new_pw) < 8:
-        fail("New password must be at least 8 characters", 400)
-
-    user = DB.fetch_user_by_email(email)
-    if not user:
-        # Generic message — don't reveal whether email exists
-        raise HTTPException(401, detail={"success": False, "error": "Invalid credentials."})
-
-    stored = user.get("password_hash", "")
-    # If old_password doesn't verify, block the reset
-    if stored and not verify_password(old_pw, stored):
-        raise HTTPException(401, detail={"success": False, "error": "Current password is incorrect."})
-
-    new_hash = hash_password(new_pw)
-    DB.update_user(user["id"], {"password_hash": new_hash})
-    logger.info(f"Password reset for {email} — re-hashed with current bcrypt")
-
-    token = create_access_token({"sub": user["id"]})
-    return ok({"access_token": token, "user_id": user["id"], "message": "Password updated. You are now logged in."})
-
 
 @app.get("/api/me")
 def get_me(auth=Depends(get_user)):
@@ -457,8 +502,8 @@ def get_org_users(auth=Depends(get_user)):
     user   = auth["user"]
     org    = auth.get("org")
     plan   = user.get("plan", "free").lower()
-    if plan == "free" and not DEV_MODE:
-        fail("Team management requires Pro or Enterprise plan", 403)
+    if not has_feature(user, "repo_scan"):  # use repo_scan as proxy for paid plan
+        fail("Team management requires a Pro or Enterprise plan.", 403)
     org_id = org["id"] if org else None
     if not org_id:
         return ok([])
