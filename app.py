@@ -6,6 +6,8 @@ import logging
 import time
 from datetime import datetime, timezone
 
+from config import DEV_MODE
+
 # FIX: load .env file automatically if present
 try:
     from dotenv import load_dotenv
@@ -29,7 +31,6 @@ except ImportError:
     _USE_FIELD_VALIDATOR = False
 
 from passlib.context import CryptContext
-from config import DEV_MODE
 from github import Github
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
