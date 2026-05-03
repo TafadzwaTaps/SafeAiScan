@@ -222,7 +222,7 @@
   // ---- DEV MODE — must be set BEFORE api.js / app.js load ----
   // true  = all Pro/Enterprise features unlocked (default for local dev)
   // false = production gating
-  window.DEV_MODE = window.DEV_MODE !== undefined ? window.DEV_MODE : true;
+  window.DEV_MODE = window.DEV_MODE !== undefined ? window.DEV_MODE : false;
 
   // Auth guard — skip in DEV_MODE so devs can load dashboard directly
   if (!window.DEV_MODE) {
@@ -243,7 +243,7 @@
   <header class="dash-topbar">
     <div style="display:flex;align-items:center;gap:12px;">
       <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;letter-spacing:-0.03em;">
-        <span style="color:var(--accent);">Safe</span>AIScan
+        <span style="color:var(--accent);">Secret</span><span style="color:#00ffa3;">Scan</span>
         <span style="color:var(--border-bright);font-size:14px;">⬡</span>
       </span>
       <span class="badge-soft" style="font-size:10px;">
@@ -303,23 +303,26 @@
     <a class="side-nav-item active" onclick="window.scrollTo(0,0)" style="cursor:pointer;">
       <i class="bi bi-shield-shaded"></i> Code Scanner
     </a>
-    <a class="side-nav-item" id="nav-repo" href="minisky.html">
+    <a class="side-nav-item" id="nav-repo" href="dashboard.html">
       <i class="bi bi-github"></i> Repo Scanner
       <span id="repoLockBadge" class="badge-pill sev-low" style="margin-left:auto;font-size:9px;display:none;">PRO</span>
     </a>
-    <!-- CVE Lookup removed in MVP refactor -->
+    <a class="side-nav-item" id="nav-cve" style="cursor:pointer;">
+      <i class="bi bi-bug"></i> CVE Lookup
+      <span id="cveLockBadge" class="badge-pill sev-low" style="margin-left:auto;font-size:9px;display:none;">PRO</span>
+    </a>
 
     <!-- Upgrade section — hidden for Pro/Enterprise and DEV_MODE -->
     <div id="upgradeSection">
       <div class="side-label" style="margin-top:6px;">Upgrade</div>
       <div class="scan-panel" style="margin-bottom:6px;">
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.45;">
-          Get unlimited scans, all findings revealed, and PDF report downloads.
+          Unlock repo scanning, deep AI analysis, CVE enrichment and more.
         </div>
-        <a href="pricing.html" class="btn btn-primary w-100 mb-2" style="font-size:13px;text-decoration:none;">
-          <i class="bi bi-lightning-charge me-1"></i>Upgrade to Pro — $8.99
+        <a href="checkout.html" class="btn btn-primary w-100 mb-2" style="font-size:13px;text-decoration:none;">
+          <i class="bi bi-lightning-charge me-1"></i>Upgrade to Pro — $9.99
         </a>
-
+        
       </div>
     </div>
 
@@ -360,9 +363,14 @@
         </div>
       </div>
 
+      <!-- ZIP upload (hidden input) -->
+      <input type="file" id="zipFileInput" accept=".zip" style="display:none;">
       <div class="scan-actions">
         <button class="btn btn-primary flex-fill" id="codeScanBtn">
           <i class="bi bi-play-circle me-1"></i>Analyze Code
+        </button>
+        <button class="btn btn-success" id="zipScanBtn" title="Upload ZIP and scan for secrets">
+          <i class="bi bi-file-zip me-1"></i>Upload ZIP
         </button>
         <button class="btn btn-warning" id="repoScanBtn">
           <i class="bi bi-github me-1"></i>Scan Repo
@@ -459,7 +467,7 @@
 
     <!-- Quick Actions -->
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px;">
-      <a href="minisky.html" class="btn btn-outline-light btn-sm">
+      <a href="dashboard.html" class="btn btn-outline-light btn-sm">
         <i class="bi bi-grid-3x3-gap me-1"></i>Advanced Scanner
       </a>
       <button class="btn btn-danger btn-sm" onclick="logout()">
@@ -487,6 +495,43 @@
 <script src="app.js"></script>
 
 <script>
+  // ── ZIP UPLOAD SCAN ──────────────────────────────────────
+  document.addEventListener("DOMContentLoaded", function() {
+    const zipInput = document.getElementById("zipFileInput");
+    const zipBtn   = document.getElementById("zipScanBtn");
+    if (zipBtn && zipInput) {
+      zipBtn.addEventListener("click", () => zipInput.click());
+      zipInput.addEventListener("change", async function() {
+        const file = this.files?.[0];
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".zip")) {
+          showToast && showToast("Only .zip files are accepted","warning");
+          this.value=""; return;
+        }
+        zipBtn.disabled=true;
+        zipBtn.innerHTML=`<span class="spinner-border spinner-border-sm me-1"></span>Scanning…`;
+        try {
+          const fd  = new FormData(); fd.append("file",file);
+          const tok = localStorage.getItem("access_token");
+          const res = await fetch("https://rathious-safeaiscan.hf.space/scan/file",{method:"POST",headers:{"Authorization":`Bearer ${tok}`},body:fd});
+          const raw = await res.json();
+          if (!res.ok) { showToast&&showToast(raw?.detail?.error||raw?.detail||"Scan failed","error"); return; }
+          const d=raw.data||raw;
+          if (d.findings) {
+            window.findings = d.findings.map(f=>({title:f.type||"Secret",severity:f.severity||"HIGH",description:f.description||"",fix:f.fix||"",match:f.match||"",file:f.file||"",line:f.line||0}));
+            typeof renderVulnerabilities==="function" && renderVulnerabilities(window.findings);
+            showToast&&showToast(`ZIP scan: ${d.total_secrets} secret(s) [${d.risk_level}]`,d.risk_level==="NONE"?"success":"warning");
+            window.lastScanId=d.scan_id;
+          }
+        } catch(e){showToast&&showToast("ZIP scan failed: "+e.message,"error");}
+        finally{zipBtn.disabled=false;zipBtn.innerHTML=`<i class="bi bi-file-zip me-1"></i>Upload ZIP`;this.value="";}
+      });
+    }
+    document.getElementById("codeScanBtn")?.addEventListener("click",()=>typeof scan==="function"&&scan());
+    document.getElementById("exportPdfBtn")?.addEventListener("click",()=>typeof exportPDF==="function"&&exportPDF());
+  });
+
+
   // ============================================================
   //  HEATMAP
   // ============================================================
@@ -627,10 +672,10 @@
   // ============================================================
   function applyNavGating(plan) {
     plan = (plan || "free").toLowerCase();
-    // DEV_MODE always acts as Pro
-    if (window.DEV_MODE) plan = "pro";
+    // DEV_MODE always acts as enterprise
+    if (window.DEV_MODE) plan = "enterprise";
 
-    const isPro = ["pro"].includes(plan) || isProUser?.();
+    const isPro = ["pro", "enterprise"].includes(plan);
 
     const repoBadge = document.getElementById("repoLockBadge");
     const cveBadge  = document.getElementById("cveLockBadge");
@@ -666,18 +711,29 @@
     const repoBtn = document.getElementById("repoScanBtn");
     if (repoBtn) {
       repoBtn.addEventListener("click", () => {
-        if (window.DEV_MODE || (localStorage.getItem("is_pro") === "true")) {
+        if (window.DEV_MODE || ["pro","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
           showRepoModal();
         } else {
-          showUpgradePrompt("Repo scanning is available for all users. Upgrade to Pro to see all findings.");
+          showUpgradePrompt("Repo scanning requires a Pro or Enterprise plan. Upgrade to unlock full repository analysis.");
         }
       });
     }
 
-    // CVE Lookup nav removed in MVP refactor
+    // CVE nav gating
+    const navCve = document.getElementById("nav-cve");
+    if (navCve) {
+      navCve.addEventListener("click", e => {
+        if (window.DEV_MODE || ["pro","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
+          window.location.href = "minisky.html";
+        } else {
+          e.preventDefault();
+          showUpgradePrompt("CVE Lookup requires a Pro or Enterprise plan.");
+        }
+      });
+    }
 
     // Apply nav gating from cached plan (will be refreshed by loadPlan() shortly)
-    const cachedPlan = (window.DEV_MODE || localStorage.getItem("is_pro") === "true") ? "pro" : "free";
+    const cachedPlan = window.DEV_MODE ? "enterprise" : (localStorage.getItem("user_plan") || "free");
     applyNavGating(cachedPlan);
   });
 </script>
