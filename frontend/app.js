@@ -426,7 +426,7 @@ async function loadTeam() {
   }
 
   try {
-    const res  = await apiRequest("/scan/history"  // team management removed — showing scan history instead);
+    const res  = await apiRequest("/scan/history");  // team management removed — showing scan history instead
     const data = await safeJson(res);
     list.innerHTML = (data || []).map(u => `
       <li style="font-size:12px;color:var(--text-muted);padding:5px 0;display:flex;align-items:center;gap:8px;">

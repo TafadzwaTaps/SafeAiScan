@@ -679,13 +679,128 @@ def get_repo_tree(repo_url: str, auth=Depends(get_user)):
         logger.error(f"Repo tree: {exc}")
         fail(f"Could not fetch repo: {str(exc)[:120]}", 500)
 
-@app.get("/")
-def home():
-    return {"status": "SafeAIScan v2.1 running", "success": True}
+# ── Payment routes ─────────────────────────────────────────────────────────
+# Lazily import paypal so the app starts even when credentials are missing
+try:
+    import paypal as _paypal
+    _PAYPAL_AVAILABLE = bool(_paypal.CLIENT_ID and _paypal.CLIENT_SECRET)
+except Exception as _pp_err:
+    _PAYPAL_AVAILABLE = False
+    logger.warning(f"paypal.py not available: {_pp_err}")
+
+class PaymentCreateRequest(BaseModel):
+    paypal_email: str | None = None
+    user_name:    str | None = None
+
+@app.post("/payment/create")
+def payment_create(req: PaymentCreateRequest = None, auth=Depends(get_user)):
+    """
+    Create a PayPal order and return the approval URL.
+    If PayPal credentials are not configured, returns a 503 with a clear message
+    instead of 404 — so the frontend can show a helpful error.
+    """
+    user    = auth["user"]
+    user_id = user["id"]
+
+    if user.get("is_pro"):
+        fail("You already have a Pro account.", 400)
+
+    if not _PAYPAL_AVAILABLE:
+        raise HTTPException(
+            status_code = 503,
+            detail = {
+                "success": False,
+                "error":   "PayPal payments are not configured on this server. "
+                           "Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables.",
+                "paypal_configured": False
+            }
+        )
+
+    try:
+        result = _paypal.create_order(user_id)
+        logger.info(f"PayPal order created for user {user_id}: {result.get('order_id')}")
+        return ok(result)
+    except RuntimeError as exc:
+        logger.error(f"PayPal create_order failed for {user_id}: {exc}")
+        fail(str(exc), 502)
+    except Exception as exc:
+        logger.error(f"Unexpected payment error: {exc}")
+        fail("Payment setup failed. Please try again.", 500)
+
+
+@app.get("/payment/success")
+def payment_success(token: str, PayerID: str = ""):  # noqa: N803
+    """
+    PayPal redirects here after the user approves payment.
+    Captures the order, upgrades the user to Pro, redirects to frontend.
+    """
+    order_id     = token
+    frontend_url = os.getenv("APP_BASE_URL", "https://rathious-safeaiscan.hf.space")
+
+    if not _PAYPAL_AVAILABLE:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(
+            url=f"{frontend_url}/checkout.html?error=paypal_not_configured",
+            status_code=302
+        )
+
+    try:
+        capture_data = _paypal.capture_order(order_id)
+    except RuntimeError as exc:
+        logger.error(f"PayPal capture failed for order {order_id}: {exc}")
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(
+            url=f"{frontend_url}/checkout.html?error={str(exc)[:80]}",
+            status_code=302
+        )
+
+    user_id = _paypal.get_order_user_id(capture_data)
+    if user_id:
+        DB.mark_user_pro(user_id, paypal_order_id=order_id)
+        logger.info(f"User {user_id} upgraded to Pro via PayPal order {order_id}")
+    else:
+        logger.error(f"No user_id in capture data for order {order_id}")
+
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(
+        url=f"{frontend_url}/checkout.html?upgraded=1",
+        status_code=302
+    )
+
+
+@app.get("/payment/cancel")
+def payment_cancel():
+    """PayPal redirects here if the user cancels payment."""
+    frontend_url = os.getenv("APP_BASE_URL", "https://rathious-safeaiscan.hf.space")
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(
+        url=f"{frontend_url}/checkout.html?cancelled=1",
+        status_code=302
+    )
+
+
+@app.post("/payment/activate")
+def payment_activate(auth=Depends(get_user)):
+    """
+    Manually activate Pro for a user after a confirmed PayPal payment.
+    Called by the frontend after a successful capture on the client side.
+    """
+    user    = auth["user"]
+    user_id = user["id"]
+    DB.mark_user_pro(user_id)
+    logger.info(f"Manual Pro activation for user {user_id}")
+    return ok({"is_pro": True, "plan": "pro", "message": "Pro plan activated successfully."})
+
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "2.1.0", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {
+        "status":            "ok",
+        "version":           "2.1.0",
+        "paypal_configured": _PAYPAL_AVAILABLE,
+        "timestamp":         datetime.now(timezone.utc).isoformat()
+    }
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
