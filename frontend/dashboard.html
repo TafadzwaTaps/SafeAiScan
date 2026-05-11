@@ -243,7 +243,7 @@
   <header class="dash-topbar">
     <div style="display:flex;align-items:center;gap:12px;">
       <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;letter-spacing:-0.03em;">
-        <span style="color:var(--accent);">Secret</span><span style="color:#00ffa3;">Scan</span>
+        <span style="color:var(--accent);">Safe</span>AIScan
         <span style="color:var(--border-bright);font-size:14px;">⬡</span>
       </span>
       <span class="badge-soft" style="font-size:10px;">
@@ -303,7 +303,7 @@
     <a class="side-nav-item active" onclick="window.scrollTo(0,0)" style="cursor:pointer;">
       <i class="bi bi-shield-shaded"></i> Code Scanner
     </a>
-    <a class="side-nav-item" id="nav-repo" href="dashboard.html">
+    <a class="side-nav-item" id="nav-repo" href="minisky.html">
       <i class="bi bi-github"></i> Repo Scanner
       <span id="repoLockBadge" class="badge-pill sev-low" style="margin-left:auto;font-size:9px;display:none;">PRO</span>
     </a>
@@ -314,15 +314,37 @@
 
     <!-- Upgrade section — hidden for Pro/Enterprise and DEV_MODE -->
     <div id="upgradeSection">
+      <!-- Trial countdown widget (shown for pro_trial users too) -->
+      <div id="trialWidget" style="display:none;margin-bottom:12px;padding:14px;
+           background:linear-gradient(135deg,rgba(0,255,163,.08),rgba(91,123,254,.06));
+           border:1px solid rgba(0,255,163,.2);border-radius:12px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <i class="bi bi-gift-fill" style="color:#00ffa3;font-size:14px;"></i>
+          <span style="font-size:12px;font-weight:700;color:#00ffa3;">Pro Trial Active</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">
+          <span id="trialDaysDisplay">30 days remaining</span> — upgrade to keep Pro.
+        </div>
+        <div style="height:4px;background:var(--bg-3);border-radius:99px;overflow:hidden;margin-bottom:10px;">
+          <div id="trialProgressBar" style="height:100%;background:linear-gradient(90deg,#5b7bfe,#00ffa3);border-radius:99px;width:100%;transition:width .5s;"></div>
+        </div>
+        <a href="checkout.html" style="display:block;text-align:center;
+           background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;
+           padding:8px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;">
+          Keep Pro — $1.99/mo
+        </a>
+      </div>
       <div class="side-label" style="margin-top:6px;">Upgrade</div>
       <div class="scan-panel" style="margin-bottom:6px;">
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.45;">
           Unlock repo scanning, deep AI analysis, CVE enrichment and more.
         </div>
-        <a href="checkout.html" class="btn btn-primary w-100 mb-2" style="font-size:13px;text-decoration:none;">
-          <i class="bi bi-lightning-charge me-1"></i>Upgrade to Pro — $9.99
+        <a href="pricing.html" class="btn btn-primary w-100 mb-2" style="font-size:13px;text-decoration:none;">
+          <i class="bi bi-lightning-charge me-1"></i>Upgrade to Pro — $1.99/mo
         </a>
-        
+        <a href="enterprise.html" class="btn btn-outline-light w-100" style="font-size:13px;text-decoration:none;">
+          <i class="bi bi-building me-1"></i>Enterprise
+        </a>
       </div>
     </div>
 
@@ -363,14 +385,9 @@
         </div>
       </div>
 
-      <!-- ZIP upload (hidden input) -->
-      <input type="file" id="zipFileInput" accept=".zip" style="display:none;">
       <div class="scan-actions">
         <button class="btn btn-primary flex-fill" id="codeScanBtn">
           <i class="bi bi-play-circle me-1"></i>Analyze Code
-        </button>
-        <button class="btn btn-success" id="zipScanBtn" title="Upload ZIP and scan for secrets">
-          <i class="bi bi-file-zip me-1"></i>Upload ZIP
         </button>
         <button class="btn btn-warning" id="repoScanBtn">
           <i class="bi bi-github me-1"></i>Scan Repo
@@ -467,7 +484,7 @@
 
     <!-- Quick Actions -->
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px;">
-      <a href="dashboard.html" class="btn btn-outline-light btn-sm">
+      <a href="minisky.html" class="btn btn-outline-light btn-sm">
         <i class="bi bi-grid-3x3-gap me-1"></i>Advanced Scanner
       </a>
       <button class="btn btn-danger btn-sm" onclick="logout()">
@@ -495,43 +512,6 @@
 <script src="app.js"></script>
 
 <script>
-  // ── ZIP UPLOAD SCAN ──────────────────────────────────────
-  document.addEventListener("DOMContentLoaded", function() {
-    const zipInput = document.getElementById("zipFileInput");
-    const zipBtn   = document.getElementById("zipScanBtn");
-    if (zipBtn && zipInput) {
-      zipBtn.addEventListener("click", () => zipInput.click());
-      zipInput.addEventListener("change", async function() {
-        const file = this.files?.[0];
-        if (!file) return;
-        if (!file.name.toLowerCase().endsWith(".zip")) {
-          showToast && showToast("Only .zip files are accepted","warning");
-          this.value=""; return;
-        }
-        zipBtn.disabled=true;
-        zipBtn.innerHTML=`<span class="spinner-border spinner-border-sm me-1"></span>Scanning…`;
-        try {
-          const fd  = new FormData(); fd.append("file",file);
-          const tok = localStorage.getItem("access_token");
-          const res = await fetch("https://rathious-safeaiscan.hf.space/scan/file",{method:"POST",headers:{"Authorization":`Bearer ${tok}`},body:fd});
-          const raw = await res.json();
-          if (!res.ok) { showToast&&showToast(raw?.detail?.error||raw?.detail||"Scan failed","error"); return; }
-          const d=raw.data||raw;
-          if (d.findings) {
-            window.findings = d.findings.map(f=>({title:f.type||"Secret",severity:f.severity||"HIGH",description:f.description||"",fix:f.fix||"",match:f.match||"",file:f.file||"",line:f.line||0}));
-            typeof renderVulnerabilities==="function" && renderVulnerabilities(window.findings);
-            showToast&&showToast(`ZIP scan: ${d.total_secrets} secret(s) [${d.risk_level}]`,d.risk_level==="NONE"?"success":"warning");
-            window.lastScanId=d.scan_id;
-          }
-        } catch(e){showToast&&showToast("ZIP scan failed: "+e.message,"error");}
-        finally{zipBtn.disabled=false;zipBtn.innerHTML=`<i class="bi bi-file-zip me-1"></i>Upload ZIP`;this.value="";}
-      });
-    }
-    document.getElementById("codeScanBtn")?.addEventListener("click",()=>typeof scan==="function"&&scan());
-    document.getElementById("exportPdfBtn")?.addEventListener("click",()=>typeof exportPDF==="function"&&exportPDF());
-  });
-
-
   // ============================================================
   //  HEATMAP
   // ============================================================

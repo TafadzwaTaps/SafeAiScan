@@ -29,6 +29,8 @@ async function scan() {
     updateUsageMeter(data.usage_today, data.usage_limit);
     loadUsageChart();
 
+    if (findings.length > 0) enrichCVE(findings);
+
     stopLiveProgress();
     showToast(
       `Scan complete — ${findings.length} issue(s) found`,
@@ -56,6 +58,12 @@ async function scan() {
 //  REPO SCAN
 // ============================================================
 async function scanRepo() {
+  // Check plan before even prompting
+  if (!canAccessFeature("repo_scan")) {
+    showUpgradePrompt("Repo scanning requires a Pro or Enterprise plan. Upgrade to unlock full repository analysis.");
+    return;
+  }
+
   const repoUrl = prompt("Enter GitHub repo URL (https://github.com/user/repo):");
   if (!repoUrl?.trim()) return;
 
@@ -158,7 +166,7 @@ function startLiveProgress() {
   const text = document.getElementById("scanProgressText");
   const steps = [
     "Parsing code…", "Running static analysis…", "Checking vulnerability patterns…",
-    "Analyzing patterns…", "Detecting secrets…", "Finalizing report…"
+    "AI risk modeling…", "Mapping CVE database…", "Finalizing report…"
   ];
   let stepIdx = 0;
 
@@ -228,7 +236,7 @@ function showLimitBanner() {
       <div>
         <div style="font-size:13px;font-weight:600;color:var(--warning);">Daily scan limit reached</div>
         <div style="font-size:11px;color:var(--text-muted);">
-          ${plan === "free" ? "Free plan: 1 scan/day, first 5 findings shown. " : ""}Upgrade for more scans.
+          ${plan === "free" ? "Free plan: 10 scans/day. " : ""}Upgrade for more scans.
         </div>
       </div>
     </div>
@@ -319,7 +327,7 @@ async function loadPlan() {
   const el = document.getElementById("plan");
   if (!el) return;
 
-  // DEV_MODE: force enterprise display, skip server call
+  // DEV_MODE: force enterprise display
   if (window.DEV_MODE) {
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -332,61 +340,143 @@ async function loadPlan() {
       </div>
       <div style="margin-top:8px;font-size:11px;color:var(--text-faint);">
         <i class="bi bi-bar-chart me-1"></i>Unlimited scans · All features unlocked
-      </div>
-    `;
-    const devLimits = {
-      daily_scans: 999999, repo_scan: true,
-    };
-    localStorage.setItem("is_pro", "true");
-    applyPlanGating("pro", devLimits);
-    if (typeof window.applyNavGating === "function") window.applyNavGating("pro");
+      </div>`;
+    applyPlanGating("enterprise", { daily_scans: -1, repo_scan: true, pdf_download: true, advanced_ai: true });
+    if (typeof window.applyNavGating === "function") window.applyNavGating("enterprise");
     return;
   }
 
   try {
-    const data   = await getMe();
-    const plan   = (data.plan || "free").toLowerCase();
-    const limits = data.limits || {};
+    const data       = await getMe();
+    const plan       = (data.plan || "free").toLowerCase();
+    const limits     = data.limits || {};
+    const isPro      = data.is_pro || isProUser();
+    const isTrial    = plan === "pro_trial";
+    const daysLeft   = data.days_left || 0;
+    const trialActive= data.trial_active || false;
 
-    const isPro  = data.is_pro || false;
-    const label  = isPro ? "PRO" : "FREE";
-    const badge  = isPro ? "sev-high" : "sev-low";
-    const icon   = isPro ? "bi-lightning-charge" : "bi-person";
+    // Store everything for offline use
+    localStorage.setItem("user_plan",        plan);
+    localStorage.setItem("is_pro",           isPro ? "true" : "false");
+    localStorage.setItem("trial_active",     trialActive ? "true" : "false");
+    localStorage.setItem("trial_days_left",  String(daysLeft));
+    if (data.email) localStorage.setItem("user_email", data.email);
+
+    // Build plan badge
+    const badgeMap = {
+      free:       { cls: "sev-low",      icon: "bi-person",           label: "FREE" },
+      pro_trial:  { cls: "",             icon: "bi-gift-fill",        label: "PRO TRIAL",
+                    style: "background:linear-gradient(135deg,rgba(0,255,163,.2),rgba(91,123,254,.15));color:#00ffa3;border:1px solid rgba(0,255,163,.35);" },
+      pro:        { cls: "sev-high",     icon: "bi-lightning-charge", label: "PRO" },
+      enterprise: { cls: "sev-critical", icon: "bi-building",         label: "ENTERPRISE" },
+    };
+    const badge = badgeMap[plan] || badgeMap.free;
+    const badgeStyle = badge.style ? `style="padding:4px 10px;font-size:11px;${badge.style}"` :
+                                     `class="badge-pill ${badge.cls}" style="padding:4px 10px;font-size:11px;"`;
+
+    const scanLabel = (limits.daily_scans === -1 || limits.daily_scans > 900)
+      ? "Unlimited scans"
+      : `${limits.daily_scans} scans/day`;
+
+    // Trial countdown line
+    const trialLine = isTrial && trialActive ? `
+      <div style="margin-top:6px;display:flex;align-items:center;gap:5px;font-size:11px;
+                  color:${daysLeft <= 5 ? "var(--warning)" : "var(--text-faint)"};">
+        <i class="bi bi-clock${daysLeft <= 5 ? " text-warning" : ""} me-1"></i>
+        ${daysLeft <= 5
+          ? `<strong style="color:var(--warning);">Trial ends in ${daysLeft} day${daysLeft !== 1 ? "s" : ""}!</strong>`
+          : `Trial ends in <strong>${daysLeft} days</strong>`}
+        &nbsp;·&nbsp;
+        <a href="checkout.html" style="color:var(--accent);text-decoration:none;font-size:10px;">Upgrade →</a>
+      </div>` : "";
 
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="badge-pill ${badge}" style="padding:4px 10px;font-size:11px;">
-          <i class="bi ${icon} me-1"></i>${label}
+        <span ${badgeStyle}>
+          <i class="bi ${badge.icon} me-1"></i>${badge.label}
         </span>
-        <span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;" title="${escHtml(data.email || "")}">
+        <span style="font-size:11px;color:var(--text-muted);overflow:hidden;
+                     text-overflow:ellipsis;white-space:nowrap;max-width:150px;"
+              title="${escHtml(data.email || "")}">
           ${escHtml(data.email || "")}
         </span>
       </div>
-      <div style="margin-top:8px;font-size:11px;color:var(--text-faint);">
-        <i class="bi bi-bar-chart me-1"></i>${isPro ? "Unlimited scans · PDF reports" : "1 scan/day · 5 findings shown"}
+      <div style="margin-top:6px;font-size:11px;color:var(--text-faint);">
+        <i class="bi bi-bar-chart me-1"></i>${scanLabel}
       </div>
-    `;
+      ${trialLine}`;
 
-    localStorage.setItem("is_pro", isPro ? "true" : "false");
-    applyPlanGating(isPro ? "pro" : "free", {});
-    if (typeof window.applyNavGating === "function") window.applyNavGating(isPro ? "pro" : "free");
+    applyPlanGating(plan, limits);
+    if (typeof window.applyNavGating === "function") window.applyNavGating(plan);
 
-  } catch {
+    // Show trial banner at top of page
+    renderTrialBanner(plan, daysLeft, trialActive);
+
+  } catch (err) {
+    console.warn("[SecretScan] loadPlan failed:", err.message);
     el.innerHTML = `<span class="badge-pill sev-low"><i class="bi bi-person me-1"></i>FREE</span>`;
+  }
+}
+
+/* ── Trial banner (injected into dashboard header area) ─────── */
+function renderTrialBanner(plan, daysLeft, trialActive) {
+  // Remove any existing banner first
+  document.getElementById("trialBannerGlobal")?.remove();
+  if (!trialActive || plan !== "pro_trial") return;
+
+  const urgent  = daysLeft <= 5;
+  const banner  = document.createElement("div");
+  banner.id     = "trialBannerGlobal";
+  banner.style.cssText = `
+    position:sticky;top:54px;z-index:150;
+    background:${urgent
+      ? "linear-gradient(135deg,rgba(244,63,94,.12),rgba(251,146,60,.08))"
+      : "linear-gradient(135deg,rgba(0,255,163,.08),rgba(91,123,254,.06))"};
+    border-bottom:1px solid ${urgent ? "rgba(244,63,94,.2)" : "rgba(0,255,163,.2)"};
+    padding:9px 20px;display:flex;align-items:center;gap:12px;
+    font-size:12px;color:var(--text-muted);flex-wrap:wrap;
+  `;
+  banner.innerHTML = `
+    <i class="bi bi-${urgent ? "exclamation-triangle-fill" : "gift-fill"}"
+       style="color:${urgent ? "var(--warning)" : "#00ffa3"};font-size:14px;flex-shrink:0;"></i>
+    <span>
+      ${urgent
+        ? `<strong style="color:var(--warning);">Trial expires in ${daysLeft} day${daysLeft!==1?"s":""}!</strong> Upgrade now to keep Pro features.`
+        : `<strong style="color:#00ffa3;">Pro Trial Active</strong> — ${daysLeft} day${daysLeft!==1?"s":""} remaining. Enjoying unlimited scans &amp; all Pro features.`}
+    </span>
+    <a href="checkout.html" style="
+       margin-left:auto;flex-shrink:0;
+       background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;
+       border:none;padding:6px 14px;border-radius:8px;font-size:11px;
+       font-weight:600;cursor:pointer;text-decoration:none;
+       box-shadow:0 4px 12px rgba(91,123,254,.35);">
+      ${urgent ? "Upgrade Now" : "Upgrade to Pro — $1.99/mo"}
+    </a>
+    <button onclick="this.closest('#trialBannerGlobal').remove()"
+            style="background:none;border:none;color:var(--text-faint);
+                   cursor:pointer;font-size:16px;line-height:1;flex-shrink:0;">&#x2715;</button>
+  `;
+
+  // Insert after the topbar
+  const topbar = document.querySelector(".topbar") || document.querySelector("header") ||
+                 document.querySelector(".nav-bar");
+  if (topbar && topbar.nextSibling) {
+    topbar.parentNode.insertBefore(banner, topbar.nextSibling);
+  } else {
+    document.body.insertBefore(banner, document.body.firstChild);
   }
 }
 
 function applyPlanGating(plan, limits) {
   if (window.DEV_MODE) {
     plan   = "enterprise";
-    limits = limits || {
-      daily_scans: 999999, repo_scan: true,
-      team_management: true, cve_enrichment: true, api_access: true
-    };
+    limits = limits || { daily_scans:-1, repo_scan:true, pdf_download:true, advanced_ai:true };
   }
+  // pro_trial = full Pro access
+  if (plan === "pro_trial") plan = "pro";
 
   plan = (plan || "free").toLowerCase();
-  const isPro = ["pro", "enterprise"].includes(plan);
+  const isPro = ["pro", "pro_trial", "enterprise"].includes(plan) || isProUser?.();
 
   // Repo scan button — id-based
   const repoBtn = document.getElementById("repoScanBtn");
@@ -394,7 +484,7 @@ function applyPlanGating(plan, limits) {
     if (!isPro) {
       repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan Repo`;
       repoBtn.style.opacity = "0.6";
-      repoBtn.title = "Upgrade to Pro for unlimited scans";
+      repoBtn.title = "Requires Pro plan";
     } else {
       repoBtn.innerHTML = `<i class="bi bi-github me-1"></i>Scan Repo`;
       repoBtn.style.opacity = "";
@@ -410,7 +500,7 @@ function applyPlanGating(plan, limits) {
 
   // Upgrade section
   const upgradeSection = document.getElementById("upgradeSection");
-  if (upgradeSection) upgradeSection.style.display = isPro ? "none" : "";
+  if (upgradeSection) upgradeSection.style.display = (isPro || plan==="pro_trial") ? "none" : "";
 }
 
 async function loadTeam() {
@@ -418,7 +508,7 @@ async function loadTeam() {
   if (!list) return;
 
   const plan = getUserPlan();
-  if (!isProUser()) {
+  if (plan === "free") {
     list.innerHTML = `<li style="color:var(--text-faint);font-size:12px;">
       <i class="bi bi-lock me-1"></i>Team management requires Pro
     </li>`;
@@ -426,7 +516,7 @@ async function loadTeam() {
   }
 
   try {
-    const res  = await apiRequest("/scan/history");  // team management removed — showing scan history instead
+    const res  = await apiRequest("/api/org/users");
     const data = await safeJson(res);
     list.innerHTML = (data || []).map(u => `
       <li style="font-size:12px;color:var(--text-muted);padding:5px 0;display:flex;align-items:center;gap:8px;">
@@ -566,7 +656,7 @@ function renderAIInsights(data) {
 
       ${isBasic ? `
         <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
-          <a href="#" onclick="showUpgradePrompt('Upgrade to Pro to unlock full scan results and PDF reports.')" style="
+          <a href="#" onclick="showUpgradePrompt('Get full AI-powered vulnerability analysis, actionable code fixes, and CVE mapping with Pro.')" style="
             font-size:11px;color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:5px;">
             <i class="bi bi-lightning-charge"></i>
             Upgrade to Pro for full AI analysis & fixes
@@ -613,10 +703,37 @@ function renderSeverityTabs(data) {
 }
 
 // ============================================================
-//  CVE ENRICHMENT — removed in MVP refactor (no /api/cve/search endpoint)
+//  CVE ENRICHMENT — Pro/Enterprise + DEV_MODE, background, non-blocking
 // ============================================================
-async function enrichCVE() {
-  // No-op — CVE lookup not available in this version.
+async function enrichCVE(findingsList) {
+  if (!window.DEV_MODE) {
+    const plan = getUserPlan();
+    if (!["pro", "enterprise"].includes(plan)) return;
+  }
+  for (let i = 0; i < findingsList.length && i < 5; i++) {
+    const vuln = findingsList[i];
+    const box  = document.getElementById(`cve-${i}`);
+    if (!box || !vuln.title || (vuln.cve && vuln.cve !== "N/A")) continue;
+
+    try {
+      const res  = await apiRequest(`/api/cve/search?query=${encodeURIComponent(vuln.title)}`);
+      const data = await safeJson(res);
+      const cves = data?.cves || [];
+
+      if (cves.length) {
+        const top = cves[0];
+        box.innerHTML = `
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;
+                      padding:6px 8px;background:rgba(56,189,248,0.06);border-radius:6px;
+                      border:1px solid rgba(56,189,248,0.12);">
+            <i class="bi bi-shield-exclamation me-1" style="color:var(--warning);"></i>
+            <strong style="color:var(--accent-2);">${escHtml(top.id || "")}</strong>
+            ${top.cvss != null ? `· CVSS <strong>${top.cvss}</strong>` : ""}
+            ${top.description ? ` · <span style="color:var(--text-faint);">${escHtml(top.description.substring(0, 100))}…</span>` : ""}
+          </div>`;
+      }
+    } catch { /* silent — CVE enrichment is optional */ }
+  }
 }
 
 // ============================================================

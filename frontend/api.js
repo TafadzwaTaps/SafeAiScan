@@ -1,6 +1,6 @@
 // ============================================================
-//  SecretScan — API Layer v3.0
-//  Rewired to new secrets-scanner backend endpoints
+//  SafeAIScan — API Layer v2.0
+//  Standardized responses, plan-aware gating, retry logic
 // ============================================================
 
 const BASE_URL = "https://rathious-safeaiscan.hf.space";
@@ -16,26 +16,61 @@ function clearAuth() {
   window.location.replace("login.html");
 }
 
-// ---- PRO HELPERS (simple is_pro boolean — no plan tiers) ----
-// Source of truth: localStorage "is_pro" = "true" | "false"
-// DEV_MODE always acts as Pro.
+// ── Plan helpers ───────────────────────────────────────────
+// Source of truth: localStorage values set by getMe() after every page load.
+// pro_trial counts as full Pro access.
+let _userPlan   = window.DEV_MODE ? "enterprise" : (localStorage.getItem("user_plan") || "free");
+let _userLimits = null;
+try {
+  if (window.DEV_MODE) {
+    _userLimits = { daily_scans:-1, history_limit:9999, ai_depth:"full",
+      repo_scan:true, pdf_download:true, advanced_ai:true, api_access:true,
+      cve_enrichment:true, scheduled_scans:true, json_export:true };
+  } else {
+    const s = localStorage.getItem("user_limits");
+    if (s) _userLimits = JSON.parse(s);
+  }
+} catch {}
 
 function isProUser() {
   if (window.DEV_MODE) return true;
-  return localStorage.getItem("is_pro") === "true";
+  if (localStorage.getItem("is_pro") === "true")     return true;
+  if (localStorage.getItem("trial_active") === "true") return true;
+  const p = localStorage.getItem("user_plan") || "free";
+  return p === "pro_trial" || p === "pro" || p === "enterprise";
 }
 
-// Legacy alias kept so any leftover canAccessFeature() calls don't crash
+function isTrialUser() {
+  const p = localStorage.getItem("user_plan") || "free";
+  return p === "pro_trial" && localStorage.getItem("trial_active") === "true";
+}
+
+function getTrialDaysLeft() {
+  return parseInt(localStorage.getItem("trial_days_left") || "0");
+}
+
+function getUserPlan() {
+  if (window.DEV_MODE) return "enterprise";
+  return _userPlan;
+}
+
+function getUserLimits() { return _userLimits; }
+
+function cachePlanData(plan, limits) {
+  if (window.DEV_MODE) return;
+  _userPlan   = plan;
+  _userLimits = limits;
+  localStorage.setItem("user_plan", plan);
+  if (limits) localStorage.setItem("user_limits", JSON.stringify(limits));
+}
+
 function canAccessFeature(feature) {
   if (window.DEV_MODE) return true;
-  // All features (repo_scan, pdf download, full findings) require Pro
-  return isProUser();
+  if (isProUser()) return true;
+  // Free plan has limited access
+  const freeFeatures = { repo_scan: true, basic_scan: true };
+  return !!freeFeatures[feature];
 }
-
-// No-op stubs — kept so existing callers don't throw ReferenceErrors
-function getUserPlan()   { return isProUser() ? "pro" : "free"; }
-function getUserLimits() { return null; }
-function cachePlanData() {}
 
 // ---- RETRY HELPER ----
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -154,46 +189,25 @@ async function safeJson(res) {
 //  API METHODS
 // ============================================================
 
-// scanFile: upload a ZIP to POST /scan/file
-// (dashboard code-paste scan is replaced by file upload)
 async function analyzeCode(text) {
-  // Legacy stub — dashboard still calls this; route to /api/analyze for backwards compat
-  // Replace with scanFile() when the dashboard UI is updated for ZIP upload
-  // NOTE: /api/analyze is a backwards-compatibility stub.
-  // For new code, use scanFile() with a ZIP upload instead.
   const res = await apiRequest("/api/analyze", {
     method: "POST",
     body: JSON.stringify({ text })
   });
-  return safeJson(res);
-}
-
-async function scanFile(formData) {
-  // Upload a ZIP file. formData must be a FormData object with key "file".
-  const token = getToken();
-  const res = await fetch(BASE_URL + "/scan/file", {
-    method: "POST",
-    headers: {
-      ...(token && token !== "undefined" && { "Authorization": `Bearer ${token}` }),
-      // NO Content-Type header — browser sets it automatically with boundary for multipart
-    },
-    body: formData,
-  });
-  if (res.status === 401) { clearAuth(); throw new Error("Session expired."); }
-  if (res.status === 429) {
-    const b = await res.json().catch(() => ({}));
-    throw new LimitError(b?.detail?.error || b?.error || "Scan limit reached.");
+  const data = await safeJson(res);
+  // Only cache plan data in production mode
+  if (!window.DEV_MODE && data.plan && data.usage_limit) {
+    cachePlanData(data.plan, null);
+    document.dispatchEvent(new CustomEvent("planUpdated", { detail: data }));
   }
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}));
-    throw new Error(b?.detail?.error || b?.error || `HTTP ${res.status}`);
-  }
-  return safeJson(res);
+  return data;
 }
 
 async function scanRepoAPI(repoUrl) {
-  // All authenticated users can scan repos — Pro users get full findings
-  const res = await apiRequest("/scan/repo", {
+  if (!canAccessFeature("repo_scan")) {
+    throw new PlanError("Repo scanning requires Pro or Enterprise. Upgrade to unlock.");
+  }
+  const res = await apiRequest("/api/scan-repo", {
     method: "POST",
     body: JSON.stringify({ repo_url: repoUrl })
   });
@@ -201,41 +215,113 @@ async function scanRepoAPI(repoUrl) {
 }
 
 async function getTaskStatus(taskId) {
-  const res = await apiRequest(`/scan/status/${taskId}`);
+  const res = await apiRequest(`/api/task/${taskId}`);
   return safeJson(res);
 }
 
 async function getUsage() {
-  // /api/usage removed in refactor — return empty array gracefully
-  return [];
+  const res = await apiRequest("/api/usage");
+  return safeJson(res);
 }
 
 async function getHistory() {
-  const res = await apiRequest("/scan/history");
+  const res = await apiRequest("/api/history");
   return safeJson(res);
 }
 
 async function getMe() {
-  const res  = await apiRequest("/auth/me");
-  const data = await safeJson(res);
-  // Persist is_pro so gating works across page loads
-  if (!window.DEV_MODE && data?.is_pro !== undefined) {
-    localStorage.setItem("is_pro", data.is_pro ? "true" : "false");
+  // Backend route: GET /api/me — returns full subscription + trial info
+  try {
+    const res  = await apiRequest("/api/me");
+    const data = await safeJson(res);
+    if (!window.DEV_MODE) {
+      if (data?.plan)   localStorage.setItem("user_plan", data.plan);
+      if (data?.is_pro !== undefined) localStorage.setItem("is_pro", data.is_pro ? "true" : "false");
+      if (data?.trial_active !== undefined) localStorage.setItem("trial_active", data.trial_active ? "true" : "false");
+      if (data?.days_left !== undefined)    localStorage.setItem("trial_days_left", String(data.days_left));
+      cachePlanData(data.plan, data.limits || null);
+    }
+    return data;
+  } catch (err) {
+    if (err.message.includes("404")) {
+      return {
+        plan:         localStorage.getItem("user_plan") || "free",
+        is_pro:       localStorage.getItem("is_pro") === "true",
+        trial_active: localStorage.getItem("trial_active") === "true",
+        days_left:    parseInt(localStorage.getItem("trial_days_left") || "0"),
+        user_id:      localStorage.getItem("user_id") || "",
+        email:        localStorage.getItem("user_email") || ""
+      };
+    }
+    throw err;
   }
-  return data;
+}
+
+async function getTrialStatus() {
+  try {
+    const res  = await apiRequest("/api/trial/status");
+    return safeJson(res);
+  } catch (err) {
+    console.warn("[SecretScan] trial status unavailable:", err.message);
+    return {
+      plan:         localStorage.getItem("user_plan") || "free",
+      is_pro:       localStorage.getItem("is_pro") === "true",
+      trial_active: localStorage.getItem("trial_active") === "true",
+      days_left:    parseInt(localStorage.getItem("trial_days_left") || "0"),
+      trial_expired: false, days_left: 0
+    };
+  }
 }
 
 function rotateApiKey() {
-  // API key rotation removed in MVP refactor — no-op
-  showToast("API key management not available in this version.", "info");
+  // FIX: key rotation now calls the backend, then refreshes UI via initApiKey if available
+  apiRequest("/api/auth/rotate-key", { method: "POST" })
+    .then(res => safeJson(res))
+    .then(data => {
+      const newKey = data?.api_key || data?.data?.api_key;
+      if (newKey) {
+        localStorage.setItem("api_key", newKey);
+        // initApiKey lives in app.js — call only if loaded
+        if (typeof window.initApiKey === "function") window.initApiKey();
+      }
+      showToast("API key rotated successfully", "success");
+    })
+    .catch(err => showToast("Key rotation failed: " + err.message, "error"));
 }
 
 async function fetchCVE() {
-  // CVE lookup removed in MVP refactor.
+  const input = document.getElementById("cveInput")?.value?.trim();
+  if (!input) return showToast("Enter a CVE ID or keyword", "warning");
+
   const panel = document.getElementById("cvePanel");
-  if (panel) {
-    panel.innerHTML = `<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">
-      <i class="bi bi-info-circle me-1"></i>CVE lookup is not available in this version.
+  if (!panel) return;
+
+  panel.innerHTML = `<div class="skeleton" style="height:60px;border-radius:8px;"></div>`;
+
+  try {
+    const res  = await apiRequest(`/api/cve/search?query=${encodeURIComponent(input)}`);
+    const data = await safeJson(res);
+    const cves = data?.cves || data?.data?.cves || [];
+
+    if (!cves.length) {
+      panel.innerHTML = `<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">No CVEs found for "<strong>${escHtml(input)}</strong>"</div>`;
+      return;
+    }
+
+    panel.innerHTML = cves.map(cve => `
+      <div class="panel mb-2 pop-in">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong style="font-size:12px;color:var(--accent-2);">${escHtml(cve.id || "")}</strong>
+          <span class="badge-pill sev-${cvssSev(cve.cvss)}">${cve.cvss ?? "N/A"}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${escHtml((cve.description || "").substring(0, 180))}</div>
+      </div>
+    `).join("");
+
+  } catch (err) {
+    console.error(err);
+    panel.innerHTML = `<div style="color:var(--danger);font-size:12px;padding:8px 0;">
+      <i class="bi bi-exclamation-triangle me-1"></i>${escHtml(err.message)}
     </div>`;
   }
 }
@@ -264,52 +350,6 @@ if (typeof window.escHtml === "undefined") {
 }
 function escHtml(str) { return window.escHtml(str); }
 
-
-// ============================================================
-//  PAYMENT — PayPal upgrade flow
-// ============================================================
-
-async function createPayPalOrder() {
-  // POST /payment/create → returns { order_id, approve_url }
-  const res  = await apiRequest("/payment/create", { method: "POST" });
-  const data = await safeJson(res);
-  return data;
-}
-
-async function getReport(scanId) {
-  const res = await apiRequest(`/report/${scanId}`);
-  return safeJson(res);
-}
-
-async function downloadPDFReport(scanId) {
-  // PDF is gated to Pro users on the backend
-  if (!isProUser()) {
-    throw new PlanError("PDF reports require a Pro account. Upgrade to download.");
-  }
-  const token = getToken();
-  const res   = await fetch(`${BASE_URL}/report/${scanId}/pdf`, {
-    headers: { "Authorization": `Bearer ${token}` }
-  });
-  if (res.status === 403) throw new PlanError("PDF download requires Pro.");
-  if (!res.ok) throw new Error(`PDF download failed: HTTP ${res.status}`);
-
-  // Trigger browser download
-  const blob = await res.blob();
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = `secretscan-${scanId.slice(0, 8)}.pdf`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// Expose globally
-window.scanFile         = scanFile;
-window.scanRepoAPI      = scanRepoAPI;
-window.createPayPalOrder= createPayPalOrder;
-window.getReport        = getReport;
-window.downloadPDFReport= downloadPDFReport;
-window.isProUser        = isProUser;
 // ============================================================
 //  UPGRADE PROMPT (shown on PlanError / LimitError)
 // ============================================================
@@ -329,7 +369,7 @@ function showUpgradePrompt(message) {
       </div>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">${escHtml(message)}</p>
       <div style="display:grid;gap:8px;">
-        <button onclick="window.location.href='pricing.html'" style="
+        <button onclick="window.location.href='index.html#pricing'" style="
           background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;
           padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;
           font-family:'DM Sans',sans-serif;">
