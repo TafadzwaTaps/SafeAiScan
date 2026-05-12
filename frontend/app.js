@@ -26,8 +26,16 @@ async function scan() {
     renderVulnerabilities(data);
     updateStatus(findings);
     renderSeverityTabs(data);
-    updateUsageMeter(data.usage_today, data.usage_limit);
+
+    // Update usage counter from scan response — no extra request needed
+    const plan      = (localStorage.getItem("user_plan") || "free").toLowerCase();
+    const limits    = getUserLimits() || {};
+    const dailyLimit = limits.daily_scans ?? (plan === "free" ? 10 : -1);
+    updateUsageMeter(data.usage_today ?? 0, data.usage_limit ?? dailyLimit);
+
+    // Refresh usage chart with new data point, then render risk distribution
     loadUsageChart();
+    loadRiskChart(findings);
 
     if (findings.length > 0) enrichCVE(findings);
 
@@ -199,23 +207,32 @@ function updateUsageMeter(used, limit) {
   const el = document.getElementById("usage");
   if (!el) return;
 
-  if (limit && limit < 999999) {
-    const pct  = Math.round((used / limit) * 100);
-    const color = pct >= 90 ? "var(--danger)" : pct >= 70 ? "var(--warning)" : "var(--success)";
+  // -1 or very large = unlimited (Pro / pro_trial / enterprise)
+  const isUnlimited = !limit || limit < 0 || limit > 9000;
+
+  if (isUnlimited) {
+    // Show raw count with ∞ label — no progress bar
     el.innerHTML = `
-      <span style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;">${used}</span>
+      <span style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;">${used ?? 0}</span>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:4px;">/ ∞</span>
+      <div style="margin-top:4px;font-size:10px;color:var(--text-faint);">Unlimited scans</div>
+    `;
+  } else {
+    const safeUsed = Math.max(0, used ?? 0);
+    const pct      = Math.min(100, Math.round((safeUsed / limit) * 100));
+    const color    = pct >= 90 ? "var(--danger)" : pct >= 70 ? "var(--warning)" : "var(--success)";
+    el.innerHTML = `
+      <span style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;">${safeUsed}</span>
       <span style="font-size:11px;color:var(--text-muted);">/ ${limit}</span>
       <div style="margin-top:6px;height:4px;background:var(--bg-3);border-radius:99px;overflow:hidden;">
         <div style="height:100%;width:${pct}%;background:${color};border-radius:99px;transition:width 0.4s;"></div>
       </div>
+      <div style="margin-top:3px;font-size:10px;color:var(--text-faint);">${safeUsed} / ${limit} used today</div>
     `;
-  } else {
-    el.innerText = used;
   }
 }
 
 function showLimitBanner() {
-  if (window.DEV_MODE) return; // never show limit banner in dev mode
   const plan = getUserPlan();
   const existing = document.getElementById("limitBanner");
   if (existing) return;
@@ -234,7 +251,7 @@ function showLimitBanner() {
       <div>
         <div style="font-size:13px;font-weight:600;color:var(--warning);">Daily scan limit reached</div>
         <div style="font-size:11px;color:var(--text-muted);">
-          ${plan === "free" ? "Free plan: 5 scans/day. " : ""}Upgrade for more scans.
+          ${plan === "free" ? "Free plan: 10 scans/day. " : ""}Upgrade for more scans.
         </div>
       </div>
     </div>
@@ -258,17 +275,29 @@ async function loadUsage() {
   if (!el) return;
 
   try {
-    const data   = await getUsage();
-    const arr    = Array.isArray(data) ? data : [];
-    const today  = new Date().toISOString().slice(0, 10);
-    const record = arr.find(d => (d.date || "").startsWith(today));
-    const count  = record?.request_count ?? record?.count ?? 0;
+    // Primary: /api/me gives us today's usage + limits in one request
+    // (avoids the /api/usage 403 for users without usage_tracking table access)
+    const data = await getMe();
+    const plan        = (data.plan || "free").toLowerCase();
+    const limits      = data.limits || {};
+    const dailyLimit  = limits.daily_scans ?? (plan === "free" ? 10 : -1);
 
-    const limits = getUserLimits();
-    const limit  = limits?.daily_scans ?? null;
-    updateUsageMeter(count, limit);
-  } catch {
-    el.innerText = "—";
+    // Fetch today's usage count separately — fall back to 0 gracefully
+    let todayCount = 0;
+    try {
+      const usageData = await getUsage();
+      const arr       = Array.isArray(usageData) ? usageData : [];
+      const today     = new Date().toISOString().slice(0, 10);
+      const record    = arr.find(d => (d.date || "").startsWith(today));
+      todayCount      = record?.request_count ?? record?.count ?? 0;
+    } catch {
+      // /api/usage may 403 — that's OK, just show 0
+    }
+
+    updateUsageMeter(todayCount, dailyLimit);
+  } catch (err) {
+    console.warn("[SafeAIScan] loadUsage:", err.message);
+    el.innerHTML = `<span style="font-size:22px;font-weight:700;font-family:'Syne',sans-serif;">—</span>`;
   }
 }
 
@@ -325,25 +354,6 @@ async function loadHistory() {
 async function loadPlan() {
   const el = document.getElementById("plan");
   if (!el) return;
-
-  // DEV_MODE: force enterprise display
-  if (window.DEV_MODE) {
-    el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="badge-pill" style="padding:4px 10px;font-size:11px;
-          background:linear-gradient(135deg,rgba(192,38,211,0.25),rgba(91,123,254,0.2));
-          color:#e879f9;border:1px solid rgba(192,38,211,0.4);">
-          <i class="bi bi-building me-1"></i>ENTERPRISE
-        </span>
-        <span style="font-size:11px;color:var(--text-muted);">DEV MODE</span>
-      </div>
-      <div style="margin-top:8px;font-size:11px;color:var(--text-faint);">
-        <i class="bi bi-bar-chart me-1"></i>Unlimited scans · All features unlocked
-      </div>`;
-    applyPlanGating("enterprise", { daily_scans: -1, repo_scan: true, pdf_download: true, advanced_ai: true });
-    if (typeof window.applyNavGating === "function") window.applyNavGating("enterprise");
-    return;
-  }
 
   try {
     const data       = await getMe();
@@ -424,10 +434,6 @@ function renderTrialBanner() {
 }
 
 function applyPlanGating(plan, limits) {
-  if (window.DEV_MODE) {
-    plan   = "enterprise";
-    limits = limits || { daily_scans:-1, repo_scan:true, pdf_download:true, advanced_ai:true };
-  }
   // pro_trial = full Pro access
   if (plan === "pro_trial") plan = "pro";
 
@@ -706,13 +712,11 @@ function renderSeverityTabs(data) {
 }
 
 // ============================================================
-//  CVE ENRICHMENT — Pro/Enterprise + DEV_MODE, background, non-blocking
+//  CVE ENRICHMENT — Pro, pro_trial, and Enterprise only; background, non-blocking
 // ============================================================
 async function enrichCVE(findingsList) {
-  if (!window.DEV_MODE) {
-    const plan = getUserPlan();
-    if (!["pro", "enterprise"].includes(plan)) return;
-  }
+  const plan = getUserPlan();
+  if (!["pro", "pro_trial", "enterprise"].includes(plan)) return;
   for (let i = 0; i < findingsList.length && i < 5; i++) {
     const vuln = findingsList[i];
     const box  = document.getElementById(`cve-${i}`);
@@ -746,22 +750,33 @@ async function loadUsageChart() {
   const ctx = document.getElementById("usageChart");
   if (!ctx) return;
 
-  let labels = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-  let values = [0,0,0,0,0,0,0];
+  // Build a 7-day window ending today as a fallback skeleton
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  const labelMap  = {};
+  days.forEach(d => { labelMap[d] = new Date(d).toLocaleDateString("en", { weekday: "short" }); });
+  let dataMap = {};
+  days.forEach(d => { dataMap[d] = 0; });
 
   try {
-    const data = await getUsage();
-    const arr  = Array.isArray(data) ? data : [];
-    if (arr.length) {
-      labels = arr.map(d => {
-        const date = d.date ? new Date(d.date) : null;
-        return date ? date.toLocaleDateString("en", { weekday: "short" }) : "—";
-      });
-      values = arr.map(d => d.request_count || d.count || 0);
-    }
-  } catch { /* use defaults */ }
+    const raw = await getUsage();
+    const arr = Array.isArray(raw) ? raw : [];
+    arr.forEach(r => {
+      const key = (r.date || "").slice(0, 10);
+      if (key in dataMap) dataMap[key] = r.request_count ?? r.count ?? 0;
+    });
+  } catch {
+    // /api/usage may 403 — keep zeroed defaults; chart still renders
+  }
 
-  if (usageChart) usageChart.destroy();
+  const labels = days.map(d => labelMap[d]);
+  const values = days.map(d => dataMap[d]);
+
+  if (usageChart) { usageChart.destroy(); usageChart = null; }
 
   const gradient = ctx.getContext("2d").createLinearGradient(0, 0, 0, 200);
   gradient.addColorStop(0, "rgba(91,123,254,0.45)");
@@ -793,12 +808,27 @@ async function loadUsageChart() {
           titleColor: "#e8edf8",
           bodyColor: "#8296b3",
           borderColor: "#1e3a5f",
-          borderWidth: 1
+          borderWidth: 1,
+          callbacks: {
+            label: (ctx) => ` ${ctx.parsed.y} scan${ctx.parsed.y !== 1 ? "s" : ""}`
+          }
         }
       },
       scales: {
         x: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#8296b3", font: { size: 11 } } },
-        y: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#8296b3", font: { size: 11 } }, beginAtZero: true }
+        y: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          ticks: {
+            color: "#8296b3",
+            font: { size: 11 },
+            stepSize: 1,
+            // Only show integers on y-axis — no 0.5, 1.5 etc.
+            callback: (v) => Number.isInteger(v) ? v : null
+          },
+          beginAtZero: true,
+          // Ensure minimum range of 1 so the line shows up even with 0 data
+          suggestedMax: Math.max(...values, 1)
+        }
       }
     }
   });
@@ -818,9 +848,23 @@ function loadRiskChart(findingsList) {
   });
 
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  if (!total) return;
 
-  if (riskChart) riskChart.destroy();
+  if (riskChart) { riskChart.destroy(); riskChart = null; }
+
+  // Show empty state if no findings — don't silently leave the panel blank
+  if (!total) {
+    const container = ctx.closest(".chart-container, div") || ctx.parentElement;
+    // Only show placeholder if canvas parent is visible
+    const placeholder = document.getElementById("riskChartEmpty");
+    if (placeholder) placeholder.style.display = "flex";
+    ctx.style.display = "none";
+    return;
+  }
+
+  // Hide placeholder, show canvas
+  const placeholder = document.getElementById("riskChartEmpty");
+  if (placeholder) placeholder.style.display = "none";
+  ctx.style.display = "";
 
   riskChart = new Chart(ctx, {
     type: "doughnut",
@@ -1052,6 +1096,9 @@ async function init() {
   initScrollFade();
 
   const has = (id) => !!document.getElementById(id);
+
+  // Show risk chart empty state immediately — it populates after first scan
+  if (has("riskChart")) loadRiskChart([]);
 
   // Load all data in parallel for speed
   const tasks = [];
