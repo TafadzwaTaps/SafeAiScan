@@ -103,11 +103,14 @@ def is_pro_or_trial(user: dict) -> bool:
     return plan in ("pro", "pro_trial", "enterprise") and user.get("is_pro", False)
 
 def within_limit(user: dict, usage_count: int) -> bool:
-    """Return True if the user has not exceeded their daily scan limit."""
+    """
+    Return True if the user has not exceeded their daily scan limit.
+    -1 = unlimited (pro/pro_trial/enterprise). Free = 5/day.
+    """
     plan  = (user.get("plan") or "free").lower()
     limit = get_plan_limits(plan)["daily_scans"]
     if limit == -1:
-        return True  # unlimited
+        return True
     return usage_count <= limit
 
 def get_ai_depth(user: dict) -> str:
@@ -115,13 +118,22 @@ def get_ai_depth(user: dict) -> str:
     return get_plan_limits((user.get("plan") or "free"))["ai_depth"]
 
 def enforce_feature(user: dict, feature: str) -> None:
-    """Raise 403 if the user's plan does not include the feature."""
-    plan   = user.get("plan", "free").lower()
+    """
+    Raise 403 if the user's plan does not include the feature.
+    Free & trial users have access to repo_scan — they're limited by daily scan count.
+    """
+    plan   = (user.get("plan") or "free").lower()
+    # repo_scan is available to everyone — enforce via usage limits instead
+    if feature == "repo_scan":
+        return
+    # pro_trial has full pro access
+    if plan in ("pro", "pro_trial", "enterprise"):
+        return
     limits = get_plan_limits(plan)
     if not limits.get(feature, False):
         raise HTTPException(
             403,
-            detail={"success": False, "error": f"'{feature}' requires a Pro or Enterprise plan."}
+            detail={"success": False, "error": f"'{feature}' requires a Pro plan. Start your free 30-day trial or upgrade."}
         )
 
 def has_feature(user: dict, feature: str) -> bool:
@@ -425,8 +437,19 @@ def register(req: RegisterRequest, request: Request):
         except Exception:
             pass
         logger.info(f"Registered: {req.email} user_id={user_id} plan={trial_plan}")
-        return ok({"access_token": token, "api_key": raw_key, "plan": trial_plan,
-                   "is_pro": trial_is_pro, "user_id": user_id, "trial_active": trial_is_pro})
+        from datetime import date, timedelta
+        trial_end_date = str(date.today() + timedelta(days=30)) if trial_is_pro else ""
+        return ok({
+            "access_token": token,
+            "api_key":       raw_key,
+            "plan":          trial_plan,
+            "plan_label":    "Pro Trial" if trial_is_pro else "Free",
+            "is_pro":        trial_is_pro,
+            "trial_active":  trial_is_pro,
+            "trial_days_left": 30 if trial_is_pro else 0,
+            "trial_end":     trial_end_date,
+            "user_id":       user_id,
+        })
     except HTTPException:
         raise
     except Exception as exc:
@@ -478,13 +501,23 @@ def login(req: LoginRequest, request: Request):
             pass
 
         logger.info(f"Login successful: {req.email} user_id={user['id']}")
+        # Include full trial/subscription info in login response
+        try:
+            sub = DB.get_full_subscription_info(user)
+        except Exception:
+            sub = {"plan": user.get("plan","free"), "is_pro": user.get("is_pro",False),
+                   "trial_active": False, "days_left": 0, "trial_end": "", "plan_label":"Free"}
         return ok({
-            "access_token": token,
-            "user_id":      user["id"],
-            "org_id":       user.get("org_id"),
-            "plan":         user.get("plan", "free"),
-            "is_pro":       user.get("is_pro", False),
-            "api_key":      raw_key,
+            "access_token":   token,
+            "user_id":        user["id"],
+            "org_id":         user.get("org_id"),
+            "plan":           sub["plan"],
+            "plan_label":     sub.get("plan_label","Free"),
+            "is_pro":         sub["is_pro"],
+            "trial_active":   sub["trial_active"],
+            "trial_days_left": sub.get("days_left", 0),
+            "trial_end":      sub.get("trial_end",""),
+            "api_key":        raw_key,
         })
     except HTTPException:
         raise
@@ -650,8 +683,22 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
             limits = get_plan_limits(user.get("plan", "free"))
             fail(f"Daily scan limit reached ({limits['daily_scans']} scans/day)", 429)
         findings = scan_vulnerabilities(req.text)
+        plan     = (user.get("plan") or "free").lower()
+        # All plans get real AI results — pro gets deeper analysis
+        # Free/trial users get useful basic AI so the dashboard isn't empty
         ai_depth = get_ai_depth(user)
         ai       = await ai_enrich(req.text, findings, depth=ai_depth)
+        # Ensure free users always get at least a basic explanation
+        if not ai.get("explanation") and findings:
+            sev_counts = {}
+            for f in findings:
+                sev_counts[f.get("severity","LOW")] = sev_counts.get(f.get("severity","LOW"),0)+1
+            parts = [f"{v} {k.lower()}-severity issue{'s' if v>1 else ''}" for k,v in sev_counts.items()]
+            ai = {
+                "explanation": f"Found {len(findings)} security issue{'s' if len(findings)>1 else ''}: {', '.join(parts)}. "
+                               f"Review each finding below and apply the suggested fixes.",
+                "fixes": [f.get("fix","Review and sanitize this pattern.") for f in findings[:3]]
+            }
         sev_score = {"CRITICAL": 40, "HIGH": 25, "MEDIUM": 10, "LOW": 3}
         score     = min(100, sum(sev_score.get(f.get("severity", "LOW"), 3) for f in findings))
         hi_count  = sum(1 for f in findings if f.get("severity") in ("CRITICAL", "HIGH"))
@@ -673,7 +720,8 @@ def scan_repo_endpoint(req: RepoRequest, background_tasks: BackgroundTasks, auth
     # FIX: renamed function from scan_repo to scan_repo_endpoint to avoid clash with imported run_scan
     user  = auth["user"]
     org   = auth.get("org")
-    require_feature(auth, "repo_scan")
+    # repo_scan is available to all plans — pro_trial and free both get access
+    # (free is limited by daily_scans count, not feature gate)
     task_id = str(uuid.uuid4())
     org_id  = org["id"] if org else user["id"]
     if not DB.insert_scan_task({"id": task_id, "user_id": user["id"], "org_id": org_id, "repo_url": req.repo_url, "state": "QUEUED", "progress": 0, "created_at": datetime.now(timezone.utc).isoformat()}):
@@ -761,7 +809,8 @@ def generate_pdf(data: PDFReportRequest, auth=Depends(get_user)):
 
 @app.get("/api/repo/tree")
 def get_repo_tree(repo_url: str, auth=Depends(get_user)):
-    require_feature(auth, "repo_scan")
+    # repo_scan is available to all plans — pro_trial and free both get access
+    # (free is limited by daily_scans count, not feature gate)
     try:
         g         = Github(GITHUB_TOKEN) if GITHUB_TOKEN else Github()
         repo_name = repo_url.removeprefix("https://github.com/")

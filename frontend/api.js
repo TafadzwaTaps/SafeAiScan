@@ -354,36 +354,76 @@ function escHtml(str) { return window.escHtml(str); }
 //  UPGRADE PROMPT (shown on PlanError / LimitError)
 // ============================================================
 function showUpgradePrompt(message) {
-  const plan = getUserPlan();
+  // Remove any existing upgrade modal
+  document.getElementById("_upgradeModal")?.remove();
+
+  const plan       = localStorage.getItem("user_plan") || "free";
+  const alreadyTrial = plan === "pro_trial";
+  const alreadyPro   = plan === "pro" || plan === "enterprise";
+  // Show trial offer to free users who haven't tried it yet
+  const offerTrial = !alreadyTrial && !alreadyPro;
+
   const modal = document.createElement("div");
-  modal.style.cssText = `
-    position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;
-    background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);
-  `;
-  modal.innerHTML = `
-    <div style="background:var(--bg-2);border:1px solid var(--border-bright);border-radius:18px;
-                padding:28px 32px;max-width:400px;width:90%;box-shadow:0 24px 80px rgba(0,0,0,0.6);
-                animation:popIn 0.25s cubic-bezier(0.34,1.56,0.64,1) both;">
-      <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:8px;">
-        <i class="bi bi-lightning-charge" style="color:var(--warning);"></i> Upgrade Required
-      </div>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">${escHtml(message)}</p>
-      <div style="display:grid;gap:8px;">
-        <button onclick="window.location.href='index.html#pricing'" style="
-          background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;
-          padding:11px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;
-          font-family:'DM Sans',sans-serif;">
-          <i class="bi bi-lightning-charge me-1"></i>View Upgrade Plans
-        </button>
-        <button onclick="this.closest('[style]').remove()" style="
-          background:transparent;color:var(--text-muted);border:1px solid var(--border);
-          padding:9px 20px;border-radius:10px;font-size:13px;cursor:pointer;
-          font-family:'DM Sans',sans-serif;">
-          Maybe Later
-        </button>
-      </div>
-    </div>
-  `;
+  modal.id    = "_upgradeModal";
+  modal.setAttribute("style",
+    "position:fixed;inset:0;z-index:99998;display:flex;align-items:center;" +
+    "justify-content:center;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);padding:20px;"
+  );
+
+  const featureList = offerTrial
+    ? ["Unlimited scans every day",
+       "All findings revealed",
+       "GitHub repo scanning",
+       "Deep AI analysis & fix suggestions",
+       "PDF report download",
+       "CVE enrichment & lookup"]
+      .map(f => '<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);">' +
+                '<i class="bi bi-check-circle-fill" style="color:#00ffa3;font-size:11px;flex-shrink:0;"></i>' + f + '</div>')
+      .join("")
+    : "";
+
+  const headerHTML = offerTrial
+    ? '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
+      '<span style="font-size:22px;">🎁</span>' +
+      '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;">Try Pro Free — 30 Days</div>' +
+      '</div>'
+    : '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;margin-bottom:6px;">' +
+      '<i class="bi bi-lightning-charge" style="color:var(--warning);"></i> ' +
+      (alreadyTrial ? "Keep Your Pro Access" : "Upgrade to Pro") +
+      '</div>';
+
+  const featureBlock = featureList
+    ? '<div style="background:rgba(0,255,163,.05);border:1px solid rgba(0,255,163,.15);' +
+      'border-radius:12px;padding:14px;margin-bottom:16px;display:flex;flex-direction:column;gap:6px;">' +
+      featureList + '</div>'
+    : "";
+
+  const primaryBtn = offerTrial
+    ? '<a href="checkout.html" style="display:block;text-align:center;' +
+      'background:linear-gradient(135deg,#00ffa3,#5b7bfe);color:#0f172a;' +
+      'padding:13px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;' +
+      'box-shadow:0 6px 20px rgba(0,255,163,.3);">' +
+      '<i class="bi bi-gift-fill me-1"></i>Start Free 30-Day Trial — No Card Needed</a>' +
+      '<div style="text-align:center;font-size:11px;color:var(--text-faint);margin-top:4px;">After trial: $1.99/mo · Cancel anytime</div>'
+    : '<button onclick="window.location.href=\'checkout.html\'"  style="' +
+      'background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;' +
+      'padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">' +
+      '<i class="bi bi-lightning-charge me-1"></i>Upgrade to Pro — $1.99/mo</button>';
+
+  modal.innerHTML =
+    '<div style="background:var(--bg-2);border:1px solid var(--border-bright);border-radius:18px;' +
+    'padding:28px 28px;max-width:420px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,0.6);' +
+    'animation:popIn 0.25s cubic-bezier(.34,1.56,.64,1) both;">' +
+    headerHTML +
+    '<p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.55;">' + escHtml(message) + '</p>' +
+    featureBlock +
+    '<div style="display:grid;gap:8px;">' +
+    primaryBtn +
+    '<button onclick="document.getElementById(&quot;_upgradeModal&quot;).remove()" style="' +
+    'background:transparent;color:var(--text-faint);border:none;padding:8px;font-size:12px;cursor:pointer;">' +
+    'Maybe Later</button>' +
+    '</div></div>';
+
   document.body.appendChild(modal);
   modal.addEventListener("click", e => { if (e.target === modal) modal.remove(); });
 }
@@ -466,3 +506,4 @@ window.addEventListener("unhandledrejection", e => {
 window.PlanError  = PlanError;
 window.LimitError = LimitError;
 window.showUpgradePrompt = showUpgradePrompt;
+

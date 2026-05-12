@@ -399,12 +399,16 @@ async function doLogin() {
       return;
     }
 
-    localStorage.setItem('access_token', data.access_token);
-    localStorage.setItem('user_id',      data.user_id   || '');
-    localStorage.setItem('is_pro',       data.is_pro    ? 'true' : 'false');
-    localStorage.setItem('user_plan',    data.plan      || 'free');
-    if (data.org_id)  localStorage.setItem('org_id',  data.org_id);
-    if (data.api_key) localStorage.setItem('api_key', data.api_key);
+    localStorage.setItem('access_token',    data.access_token);
+    localStorage.setItem('user_id',         data.user_id   || '');
+    localStorage.setItem('is_pro',          data.is_pro    ? 'true' : 'false');
+    localStorage.setItem('user_plan',       data.plan      || 'free');
+    localStorage.setItem('trial_active',    data.trial_active  ? 'true' : 'false');
+    localStorage.setItem('trial_days_left', String(data.trial_days_left || 0));
+    if (data.trial_end)  localStorage.setItem('trial_end',   data.trial_end);
+    if (data.org_id)     localStorage.setItem('org_id',      data.org_id);
+    if (data.api_key)    localStorage.setItem('api_key',     data.api_key);
+    if (data.email)      localStorage.setItem('user_email',  data.email);
 
     _showAlert('loginAlert', 'Login successful! Redirecting\u2026', 'success');
     setTimeout(function() { window.location.href = 'dashboard.html'; }, 800);
@@ -480,13 +484,19 @@ async function doRegister() {
     }
 
     if (data.access_token) {
-      localStorage.setItem('access_token', data.access_token);
-      localStorage.setItem('user_id',   data.user_id || '');
-      localStorage.setItem('is_pro',    data.is_pro  ? 'true' : 'false');
-      localStorage.setItem('user_plan', data.plan    || 'free');
-      if (data.api_key) localStorage.setItem('api_key', data.api_key);
-      _showAlert('registerAlert', 'Account created! Redirecting\u2026', 'success');
-      setTimeout(function() { window.location.href = 'dashboard.html'; }, 900);
+      localStorage.setItem('access_token',    data.access_token);
+      localStorage.setItem('user_id',         data.user_id || '');
+      localStorage.setItem('is_pro',          data.is_pro  ? 'true' : 'false');
+      localStorage.setItem('user_plan',       data.plan    || 'pro_trial');
+      localStorage.setItem('trial_active',    data.trial_active ? 'true' : 'false');
+      localStorage.setItem('trial_days_left', String(data.trial_days_left || 30));
+      if (data.trial_end)  localStorage.setItem('trial_end',  data.trial_end);
+      if (data.api_key)    localStorage.setItem('api_key',    data.api_key);
+      var regMsg = data.trial_active
+        ? 'Account created! Your 30-day Pro trial is now active \u2014 redirecting\u2026'
+        : 'Account created! Redirecting\u2026';
+      _showAlert('registerAlert', regMsg, 'success');
+      setTimeout(function() { window.location.href = 'dashboard.html'; }, 1100);
     } else {
       _showAlert('registerAlert', 'Account created! Please sign in.', 'success');
       setTimeout(function() { showTab('login'); }, 1200);

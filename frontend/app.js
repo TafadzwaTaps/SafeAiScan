@@ -59,10 +59,8 @@ async function scan() {
 // ============================================================
 async function scanRepo() {
   // Check plan before even prompting
-  if (!canAccessFeature("repo_scan")) {
-    showUpgradePrompt("Repo scanning requires a Pro or Enterprise plan. Upgrade to unlock full repository analysis.");
-    return;
-  }
+  // All users can scan repos — backend limits by daily scan count
+  // Pro trial and Pro get unlimited; free gets 2 repos/day
 
   const repoUrl = prompt("Enter GitHub repo URL (https://github.com/user/repo):");
   if (!repoUrl?.trim()) return;
@@ -236,11 +234,11 @@ function showLimitBanner() {
       <div>
         <div style="font-size:13px;font-weight:600;color:var(--warning);">Daily scan limit reached</div>
         <div style="font-size:11px;color:var(--text-muted);">
-          ${plan === "free" ? "Free plan: 10 scans/day. " : ""}Upgrade for more scans.
+          ${plan === "free" ? "Free plan: 5 scans/day. " : ""}Upgrade for more scans.
         </div>
       </div>
     </div>
-    <button onclick="showUpgradePrompt('Upgrade to scan more code every day.')" style="
+    <button onclick="showUpgradePrompt('You have reached your daily scan limit. Start your free 30-day Pro trial for unlimited scans.')" style="
       background:linear-gradient(135deg,#fb923c,#ea580c);color:#fff;border:none;
       padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;
       font-family:'DM Sans',sans-serif;white-space:nowrap;">
@@ -316,9 +314,10 @@ async function loadHistory() {
     }).join("");
 
   } catch (err) {
-    console.error(err);
-    list.innerHTML = `<div style="color:var(--text-faint);font-size:12px;padding:8px 0;">
-      <i class="bi bi-exclamation-circle me-1"></i>Failed to load history
+    console.warn("[SecretScan] loadHistory:", err.message);
+    list.innerHTML = `<div style="text-align:center;padding:16px 8px;color:var(--text-faint);font-size:12px;">
+      <i class="bi bi-shield" style="display:block;font-size:20px;margin-bottom:6px;"></i>
+      No scan history yet — run your first scan!
     </div>`;
   }
 }
@@ -625,42 +624,89 @@ function renderAIInsights(data) {
   const container = document.getElementById("aiInsights");
   if (!container) return;
 
-  const ai      = data.ai || {};
-  const explain = ai.explanation || "";
-  const fixes   = Array.isArray(ai.fixes) ? ai.fixes : [];
-  const plan    = getUserPlan();
-  const isBasic = plan === "free";
+  const ai       = data.ai || {};
+  const explain  = ai.explanation || "";
+  const fixes    = Array.isArray(ai.fixes) ? ai.fixes : [];
+  const findings = data.findings || [];
+  const plan     = (localStorage.getItem("user_plan") || getUserPlan() || "free").toLowerCase();
+  const isPro    = plan === "pro" || plan === "pro_trial" || plan === "enterprise";
 
-  if (!explain && !fixes.length) { container.innerHTML = ""; return; }
+  // Always show something useful — even if AI is empty, show scan summary
+  const risk     = data.risk || "LOW";
+  const score    = data.score || 0;
+  const riskColors = { CRITICAL:"#f43f5e", HIGH:"#fb7185", MEDIUM:"#fdba74", LOW:"#fbbf24" };
+  const riskColor  = riskColors[risk] || "#fbbf24";
+
+  // Build severity counts from findings
+  const sevCounts = { CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0 };
+  findings.forEach(f => { sevCounts[f.severity] = (sevCounts[f.severity]||0)+1; });
+  const sevSummary = Object.entries(sevCounts)
+    .filter(([,v]) => v > 0)
+    .map(([k,v]) => `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;
+      background:${k==="CRITICAL"?"rgba(244,63,94,.15)":k==="HIGH"?"rgba(251,113,133,.12)":k==="MEDIUM"?"rgba(251,146,60,.12)":"rgba(250,204,21,.1)"};
+      color:${riskColors[k]||"#fbbf24"};">${v} ${k}</span>`).join(" ");
 
   container.innerHTML = `
     <div class="ai-box pop-in">
       <div class="ai-label">
         <i class="bi bi-cpu me-1"></i>AI Security Insights
-        ${isBasic ? `<span class="badge-pill sev-low" style="font-size:9px;margin-left:6px;">Basic</span>` : ""}
+        ${!isPro ? '<span class="badge-pill sev-low" style="font-size:9px;margin-left:6px;">Basic</span>' : ""}
       </div>
 
-      ${explain ? `<p style="font-size:13px;color:var(--text-muted);margin-bottom:${fixes.length ? "10px" : "0"};line-height:1.55;">${escHtml(explain)}</p>` : ""}
+      <!-- Risk summary row -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;
+                  padding:10px 12px;background:var(--bg-1);border-radius:8px;
+                  border:1px solid var(--border);">
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;
+                    color:${riskColor};min-width:40px;">${risk}</div>
+        <div style="flex:1;">
+          <div style="font-size:11px;color:var(--text-faint);margin-bottom:3px;">Risk level</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">${sevSummary || '<span style="font-size:11px;color:var(--success);">✓ No issues detected</span>'}</div>
+        </div>
+        ${score > 0 ? `<div style="text-align:right;">
+          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:${score>=70?"var(--danger)":score>=40?"var(--warning)":"var(--success)"};">${score}</div>
+          <div style="font-size:9px;color:var(--text-faint);">SCORE</div>
+        </div>` : ""}
+      </div>
+
+      ${explain ? `<p style="font-size:13px;color:var(--text-muted);margin-bottom:${fixes.length?"10px":"0"};
+        line-height:1.6;">${escHtml(explain)}</p>` : ""}
 
       ${fixes.length > 0 ? `
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-faint);margin-bottom:6px;">Recommended Actions</div>
-        <div style="display:flex;flex-direction:column;gap:5px;">
-          ${fixes.map(f => `
-            <div style="display:flex;gap:8px;font-size:12px;color:var(--text-muted);">
-              <i class="bi bi-check-circle-fill" style="color:var(--success);flex-shrink:0;margin-top:2px;"></i>
-              <span>${escHtml(f)}</span>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;
+                    color:var(--text-faint);margin-bottom:6px;margin-top:6px;">
+          <i class="bi bi-wrench me-1"></i>Recommended Actions
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${fixes.slice(0, isPro ? 999 : 3).map(f => `
+            <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;
+                        color:var(--text-muted);padding:7px 10px;
+                        background:rgba(91,123,254,.04);border-radius:7px;
+                        border-left:2px solid var(--accent);">
+              <i class="bi bi-check2-circle" style="color:var(--success);flex-shrink:0;margin-top:1px;font-size:13px;"></i>
+              <span style="line-height:1.5;">${escHtml(f)}</span>
             </div>
           `).join("")}
         </div>
+        ${!isPro && fixes.length > 3 ? `
+          <div style="font-size:11px;color:var(--text-faint);margin-top:6px;text-align:center;">
+            +${fixes.length - 3} more fix suggestions with Pro
+          </div>
+        ` : ""}
       ` : ""}
 
-      ${isBasic ? `
-        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
-          <a href="#" onclick="showUpgradePrompt('Get full AI-powered vulnerability analysis, actionable code fixes, and CVE mapping with Pro.')" style="
-            font-size:11px;color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:5px;">
-            <i class="bi bi-lightning-charge"></i>
-            Upgrade to Pro for full AI analysis & fixes
-          </a>
+      ${!isPro && findings.length > 0 ? `
+        <div style="margin-top:12px;padding:10px 12px;
+                    background:linear-gradient(135deg,rgba(0,255,163,.05),rgba(91,123,254,.04));
+                    border:1px solid rgba(0,255,163,.15);border-radius:10px;
+                    display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="font-size:11px;color:var(--text-muted);">
+            🎁 <strong style="color:#00ffa3;">30-day Pro trial free</strong> — unlimited scans, full AI, PDF reports
+          </div>
+          <button onclick="showUpgradePrompt('Unlock full AI analysis, unlimited scans, PDF reports, and CVE lookup.')"
+                  style="background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;
+                         padding:5px 12px;border-radius:7px;font-size:11px;font-weight:600;
+                         cursor:pointer;white-space:nowrap;flex-shrink:0;">Try Pro Free</button>
         </div>
       ` : ""}
     </div>

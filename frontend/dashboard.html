@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SecretScan — Dashboard</title>
+<title>SafeAIScan — Dashboard</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
@@ -314,33 +314,15 @@
 
     <!-- Upgrade section — hidden for Pro/Enterprise and DEV_MODE -->
     <div id="upgradeSection">
-      <!-- Trial countdown widget (shown for pro_trial users too) -->
-      <div id="trialWidget" style="display:none;margin-bottom:12px;padding:14px;
-           background:linear-gradient(135deg,rgba(0,255,163,.08),rgba(91,123,254,.06));
-           border:1px solid rgba(0,255,163,.2);border-radius:12px;">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-          <i class="bi bi-gift-fill" style="color:#00ffa3;font-size:14px;"></i>
-          <span style="font-size:12px;font-weight:700;color:#00ffa3;">Pro Trial Active</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">
-          <span id="trialDaysDisplay">30 days remaining</span> — upgrade to keep Pro.
-        </div>
-        <div style="height:4px;background:var(--bg-3);border-radius:99px;overflow:hidden;margin-bottom:10px;">
-          <div id="trialProgressBar" style="height:100%;background:linear-gradient(90deg,#5b7bfe,#00ffa3);border-radius:99px;width:100%;transition:width .5s;"></div>
-        </div>
-        <a href="checkout.html" style="display:block;text-align:center;
-           background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;
-           padding:8px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;">
-          Keep Pro — $1.99/mo
-        </a>
-      </div>
+      <!-- Show trial offer for free users, upgrade reminder for trial users -->
+      <div id="smartUpgradeWidget" style="margin-bottom:12px;"></div>
       <div class="side-label" style="margin-top:6px;">Upgrade</div>
       <div class="scan-panel" style="margin-bottom:6px;">
         <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.45;">
           Unlock repo scanning, deep AI analysis, CVE enrichment and more.
         </div>
         <a href="pricing.html" class="btn btn-primary w-100 mb-2" style="font-size:13px;text-decoration:none;">
-          <i class="bi bi-lightning-charge me-1"></i>Upgrade to Pro — $1.99/mo
+          <i class="bi bi-lightning-charge me-1"></i>Upgrade to Pro — $8.99
         </a>
         <a href="enterprise.html" class="btn btn-outline-light w-100" style="font-size:13px;text-decoration:none;">
           <i class="bi bi-building me-1"></i>Enterprise
@@ -580,7 +562,7 @@
           </button>
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">
-          Enter a public GitHub repository URL. SecretScan will clone, validate and run a full security analysis.
+          Enter a public GitHub repository URL. SafeAIScan will clone, validate and run a full security analysis.
         </div>
         <div style="position:relative;margin-bottom:8px;">
           <i class="bi bi-github" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);
@@ -655,7 +637,8 @@
     // DEV_MODE always acts as enterprise
     if (window.DEV_MODE) plan = "enterprise";
 
-    const isPro = ["pro", "enterprise"].includes(plan);
+    const isPro = ["pro", "pro_trial", "enterprise"].includes(plan) || isProUser?.();
+  // ALL plans get repo_scan — it's gated by usage count, not plan tier
 
     const repoBadge = document.getElementById("repoLockBadge");
     const cveBadge  = document.getElementById("cveLockBadge");
@@ -684,6 +667,47 @@
   //  BOOT — bind buttons + apply gating on DOMContentLoaded
   // ============================================================
   document.addEventListener("DOMContentLoaded", () => {
+    // ── Smart upgrade widget ──────────────────────────────────
+    (function renderUpgradeWidget() {
+      const plan     = localStorage.getItem("user_plan") || "free";
+      const trial    = localStorage.getItem("trial_active") === "true";
+      const daysLeft = parseInt(localStorage.getItem("trial_days_left") || "30");
+      const widget   = document.getElementById("smartUpgradeWidget");
+      if (!widget) return;
+
+      if (plan === "free") {
+        widget.innerHTML =
+          '<div style="padding:14px;background:linear-gradient(135deg,rgba(0,255,163,.08),rgba(91,123,254,.06));' +
+          'border:1px solid rgba(0,255,163,.2);border-radius:12px;margin-bottom:4px;">' +
+          '<div style="font-size:13px;font-weight:700;color:#00ffa3;margin-bottom:6px;">🎁 30-Day Free Trial</div>' +
+          '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;">' +
+          'Unlimited scans, full AI, PDF reports — free for 30 days. No card needed.</div>' +
+          '<a href="checkout.html" style="display:block;text-align:center;' +
+          'background:linear-gradient(135deg,#00ffa3,#5b7bfe);color:#0f172a;' +
+          'padding:9px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;">' +
+          '🎁 Start Free Trial</a></div>';
+      } else if (plan === "pro_trial" && trial) {
+        const pct  = Math.max(5, Math.round((daysLeft / 30) * 100));
+        const warn = daysLeft <= 5;
+        widget.innerHTML =
+          '<div style="padding:14px;background:' + (warn ? 'rgba(251,146,60,.06)' :
+          'linear-gradient(135deg,rgba(0,255,163,.06),rgba(91,123,254,.04))') +
+          ';border:1px solid ' + (warn ? 'rgba(251,146,60,.25)' : 'rgba(0,255,163,.18)') +
+          ';border-radius:12px;margin-bottom:4px;">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:6px;">' +
+          '<span style="font-size:12px;font-weight:700;color:' + (warn ? 'var(--warning)' : '#00ffa3') + ';">Pro Trial Active</span>' +
+          '<span style="font-size:11px;color:var(--text-faint);">' + daysLeft + 'd left</span>' +
+          '</div>' +
+          '<div style="height:4px;background:var(--bg-3);border-radius:99px;overflow:hidden;margin-bottom:10px;">' +
+          '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#5b7bfe,#00ffa3);border-radius:99px;"></div>' +
+          '</div>' +
+          '<a href="checkout.html" style="display:block;text-align:center;' +
+          'background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;' +
+          'padding:8px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;">' +
+          (warn ? '⚠ Keep Pro — $1.99/mo' : 'Keep Pro — $1.99/mo') + '</a></div>';
+      }
+    })();
+
     // Wire scan action buttons via addEventListener (no fragile onclick attrs)
     document.getElementById("codeScanBtn")?.addEventListener("click",  () => scan());
     document.getElementById("exportPdfBtn")?.addEventListener("click", () => exportPDF());
@@ -691,10 +715,10 @@
     const repoBtn = document.getElementById("repoScanBtn");
     if (repoBtn) {
       repoBtn.addEventListener("click", () => {
-        if (window.DEV_MODE || ["pro","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
+        if (window.DEV_MODE || ["pro","pro_trial","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
           showRepoModal();
         } else {
-          showUpgradePrompt("Repo scanning requires a Pro or Enterprise plan. Upgrade to unlock full repository analysis.");
+          showUpgradePrompt("GitHub repo scanning is included in your plan. If you've hit your daily limit, start your free Pro trial for unlimited scans.");
         }
       });
     }
@@ -703,7 +727,7 @@
     const navCve = document.getElementById("nav-cve");
     if (navCve) {
       navCve.addEventListener("click", e => {
-        if (window.DEV_MODE || ["pro","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
+        if (window.DEV_MODE || ["pro","pro_trial","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
           window.location.href = "minisky.html";
         } else {
           e.preventDefault();
