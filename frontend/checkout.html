@@ -126,7 +126,7 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
         </div>
         <button class="pp-btn" id="ppBtn" onclick="handlePayPalCheckout()">
           <span class="pp-logo"><span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span></span>
-          Pay $9.99 with PayPal
+          Pay $1.99 with PayPal
         </button>
         <div class="pay-error" id="ppError"></div>
       </div>
@@ -135,14 +135,14 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
       <div class="method-panel" id="panel-manual" style="display:none;">
         <div class="info-note">
           <i class="bi bi-info-circle me-1"></i>
-          Send $9.99 via PayPal to our account, include your email in the note, then enter your PayPal transaction ID below to activate Pro instantly.
+          Send $1.99 via PayPal to our account, include your email in the note, then enter your PayPal transaction ID below to activate Pro instantly.
         </div>
 
         <div class="manual-box">
           <div class="manual-step">
             <span class="step-num">1</span>
             <div>
-              Open PayPal and send <strong>$9.99 USD</strong> to:
+              Open PayPal and send <strong>$1.99 USD</strong> to:
               <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
                 <code id="paypalEmail" style="font-size:13px;color:var(--sg);font-family:'JetBrains Mono',monospace;background:var(--bg-2);padding:4px 10px;border-radius:6px;border:1px solid var(--border);">payments@secretscan.io</code>
                 <button class="copy-btn" onclick="copyEmail()">
@@ -218,9 +218,9 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
         <div class="plan-desc">Billed monthly &middot; cancel anytime</div>
       </div>
     </div>
-    <div class="pline"><span>Pro plan</span><span>$9.99/mo</span></div>
+    <div class="pline"><span>Pro plan</span><span>$1.99/mo</span></div>
     <div class="pline"><span>Tax</span><span style="color:var(--text-faint);">Based on location</span></div>
-    <div class="pline total"><span>Total today</span><span>$9.99</span></div>
+    <div class="pline total"><span>Total today</span><span>$1.99</span></div>
     <div class="feat-list">
       <div class="feat-li"><i class="bi bi-check-circle-fill"></i>Unlimited scans</div>
       <div class="feat-li"><i class="bi bi-check-circle-fill"></i>All findings revealed</div>
@@ -419,7 +419,7 @@ async function handlePayPalCheckout() {
     var btn2 = document.getElementById('ppBtn');
     if (btn2) {
       btn2.disabled = false;
-      btn2.innerHTML = '<span class="pp-logo"><span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span></span> Pay $9.99 with PayPal';
+      btn2.innerHTML = '<span class="pp-logo"><span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span></span> Pay $1.99 with PayPal';
     }
   }
 }

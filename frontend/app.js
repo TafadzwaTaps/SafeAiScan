@@ -408,8 +408,7 @@ async function loadPlan() {
     applyPlanGating(plan, limits);
     if (typeof window.applyNavGating === "function") window.applyNavGating(plan);
 
-    // Show trial banner at top of page
-    renderTrialBanner(plan, daysLeft, trialActive);
+    // Trial info shown inline in sidebar — no layout-breaking banner needed
 
   } catch (err) {
     console.warn("[SecretScan] loadPlan failed:", err.message);
@@ -417,53 +416,11 @@ async function loadPlan() {
   }
 }
 
-/* ── Trial banner (injected into dashboard header area) ─────── */
-function renderTrialBanner(plan, daysLeft, trialActive) {
-  // Remove any existing banner first
+/* ── Trial banner — intentionally disabled to avoid layout distortion.
+   Trial status is shown inline in the sidebar plan widget instead.  ── */
+function renderTrialBanner() {
+  // No-op: banner removed to prevent sticky overlay breaking the dashboard layout.
   document.getElementById("trialBannerGlobal")?.remove();
-  if (!trialActive || plan !== "pro_trial") return;
-
-  const urgent  = daysLeft <= 5;
-  const banner  = document.createElement("div");
-  banner.id     = "trialBannerGlobal";
-  banner.style.cssText = `
-    position:sticky;top:54px;z-index:150;
-    background:${urgent
-      ? "linear-gradient(135deg,rgba(244,63,94,.12),rgba(251,146,60,.08))"
-      : "linear-gradient(135deg,rgba(0,255,163,.08),rgba(91,123,254,.06))"};
-    border-bottom:1px solid ${urgent ? "rgba(244,63,94,.2)" : "rgba(0,255,163,.2)"};
-    padding:9px 20px;display:flex;align-items:center;gap:12px;
-    font-size:12px;color:var(--text-muted);flex-wrap:wrap;
-  `;
-  banner.innerHTML = `
-    <i class="bi bi-${urgent ? "exclamation-triangle-fill" : "gift-fill"}"
-       style="color:${urgent ? "var(--warning)" : "#00ffa3"};font-size:14px;flex-shrink:0;"></i>
-    <span>
-      ${urgent
-        ? `<strong style="color:var(--warning);">Trial expires in ${daysLeft} day${daysLeft!==1?"s":""}!</strong> Upgrade now to keep Pro features.`
-        : `<strong style="color:#00ffa3;">Pro Trial Active</strong> — ${daysLeft} day${daysLeft!==1?"s":""} remaining. Enjoying unlimited scans &amp; all Pro features.`}
-    </span>
-    <a href="checkout.html" style="
-       margin-left:auto;flex-shrink:0;
-       background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;
-       border:none;padding:6px 14px;border-radius:8px;font-size:11px;
-       font-weight:600;cursor:pointer;text-decoration:none;
-       box-shadow:0 4px 12px rgba(91,123,254,.35);">
-      ${urgent ? "Upgrade Now" : "Upgrade to Pro — $1.99/mo"}
-    </a>
-    <button onclick="this.closest('#trialBannerGlobal').remove()"
-            style="background:none;border:none;color:var(--text-faint);
-                   cursor:pointer;font-size:16px;line-height:1;flex-shrink:0;">&#x2715;</button>
-  `;
-
-  // Insert after the topbar
-  const topbar = document.querySelector(".topbar") || document.querySelector("header") ||
-                 document.querySelector(".nav-bar");
-  if (topbar && topbar.nextSibling) {
-    topbar.parentNode.insertBefore(banner, topbar.nextSibling);
-  } else {
-    document.body.insertBefore(banner, document.body.firstChild);
-  }
 }
 
 function applyPlanGating(plan, limits) {
