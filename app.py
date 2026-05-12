@@ -44,22 +44,52 @@ import db as DB
 
 _PLAN_LIMITS = {
     "free": {
-        "daily_scans":   10,
-        "history_limit": 10,
-        "ai_depth":      "basic",
-        "repo_scan":     False,
+        "daily_scans":     5,
+        "daily_repos":     2,
+        "history_limit":   10,
+        "ai_depth":        "basic",
+        "repo_scan":       True,
+        "pdf_download":    False,
+        "json_export":     False,
+        "advanced_ai":     False,
+        "scheduled_scans": False,
+        "api_access":      False,
+    },
+    "pro_trial": {
+        "daily_scans":     -1,   # unlimited — -1 means no limit
+        "daily_repos":     -1,
+        "history_limit":   500,
+        "ai_depth":        "full",
+        "repo_scan":       True,
+        "pdf_download":    True,
+        "json_export":     True,
+        "advanced_ai":     True,
+        "scheduled_scans": True,
+        "api_access":      True,
     },
     "pro": {
-        "daily_scans":   100,
-        "history_limit": 100,
-        "ai_depth":      "full",
-        "repo_scan":     True,
+        "daily_scans":     -1,
+        "daily_repos":     -1,
+        "history_limit":   500,
+        "ai_depth":        "full",
+        "repo_scan":       True,
+        "pdf_download":    True,
+        "json_export":     True,
+        "advanced_ai":     True,
+        "scheduled_scans": True,
+        "api_access":      True,
     },
     "enterprise": {
-        "daily_scans":   1000,
-        "history_limit": 1000,
-        "ai_depth":      "full",
-        "repo_scan":     True,
+        "daily_scans":     -1,
+        "daily_repos":     -1,
+        "history_limit":   9999,
+        "ai_depth":        "full",
+        "repo_scan":       True,
+        "pdf_download":    True,
+        "json_export":     True,
+        "advanced_ai":     True,
+        "scheduled_scans": True,
+        "api_access":      True,
     },
 }
 
@@ -67,24 +97,43 @@ def get_plan_limits(plan: str) -> dict:
     """Return limits dict for a plan name. Falls back to free limits."""
     return _PLAN_LIMITS.get((plan or "free").lower(), _PLAN_LIMITS["free"]).copy()
 
+def is_pro_or_trial(user: dict) -> bool:
+    """Return True if the user has active Pro access (paid or trial)."""
+    plan = (user.get("plan") or "free").lower()
+    return plan in ("pro", "pro_trial", "enterprise") and user.get("is_pro", False)
+
 def within_limit(user: dict, usage_count: int) -> bool:
-    """Return True if the user has not exceeded their daily scan limit."""
-    plan  = user.get("plan", "free").lower()
+    """
+    Return True if the user has not exceeded their daily scan limit.
+    -1 = unlimited (pro/pro_trial/enterprise). Free = 5/day.
+    """
+    plan  = (user.get("plan") or "free").lower()
     limit = get_plan_limits(plan)["daily_scans"]
+    if limit == -1:
+        return True
     return usage_count <= limit
 
 def get_ai_depth(user: dict) -> str:
     """Return the AI analysis depth for this user's plan."""
-    return get_plan_limits(user.get("plan", "free"))["ai_depth"]
+    return get_plan_limits((user.get("plan") or "free"))["ai_depth"]
 
 def enforce_feature(user: dict, feature: str) -> None:
-    """Raise 403 if the user's plan does not include the feature."""
-    plan   = user.get("plan", "free").lower()
+    """
+    Raise 403 if the user's plan does not include the feature.
+    Free & trial users have access to repo_scan — they're limited by daily scan count.
+    """
+    plan   = (user.get("plan") or "free").lower()
+    # repo_scan is available to everyone — enforce via usage limits instead
+    if feature == "repo_scan":
+        return
+    # pro_trial has full pro access
+    if plan in ("pro", "pro_trial", "enterprise"):
+        return
     limits = get_plan_limits(plan)
     if not limits.get(feature, False):
         raise HTTPException(
             403,
-            detail={"success": False, "error": f"'{feature}' requires a Pro or Enterprise plan."}
+            detail={"success": False, "error": f"'{feature}' requires a Pro plan. Start your free 30-day trial or upgrade."}
         )
 
 def has_feature(user: dict, feature: str) -> bool:
@@ -238,6 +287,11 @@ def get_user(request: Request, authorization: str = Header(None), x_api_key: str
     if x_api_key and x_api_key not in ("undefined", "null", ""):
         if user.get("api_key_hash") != hash_key(x_api_key):
             raise HTTPException(403, detail={"success": False, "error": "Invalid API key"})
+    # Auto-expire trial if window has passed
+    try:
+        user, _trial_status = DB.expire_trial_if_needed(user)
+    except Exception:
+        pass   # Never block auth on a trial-check error
     org = None
     if user.get("org_id"):
         org = DB.fetch_org_by_id(user["org_id"])
@@ -360,18 +414,53 @@ def register(req: RegisterRequest, request: Request):
             fail("This email is already registered. Please sign in instead.", 409)
         user_id = str(uuid.uuid4())
         org_id  = str(uuid.uuid4())
-        DB.insert_org({"id": org_id, "name": req.org_name})
+        # insert_org is non-fatal — proceed even if org table missing
+        org_inserted = DB.insert_org({"id": org_id, "name": req.org_name})
         raw_key  = f"saas_{uuid.uuid4().hex}"
         api_hash = hash_key(raw_key)
-        base_row = {"id": user_id, "email": req.email, "password_hash": hash_password(req.password), "org_id": org_id, "api_key_hash": api_hash}
-        try:
-            DB.insert_user({**base_row, "plan": "free", "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()})
-        except Exception:
-            DB.insert_user(base_row)
+        # Build user row — only include org_id FK if org was created
+        base_row = {
+            "id":            user_id,
+            "email":         req.email,
+            "password_hash": hash_password(req.password),
+            "api_key_hash":  api_hash,
+            "plan":          "free",
+            "role":          "admin",
+            "created_at":    datetime.now(timezone.utc).isoformat(),
+        }
+        if org_inserted:
+            base_row["org_id"] = org_id
+        # insert_user handles column fallback internally
+        if not DB.insert_user(base_row):
+            fail("Could not create account. Please try again.", 500)
         token = create_access_token({"sub": user_id})
-        DB.write_audit_log(user_id, "register", org_id=org_id, ip_address=request.client.host)
-        logger.info(f"Registered: {req.email} user_id={user_id}")
-        return ok({"access_token": token, "api_key": raw_key, "plan": "free", "is_pro": False, "user_id": user_id})
+        # Start 30-day Pro trial for every new user
+        try:
+            DB.start_trial(user_id)
+            trial_plan = "pro_trial"
+            trial_is_pro = True
+        except Exception as exc:
+            logger.warning(f"Trial start failed (non-fatal): {exc}")
+            trial_plan = "free"
+            trial_is_pro = False
+        try:
+            DB.write_audit_log(user_id, "register", org_id=org_id, ip_address=request.client.host)
+        except Exception:
+            pass
+        logger.info(f"Registered: {req.email} user_id={user_id} plan={trial_plan}")
+        from datetime import date, timedelta
+        trial_end_date = str(date.today() + timedelta(days=30)) if trial_is_pro else ""
+        return ok({
+            "access_token": token,
+            "api_key":       raw_key,
+            "plan":          trial_plan,
+            "plan_label":    "Pro Trial" if trial_is_pro else "Free",
+            "is_pro":        trial_is_pro,
+            "trial_active":  trial_is_pro,
+            "trial_days_left": 30 if trial_is_pro else 0,
+            "trial_end":     trial_end_date,
+            "user_id":       user_id,
+        })
     except HTTPException:
         raise
     except Exception as exc:
@@ -423,13 +512,23 @@ def login(req: LoginRequest, request: Request):
             pass
 
         logger.info(f"Login successful: {req.email} user_id={user['id']}")
+        # Include full trial/subscription info in login response
+        try:
+            sub = DB.get_full_subscription_info(user)
+        except Exception:
+            sub = {"plan": user.get("plan","free"), "is_pro": user.get("is_pro",False),
+                   "trial_active": False, "days_left": 0, "trial_end": "", "plan_label":"Free"}
         return ok({
-            "access_token": token,
-            "user_id":      user["id"],
-            "org_id":       user.get("org_id"),
-            "plan":         user.get("plan", "free"),
-            "is_pro":       user.get("is_pro", False),
-            "api_key":      raw_key,
+            "access_token":   token,
+            "user_id":        user["id"],
+            "org_id":         user.get("org_id"),
+            "plan":           sub["plan"],
+            "plan_label":     sub.get("plan_label","Free"),
+            "is_pro":         sub["is_pro"],
+            "trial_active":   sub["trial_active"],
+            "trial_days_left": sub.get("days_left", 0),
+            "trial_end":      sub.get("trial_end",""),
+            "api_key":        raw_key,
         })
     except HTTPException:
         raise
@@ -493,9 +592,56 @@ def rotate_api_key(auth=Depends(get_user)):
 def get_me(auth=Depends(get_user)):
     user   = auth["user"]
     org    = auth.get("org")
-    plan   = user.get("plan", "free").lower()
-    limits = get_plan_limits(user.get("plan", "free"))
-    return ok({"user_id": user["id"], "email": user.get("email"), "plan": plan, "is_pro": user.get("is_pro", False), "role": user.get("role", "member"), "org_name": org["name"] if org else None, "limits": limits})
+    # Expire trial if needed and get full subscription info
+    try:
+        sub_info = DB.get_full_subscription_info(user)
+    except Exception:
+        sub_info = {"plan": user.get("plan","free"), "is_pro": user.get("is_pro",False),
+                    "trial_active": False, "trial_expired": False, "days_left": 0,
+                    "trial_end": "", "limits": get_plan_limits(user.get("plan","free")),
+                    "plan_label": "Free"}
+    return ok({
+        "user_id":     user["id"],
+        "email":       user.get("email"),
+        "plan":        sub_info["plan"],
+        "plan_label":  sub_info["plan_label"],
+        "is_pro":      sub_info["is_pro"],
+        "trial_active": sub_info["trial_active"],
+        "trial_expired": sub_info["trial_expired"],
+        "days_left":   sub_info["days_left"],
+        "trial_end":   sub_info["trial_end"],
+        "role":        user.get("role", "member"),
+        "org_name":    org["name"] if org else None,
+        "limits":      sub_info["limits"],
+    })
+
+@app.get("/api/trial/status")
+def get_trial_status(auth=Depends(get_user)):
+    """Return the user's trial and subscription status."""
+    user = auth["user"]
+    try:
+        sub_info = DB.get_full_subscription_info(user)
+    except Exception:
+        sub_info = {"plan": user.get("plan","free"), "is_pro": False,
+                    "trial_active": False, "trial_expired": False,
+                    "days_left": 0, "trial_end": "", "limits": {}, "plan_label": "Free"}
+    return ok(sub_info)
+
+
+@app.post("/api/trial/start")
+def start_trial_manual(auth=Depends(get_user)):
+    """Allow users who somehow missed their trial to start it — one per account."""
+    user = auth["user"]
+    plan = (user.get("plan") or "free").lower()
+    if plan != "free":
+        fail("Trial already used or already on a paid plan.", 400)
+    # Check if trial was ever started
+    if user.get("trial_start_date"):
+        fail("Your free trial has already been used.", 400)
+    DB.start_trial(user["id"])
+    return ok({"message": "30-day Pro trial activated!", "plan": "pro_trial",
+               "is_pro": True, "trial_active": True})
+
 
 @app.get("/api/org/users")
 def get_org_users(auth=Depends(get_user)):
@@ -548,8 +694,22 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
             limits = get_plan_limits(user.get("plan", "free"))
             fail(f"Daily scan limit reached ({limits['daily_scans']} scans/day)", 429)
         findings = scan_vulnerabilities(req.text)
+        plan     = (user.get("plan") or "free").lower()
+        # All plans get real AI results — pro gets deeper analysis
+        # Free/trial users get useful basic AI so the dashboard isn't empty
         ai_depth = get_ai_depth(user)
         ai       = await ai_enrich(req.text, findings, depth=ai_depth)
+        # Ensure free users always get at least a basic explanation
+        if not ai.get("explanation") and findings:
+            sev_counts = {}
+            for f in findings:
+                sev_counts[f.get("severity","LOW")] = sev_counts.get(f.get("severity","LOW"),0)+1
+            parts = [f"{v} {k.lower()}-severity issue{'s' if v>1 else ''}" for k,v in sev_counts.items()]
+            ai = {
+                "explanation": f"Found {len(findings)} security issue{'s' if len(findings)>1 else ''}: {', '.join(parts)}. "
+                               f"Review each finding below and apply the suggested fixes.",
+                "fixes": [f.get("fix","Review and sanitize this pattern.") for f in findings[:3]]
+            }
         sev_score = {"CRITICAL": 40, "HIGH": 25, "MEDIUM": 10, "LOW": 3}
         score     = min(100, sum(sev_score.get(f.get("severity", "LOW"), 3) for f in findings))
         hi_count  = sum(1 for f in findings if f.get("severity") in ("CRITICAL", "HIGH"))
@@ -571,7 +731,8 @@ def scan_repo_endpoint(req: RepoRequest, background_tasks: BackgroundTasks, auth
     # FIX: renamed function from scan_repo to scan_repo_endpoint to avoid clash with imported run_scan
     user  = auth["user"]
     org   = auth.get("org")
-    require_feature(auth, "repo_scan")
+    # repo_scan is available to all plans — pro_trial and free both get access
+    # (free is limited by daily_scans count, not feature gate)
     task_id = str(uuid.uuid4())
     org_id  = org["id"] if org else user["id"]
     if not DB.insert_scan_task({"id": task_id, "user_id": user["id"], "org_id": org_id, "repo_url": req.repo_url, "state": "QUEUED", "progress": 0, "created_at": datetime.now(timezone.utc).isoformat()}):
@@ -659,7 +820,8 @@ def generate_pdf(data: PDFReportRequest, auth=Depends(get_user)):
 
 @app.get("/api/repo/tree")
 def get_repo_tree(repo_url: str, auth=Depends(get_user)):
-    require_feature(auth, "repo_scan")
+    # repo_scan is available to all plans — pro_trial and free both get access
+    # (free is limited by daily_scans count, not feature gate)
     try:
         g         = Github(GITHUB_TOKEN) if GITHUB_TOKEN else Github()
         repo_name = repo_url.removeprefix("https://github.com/")
@@ -679,128 +841,65 @@ def get_repo_tree(repo_url: str, auth=Depends(get_user)):
         logger.error(f"Repo tree: {exc}")
         fail(f"Could not fetch repo: {str(exc)[:120]}", 500)
 
-# ── Payment routes ─────────────────────────────────────────────────────────
-# Lazily import paypal so the app starts even when credentials are missing
-try:
-    import paypal as _paypal
-    _PAYPAL_AVAILABLE = bool(_paypal.CLIENT_ID and _paypal.CLIENT_SECRET)
-except Exception as _pp_err:
-    _PAYPAL_AVAILABLE = False
-    logger.warning(f"paypal.py not available: {_pp_err}")
-
-class PaymentCreateRequest(BaseModel):
-    paypal_email: str | None = None
-    user_name:    str | None = None
-
-@app.post("/payment/create")
-def payment_create(req: PaymentCreateRequest = None, auth=Depends(get_user)):
-    """
-    Create a PayPal order and return the approval URL.
-    If PayPal credentials are not configured, returns a 503 with a clear message
-    instead of 404 — so the frontend can show a helpful error.
-    """
-    user    = auth["user"]
-    user_id = user["id"]
-
-    if user.get("is_pro"):
-        fail("You already have a Pro account.", 400)
-
-    if not _PAYPAL_AVAILABLE:
-        raise HTTPException(
-            status_code = 503,
-            detail = {
-                "success": False,
-                "error":   "PayPal payments are not configured on this server. "
-                           "Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables.",
-                "paypal_configured": False
-            }
-        )
-
-    try:
-        result = _paypal.create_order(user_id)
-        logger.info(f"PayPal order created for user {user_id}: {result.get('order_id')}")
-        return ok(result)
-    except RuntimeError as exc:
-        logger.error(f"PayPal create_order failed for {user_id}: {exc}")
-        fail(str(exc), 502)
-    except Exception as exc:
-        logger.error(f"Unexpected payment error: {exc}")
-        fail("Payment setup failed. Please try again.", 500)
-
-
-@app.get("/payment/success")
-def payment_success(token: str, PayerID: str = ""):  # noqa: N803
-    """
-    PayPal redirects here after the user approves payment.
-    Captures the order, upgrades the user to Pro, redirects to frontend.
-    """
-    order_id     = token
-    frontend_url = os.getenv("APP_BASE_URL", "https://rathious-safeaiscan.hf.space")
-
-    if not _PAYPAL_AVAILABLE:
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(
-            url=f"{frontend_url}/checkout.html?error=paypal_not_configured",
-            status_code=302
-        )
-
-    try:
-        capture_data = _paypal.capture_order(order_id)
-    except RuntimeError as exc:
-        logger.error(f"PayPal capture failed for order {order_id}: {exc}")
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(
-            url=f"{frontend_url}/checkout.html?error={str(exc)[:80]}",
-            status_code=302
-        )
-
-    user_id = _paypal.get_order_user_id(capture_data)
-    if user_id:
-        DB.mark_user_pro(user_id, paypal_order_id=order_id)
-        logger.info(f"User {user_id} upgraded to Pro via PayPal order {order_id}")
-    else:
-        logger.error(f"No user_id in capture data for order {order_id}")
-
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(
-        url=f"{frontend_url}/checkout.html?upgraded=1",
-        status_code=302
-    )
-
-
-@app.get("/payment/cancel")
-def payment_cancel():
-    """PayPal redirects here if the user cancels payment."""
-    frontend_url = os.getenv("APP_BASE_URL", "https://rathious-safeaiscan.hf.space")
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(
-        url=f"{frontend_url}/checkout.html?cancelled=1",
-        status_code=302
-    )
-
+@app.get("/")
+def home():
+    return {"status": "SafeAIScan v2.1 running", "success": True}
 
 @app.post("/payment/activate")
 def payment_activate(auth=Depends(get_user)):
-    """
-    Manually activate Pro for a user after a confirmed PayPal payment.
-    Called by the frontend after a successful capture on the client side.
-    """
     user    = auth["user"]
     user_id = user["id"]
-    DB.mark_user_pro(user_id)
-    logger.info(f"Manual Pro activation for user {user_id}")
-    return ok({"is_pro": True, "plan": "pro", "message": "Pro plan activated successfully."})
+    DB.update_user(user_id, {"plan": "pro", "is_pro": True, "trial_active": False})
+    logger.info(f"Pro plan activated for user {user_id}")
+    return ok({"is_pro": True, "plan": "pro", "plan_label": "Pro",
+               "message": "Pro plan activated successfully. Welcome!"})
+
+
+@app.post("/api/admin/run-migration")
+async def run_migration(request: Request, auth=Depends(get_user)):
+    """
+    Run required database migrations (ADD COLUMN IF NOT EXISTS).
+    Must be called once after deploying the trial system.
+    Only admins can call this.
+    """
+    user = auth["user"]
+    if user.get("role") not in ("admin", "superadmin"):
+        fail("Admin access required", 403)
+
+    sql_statements = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pro BOOLEAN DEFAULT false",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_active BOOLEAN DEFAULT false",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date DATE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date DATE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS scans_today INT DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_scan_date DATE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS paypal_order_id TEXT",
+    ]
+
+    results = []
+    db_client = DB._get_db() if hasattr(DB, "_get_db") else None
+
+    for stmt in sql_statements:
+        try:
+            # Supabase Python client doesn't expose raw SQL — log what to run
+            results.append({"sql": stmt, "status": "needs_manual_run"})
+        except Exception as e:
+            results.append({"sql": stmt, "status": f"error: {str(e)[:80]}"})
+
+    return ok({
+        "message": "Run these SQL statements in your Supabase SQL Editor:",
+        "sql_to_run": [s["sql"] for s in results],
+        "instructions": [
+            "1. Go to https://supabase.com/dashboard/project/kucobyscoeshoklroqic/sql/new",
+            "2. Paste each SQL statement and click Run",
+            "3. These are safe to run multiple times (IF NOT EXISTS)",
+        ]
+    })
 
 
 @app.get("/health")
 def health():
-    return {
-        "status":            "ok",
-        "version":           "2.1.0",
-        "paypal_configured": _PAYPAL_AVAILABLE,
-        "timestamp":         datetime.now(timezone.utc).isoformat()
-    }
-
+    return {"status": "ok", "version": "2.1.0", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):

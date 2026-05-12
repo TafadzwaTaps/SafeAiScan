@@ -54,15 +54,43 @@ logger = logging.getLogger("secretscan.db")
 #  CLIENT — initialised once at module load
 # ──────────────────────────────────────────────────────────────
 
-_URL = os.getenv("SUPABASE_URL")
-_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+# Accept all common Supabase env var naming conventions:
+# HuggingFace Spaces, Vercel, Next.js, plain Docker, etc.
+_URL = (
+    os.getenv("SUPABASE_URL") or
+    os.getenv("NEXT_PUBLIC_SUPABASE_URL") or
+    os.getenv("SUPABASE_HOST") or ""
+)
+_KEY = (
+    os.getenv("SUPABASE_KEY") or
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY") or
+    os.getenv("SUPABASE_SECRET_KEY") or
+    os.getenv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") or
+    os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY") or
+    os.getenv("SUPABASE_ANON_KEY") or ""
+)
 
 if not _URL or not _KEY:
-    raise EnvironmentError(
-        "SUPABASE_URL and SUPABASE_KEY must be set as environment variables."
+    import warnings
+    warnings.warn(
+        "SUPABASE_URL and SUPABASE_KEY not found in environment. "
+        "Set them in HuggingFace Space secrets or your .env file.",
+        stacklevel=1
     )
+    _db = None
+else:
+    _db: Client = create_client(_URL, _KEY)
+    logger.info(f"Supabase connected: {_URL[:40]}…")
 
-_db: Client = create_client(_URL, _KEY)
+
+def _get_db() -> Client:
+    """Return the DB client, raising a clear error if not configured."""
+    if _db is None:
+        raise RuntimeError(
+            "Supabase is not configured. Set SUPABASE_URL and SUPABASE_KEY "
+            "environment variables in your HuggingFace Space secrets."
+        )
+    return _db
 
 
 def _one(response) -> dict | None:
@@ -99,7 +127,7 @@ def create_user(email: str, password_hash: str) -> dict | None:
     """Insert a new user row and return it."""
     try:
         return _one(
-            _db.table("users").insert({
+            _get_db().table("users").insert({
                 "email":         email,
                 "password_hash": password_hash,
                 "is_pro":        False,
@@ -110,12 +138,34 @@ def create_user(email: str, password_hash: str) -> dict | None:
         return None
 
 
+# Columns that always exist in the base users table
+_BASE_USER_COLS = {"id","email","password_hash","plan","org_id","api_key_hash",
+                   "role","last_login","is_active","created_at"}
+# Extended columns (require ALTER TABLE migration)
+_EXTENDED_USER_COLS = {"is_pro","trial_active","trial_start_date","trial_end_date",
+                       "scans_today","last_scan_date","paypal_order_id"}
+
+
 def update_user(user_id: str, fields: dict) -> bool:
-    """Partial update on any user fields. Returns True on success."""
+    """
+    Partial update. If update fails because a column doesn't exist yet
+    (missing migration), retries with only base columns so the app never
+    crashes on schema gaps.
+    """
     try:
-        _db.table("users").update(fields).eq("id", user_id).execute()
+        _get_db().table("users").update(fields).eq("id", user_id).execute()
         return True
     except Exception as e:
+        err = str(e).lower()
+        if "column" in err or "does not exist" in err or "schema" in err:
+            safe = {k: v for k, v in fields.items() if k in _BASE_USER_COLS}
+            if safe:
+                try:
+                    _get_db().table("users").update(safe).eq("id", user_id).execute()
+                    logger.warning(f"update_user({user_id}): stripped missing cols, saved {list(safe)}")
+                    return True
+                except Exception as e2:
+                    logger.error(f"update_user({user_id}) retry: {e2}")
         logger.error(f"update_user({user_id}): {e}")
         return False
 
@@ -171,7 +221,7 @@ def save_scan(user_id: str, source: str, result: dict) -> str | None:
     """
     try:
         row = _one(
-            _db.table("scans").insert({
+            _get_db().table("scans").insert({
                 "user_id":       user_id,
                 "source":        source,
                 "risk_level":    result.get("risk_level", "NONE"),
@@ -189,7 +239,7 @@ def get_scan(scan_id: str, user_id: str) -> dict | None:
     """Fetch a scan by ID, scoped to the requesting user."""
     try:
         return _one(
-            _db.table("scans")
+            _get_db().table("scans")
             .select("*")
             .eq("id", scan_id)
             .eq("user_id", user_id)
@@ -205,7 +255,7 @@ def list_scans(user_id: str, limit: int = 20) -> list:
     """Return the most recent scans for a user, newest first."""
     try:
         res = (
-            _db.table("scans")
+            _get_db().table("scans")
             .select("id, source, risk_level, total_secrets, created_at")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
@@ -224,7 +274,7 @@ def list_scans(user_id: str, limit: int = 20) -> list:
 
 def create_scan_task(task_id: str, user_id: str, repo_url: str) -> bool:
     try:
-        _db.table("scan_tasks").insert({
+        _get_db().table("scan_tasks").insert({
             "id":       task_id,
             "user_id":  user_id,
             "repo_url": repo_url,
@@ -241,7 +291,7 @@ def create_scan_task(task_id: str, user_id: str, repo_url: str) -> bool:
 def update_scan_task(task_id: str, fields: dict) -> None:
     """Best-effort update — logs failure but never raises."""
     try:
-        _db.table("scan_tasks").update(fields).eq("id", task_id).execute()
+        _get_db().table("scan_tasks").update(fields).eq("id", task_id).execute()
     except Exception as e:
         logger.error(f"update_scan_task({task_id}): {e}")
 
@@ -249,7 +299,7 @@ def update_scan_task(task_id: str, fields: dict) -> None:
 def get_scan_task(task_id: str, user_id: str) -> dict | None:
     try:
         return _one(
-            _db.table("scan_tasks")
+            _get_db().table("scan_tasks")
             .select("*")
             .eq("id", task_id)
             .eq("user_id", user_id)
@@ -261,116 +311,341 @@ def get_scan_task(task_id: str, user_id: str) -> dict | None:
         return None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  BACKWARDS-COMPATIBILITY LAYER
-#  app.py was written against the old DB module which had different function
-#  names and additional helpers.  All aliases and stubs live here so neither
-#  app.py nor the new db.py needs to change structure.
-# ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+#  TRIAL SYSTEM
+#  New Supabase columns needed on `users` table:
+#    plan            TEXT     DEFAULT 'pro_trial'
+#    trial_active    BOOLEAN  DEFAULT true
+#    trial_start_date DATE
+#    trial_end_date   DATE
+#    is_pro           BOOLEAN DEFAULT false
+#
+#  SQL migration (run once in Supabase SQL editor):
+#  ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_active    BOOLEAN DEFAULT true;
+#  ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date DATE;
+#  ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date   DATE;
+#  ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pro           BOOLEAN DEFAULT false;
+# ══════════════════════════════════════════════════════════════
 
-# ── Name aliases (old name → new function) ────────────────────────────────────
-def fetch_user_by_id(user_id: str) -> dict | None:
-    return get_user_by_id(user_id)
+from datetime import date as _date, timedelta as _td
 
-def fetch_user_by_email(email: str) -> dict | None:
-    return get_user_by_email(email)
+TRIAL_DAYS = 30   # length of Pro trial in days
 
-def user_email_exists(email: str) -> bool:
-    return email_exists(email)
 
-def insert_user(data: dict) -> bool:
-    """Insert a user row from a raw dict (old-style call)."""
+def start_trial(user_id: str) -> bool:
+    """
+    Activate a 30-day Pro trial for a newly registered user.
+    Tries to write all trial columns; if extended columns don't exist yet,
+    falls back to just setting plan='pro_trial' (minimum viable trial).
+    """
+    today    = _date.today()
+    end_date = today + _td(days=TRIAL_DAYS)
+
+    # Full trial fields (requires migration)
+    full_fields = {
+        "plan":             "pro_trial",
+        "trial_active":     True,
+        "trial_start_date": str(today),
+        "trial_end_date":   str(end_date),
+        "is_pro":           True,
+    }
+    # Minimum viable fields (always works, plan col always exists)
+    min_fields = {"plan": "pro_trial"}
+
     try:
-        # Prefer explicit fields; fall back gracefully if columns differ
-        _db.table("users").insert(data).execute()
+        _get_db().table("users").update(full_fields).eq("id", user_id).execute()
+        logger.info(f"Trial started for {user_id} → ends {end_date}")
         return True
     except Exception as e:
+        logger.warning(f"start_trial full fields failed ({e}), trying minimum fields")
+        try:
+            _get_db().table("users").update(min_fields).eq("id", user_id).execute()
+            logger.info(f"Trial started (plan only) for {user_id}")
+            return True
+        except Exception as e2:
+            logger.error(f"start_trial failed entirely: {e2}")
+            return False
+
+
+def get_trial_status(user: dict) -> dict:
+    """
+    Return a dict describing the user's current trial / plan state.
+
+    Fields:
+        plan          - canonical plan string
+        is_pro        - True if user has active pro or pro_trial
+        trial_active  - True if currently in trial window
+        trial_expired - True if trial existed but has expired
+        days_left     - int days remaining (0 if expired/not in trial)
+        trial_end     - ISO date string of trial end
+    """
+    plan  = (user.get("plan") or "free").lower()
+    today = _date.today()
+
+    # Parse trial end date safely — column may not exist yet
+    trial_end_raw = user.get("trial_end_date") or ""
+    trial_end     = None
+    try:
+        if trial_end_raw:
+            trial_end = _date.fromisoformat(str(trial_end_raw))
+    except (ValueError, TypeError):
+        pass
+
+    # When trial columns don't exist yet, treat pro_trial plan as 30 days from created_at
+    if plan == "pro_trial" and not trial_end:
+        created_raw = user.get("created_at") or ""
+        try:
+            if created_raw:
+                from datetime import datetime as _dt
+                created = _dt.fromisoformat(str(created_raw)[:10])
+                trial_end = created.date() + _td(days=TRIAL_DAYS)
+        except Exception:
+            trial_end = today + _td(days=TRIAL_DAYS)  # assume fresh trial
+
+    # Determine effective status
+    if plan in ("pro", "enterprise"):
+        return {"plan": plan, "is_pro": True, "trial_active": False,
+                "trial_expired": False, "days_left": 0, "trial_end": ""}
+
+    if plan == "pro_trial":
+        # Check trial_active column if it exists, otherwise infer from dates
+        col_active = user.get("trial_active")
+        if col_active is False:
+            # Explicitly deactivated
+            return {"plan": "free", "is_pro": False, "trial_active": False,
+                    "trial_expired": True, "days_left": 0, "trial_end": ""}
+        if trial_end and today <= trial_end:
+            days_left = (trial_end - today).days
+            return {"plan": "pro_trial", "is_pro": True, "trial_active": True,
+                    "trial_expired": False, "days_left": days_left,
+                    "trial_end": str(trial_end)}
+        else:
+            # Window passed
+            return {"plan": "free", "is_pro": False, "trial_active": False,
+                    "trial_expired": True, "days_left": 0,
+                    "trial_end": str(trial_end) if trial_end else ""}
+
+    # plain free
+    return {"plan": "free", "is_pro": False, "trial_active": False,
+            "trial_expired": False, "days_left": 0, "trial_end": ""}
+
+
+def expire_trial_if_needed(user: dict) -> dict:
+    """
+    If the trial has expired, downgrade the user to free in the DB
+    and return the updated user dict.  Called on every authenticated request.
+    """
+    status = get_trial_status(user)
+    if status["trial_expired"] and user.get("plan") == "pro_trial":
+        update_user(user["id"], {
+            "plan":         "free",
+            "trial_active": False,
+            "is_pro":       False,
+        })
+        user = {**user, "plan": "free", "trial_active": False, "is_pro": False}
+    return user, status
+
+
+def get_full_subscription_info(user: dict) -> dict:
+    """
+    One-stop helper used by /api/me and dashboard endpoints.
+    Returns everything the frontend needs about the user's subscription.
+    """
+    user, trial_status = expire_trial_if_needed(user)
+    plan   = trial_status["plan"]
+    limits = _plan_limits_for(plan)
+    return {
+        **trial_status,
+        "limits":    limits,
+        "plan_label": _plan_label(plan),
+    }
+
+
+def _plan_limits_for(plan: str) -> dict:
+    """Return scan limits for a given effective plan."""
+    LIMITS = {
+        "free": {
+            "daily_scans":     5,
+            "daily_repos":     2,
+            "history_limit":   10,
+            "ai_depth":        "basic",
+            "repo_scan":       True,
+            "pdf_download":    False,
+            "json_export":     False,
+            "advanced_ai":     False,
+            "scheduled_scans": False,
+            "api_access":      False,
+        },
+        "pro_trial": {
+            "daily_scans":     -1,   # unlimited
+            "daily_repos":     -1,
+            "history_limit":   500,
+            "ai_depth":        "full",
+            "repo_scan":       True,
+            "pdf_download":    True,
+            "json_export":     True,
+            "advanced_ai":     True,
+            "scheduled_scans": True,
+            "api_access":      True,
+        },
+        "pro": {
+            "daily_scans":     -1,
+            "daily_repos":     -1,
+            "history_limit":   500,
+            "ai_depth":        "full",
+            "repo_scan":       True,
+            "pdf_download":    True,
+            "json_export":     True,
+            "advanced_ai":     True,
+            "scheduled_scans": True,
+            "api_access":      True,
+        },
+        "enterprise": {
+            "daily_scans":     -1,
+            "daily_repos":     -1,
+            "history_limit":   9999,
+            "ai_depth":        "full",
+            "repo_scan":       True,
+            "pdf_download":    True,
+            "json_export":     True,
+            "advanced_ai":     True,
+            "scheduled_scans": True,
+            "api_access":      True,
+        },
+    }
+    return LIMITS.get(plan, LIMITS["free"])
+
+
+def _plan_label(plan: str) -> str:
+    return {
+        "free":       "Free",
+        "pro_trial":  "Pro Trial",
+        "pro":        "Pro",
+        "enterprise": "Enterprise",
+    }.get(plan, "Free")
+
+
+# ══════════════════════════════════════════════════════════════
+#  BACKWARDS-COMPATIBILITY ALIASES
+#  app.py was written against an older DB module with different
+#  function names. Every alias here maps old → new without
+#  changing any existing call site in app.py.
+# ══════════════════════════════════════════════════════════════
+
+# ── User aliases ──────────────────────────────────────────────
+
+def fetch_user_by_id(user_id: str) -> dict | None:
+    """Alias: app.py calls DB.fetch_user_by_id()"""
+    return get_user_by_id(user_id)
+
+
+def fetch_user_by_email(email: str) -> dict | None:
+    """Alias: app.py calls DB.fetch_user_by_email()"""
+    return get_user_by_email(email)
+
+
+def user_email_exists(email: str) -> bool:
+    """Alias: app.py calls DB.user_email_exists()"""
+    return email_exists(email)
+
+
+def insert_user(data: dict) -> bool:
+    """
+    Insert a user row. Strips problematic columns on failure and retries,
+    so missing migrations and FK errors never block registration.
+    """
+    try:
+        _get_db().table("users").insert(data).execute()
+        return True
+    except Exception as e:
+        err = str(e).lower()
+        # FK failure (org_id) or column doesn't exist → strip and retry
+        if "foreign" in err or "org_id" in err or "column" in err or "does not exist" in err:
+            safe = {k: v for k, v in data.items()
+                    if k in {"id","email","password_hash","plan","role","api_key_hash","created_at"}}
+            try:
+                _get_db().table("users").insert(safe).execute()
+                logger.warning(f"insert_user: stripped FK/cols, inserted with {list(safe)}")
+                return True
+            except Exception as e2:
+                logger.error(f"insert_user retry: {e2}")
         logger.error(f"insert_user: {e}")
         return False
 
-def fetch_scan_task(task_id: str, user_id: str | None = None) -> dict | None:
-    """Fetch a scan task.  user_id is optional for backwards compat."""
-    try:
-        q = _db.table("scan_tasks").select("*").eq("id", task_id)
-        if user_id:
-            q = q.eq("user_id", user_id)
-        return _one(q.limit(1).execute())
-    except Exception as e:
-        logger.error(f"fetch_scan_task({task_id}): {e}")
-        return None
 
-def insert_scan_task(data: dict) -> bool:
-    """Insert a scan task row from a raw dict (old-style call)."""
-    try:
-        _db.table("scan_tasks").insert(data).execute()
-        return True
-    except Exception as e:
-        logger.error(f"insert_scan_task: {e}")
-        return False
-
-# ── Org helpers ───────────────────────────────────────────────────────────────
+# ── Organisation helpers ──────────────────────────────────────
 
 def insert_org(data: dict) -> bool:
-    """Insert an organisation row. No-op if organisations table doesn't exist."""
+    """Insert an org row — graceful if table doesn't exist."""
     try:
-        _db.table("organisations").insert(data).execute()
+        _get_db().table("organizations").insert(data).execute()
         return True
     except Exception as e:
         logger.warning(f"insert_org (non-fatal): {e}")
-        return False  # non-fatal — org_id still stored on user row
+        return False
+
 
 def fetch_org_by_id(org_id: str) -> dict | None:
     try:
-        return _one(_db.table("organisations").select("*").eq("id", org_id).limit(1).execute())
+        return _one(
+            _get_db().table("organizations").select("*").eq("id", org_id).limit(1).execute()
+        )
     except Exception as e:
         logger.warning(f"fetch_org_by_id({org_id}): {e}")
         return None
 
+
 def fetch_org_members(org_id: str) -> list:
     try:
-        res = _db.table("users").select("id, email, is_pro, created_at").eq("org_id", org_id).execute()
+        res = _db.table("users").select(
+            "id, email, plan, trial_active, is_pro, created_at"
+        ).eq("org_id", org_id).execute()
         return res.data or []
     except Exception as e:
         logger.error(f"fetch_org_members({org_id}): {e}")
         return []
 
-# ── Scan history helpers ──────────────────────────────────────────────────────
+
+# ── Scan history helpers ──────────────────────────────────────
 
 def insert_scan_history(data: dict) -> bool:
-    """Persist a scan result into the scans table using old field names."""
+    """
+    Persist a scan result. Maps old field names to the scans table schema.
+    Accepts both old-style dicts (risk/score/findings_count) and new-style.
+    """
     try:
-        # Map old field names to new schema
         row = {
             "user_id":       data.get("user_id"),
             "source":        data.get("input_text", "")[:120] or "code_paste",
-            "risk_level":    data.get("risk", "LOW"),
+            "risk_level":    data.get("risk", data.get("risk_level", "LOW")),
             "total_secrets": data.get("findings_count", 0),
-            "result_json":   {
+            "result_json": {
                 "explanation":    data.get("explanation", ""),
                 "fixes":          data.get("fixes", []),
                 "score":          data.get("score", 0),
                 "findings_count": data.get("findings_count", 0),
             },
         }
-        # Include id if provided
         if data.get("id"):
             row["id"] = data["id"]
-        _db.table("scans").insert(row).execute()
+        _get_db().table("scans").insert(row).execute()
         return True
     except Exception as e:
         logger.error(f"insert_scan_history: {e}")
         return False
 
+
 def fetch_scan_history(user_id: str, limit: int = 20) -> list:
+    """Fetch scan history for a user, newest first."""
     return list_scans(user_id, limit=limit)
 
-# ── Usage tracking (best-effort — graceful if table absent) ──────────────────
+
+# ── Usage tracking ────────────────────────────────────────────
 
 def fetch_usage_today(user_id: str, today: str) -> dict | None:
-    """Fetch today's usage record.  Returns None if table not present."""
     try:
         return _one(
-            _db.table("usage_tracking")
+            _get_db().table("usage_tracking")
             .select("*")
             .eq("user_id", user_id)
             .eq("date", today)
@@ -378,23 +653,31 @@ def fetch_usage_today(user_id: str, today: str) -> dict | None:
             .execute()
         )
     except Exception:
-        return None  # table may not exist — caller handles None
+        return None   # table may not exist yet
+
 
 def upsert_usage(user_id: str, org_id: str, today: str, count: int) -> None:
-    """Update daily usage counter.  Best-effort — never raises."""
     try:
         existing = fetch_usage_today(user_id, today)
         if existing:
-            _db.table("usage_tracking").update({"request_count": count}).eq("user_id", user_id).eq("date", today).execute()
+            _get_db().table("usage_tracking").update(
+                {"request_count": count}
+            ).eq("user_id", user_id).eq("date", today).execute()
         else:
-            _db.table("usage_tracking").insert({"user_id": user_id, "org_id": org_id, "date": today, "request_count": count}).execute()
+            _get_db().table("usage_tracking").insert({
+                "user_id":       user_id,
+                "org_id":        org_id,
+                "date":          today,
+                "request_count": count,
+            }).execute()
     except Exception as e:
         logger.debug(f"upsert_usage (non-fatal): {e}")
+
 
 def fetch_usage_history(user_id: str, limit: int = 30) -> list:
     try:
         res = (
-            _db.table("usage_tracking")
+            _get_db().table("usage_tracking")
             .select("date, request_count")
             .eq("user_id", user_id)
             .order("date", desc=True)
@@ -405,16 +688,15 @@ def fetch_usage_history(user_id: str, limit: int = 30) -> list:
     except Exception:
         return []
 
-# ── Dashboard aggregation ─────────────────────────────────────────────────────
 
-def fetch_dashboard_data(user_id: str, org_id: str | None, plan: str) -> dict:
-    """Return usage series, history, and team for the dashboard endpoint."""
+def fetch_dashboard_data(user_id: str, org_id, plan: str) -> dict:
     usage   = fetch_usage_history(user_id, limit=30)
     history = fetch_scan_history(user_id, limit=10)
     team    = fetch_org_members(org_id) if org_id else []
     return {"usage": usage, "history": history, "team": team}
 
-# ── CVE cache (in-memory — no DB table needed) ────────────────────────────────
+
+# ── CVE cache (in-memory) ─────────────────────────────────────
 
 _cve_cache: dict = {}
 
@@ -422,29 +704,56 @@ def fetch_cve_cache(query: str) -> dict | None:
     return _cve_cache.get(query.lower())
 
 def store_cve_cache(query: str, data: dict) -> None:
-    # Keep cache bounded — evict oldest entry when over 200 items
     if len(_cve_cache) >= 200:
         oldest = next(iter(_cve_cache))
         del _cve_cache[oldest]
     _cve_cache[query.lower()] = data
 
-# ── Audit log (best-effort — graceful if table absent) ───────────────────────
+
+# ── Audit log ─────────────────────────────────────────────────
 
 def write_audit_log(user_id: str, action: str, **kwargs) -> None:
-    """Write an audit log entry.  Completely non-fatal — never raises."""
+    """Non-fatal audit log. Never raises."""
     try:
+        import datetime as _dt
         row = {
             "user_id":    user_id,
             "action":     action,
-            "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+            "created_at": _dt.datetime.utcnow().isoformat(),
         }
         row.update({k: str(v)[:500] if v else None for k, v in kwargs.items()})
-        _db.table("audit_logs").insert(row).execute()
+        _get_db().table("audit_logs").insert(row).execute()
     except Exception as e:
         logger.debug(f"write_audit_log (non-fatal): {e}")
 
-# ── Cache invalidation stub ───────────────────────────────────────────────────
 
 def cache_invalidate(key: str) -> None:
-    """No-op stub — in-memory caches invalidate themselves via TTL."""
+    """No-op stub — in-memory caches invalidate via TTL."""
     pass
+
+
+# ── Scan task (1-arg backwards compat) ───────────────────────
+
+def fetch_scan_task(task_id: str, user_id: str | None = None) -> dict | None:
+    """
+    Fetch a scan task.
+    app.py calls DB.fetch_scan_task(task_id) with only 1 arg.
+    The new get_scan_task() requires 2 args, so this wrapper bridges the gap.
+    """
+    try:
+        q = _db.table("scan_tasks").select("*").eq("id", task_id)
+        if user_id:
+            q = q.eq("user_id", user_id)
+        return _one(q.limit(1).execute())
+    except Exception as e:
+        logger.error(f"fetch_scan_task({task_id}): {e}")
+        return None
+
+
+def insert_scan_task(data: dict) -> bool:
+    try:
+        _get_db().table("scan_tasks").insert(data).execute()
+        return True
+    except Exception as e:
+        logger.error(f"insert_scan_task: {e}")
+        return False
