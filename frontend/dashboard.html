@@ -303,7 +303,7 @@
     <a class="side-nav-item active" onclick="window.scrollTo(0,0)" style="cursor:pointer;">
       <i class="bi bi-shield-shaded"></i> Code Scanner
     </a>
-    <a class="side-nav-item" id="nav-repo" href="minisky.html">
+    <a class="side-nav-item" id="nav-repo" href="pro.html">
       <i class="bi bi-github"></i> Repo Scanner
       <span id="repoLockBadge" class="badge-pill sev-low" style="margin-left:auto;font-size:9px;display:none;">PRO</span>
     </a>
@@ -466,7 +466,7 @@
 
     <!-- Quick Actions -->
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px;">
-      <a href="minisky.html" class="btn btn-outline-light btn-sm">
+      <a href="pro.html" class="btn btn-outline-light btn-sm">
         <i class="bi bi-grid-3x3-gap me-1"></i>Advanced Scanner
       </a>
       <button class="btn btn-danger btn-sm" onclick="logout()">
@@ -728,7 +728,7 @@
     if (navCve) {
       navCve.addEventListener("click", e => {
         if (window.DEV_MODE || ["pro","pro_trial","enterprise"].includes((localStorage.getItem("user_plan")||"free").toLowerCase())) {
-          window.location.href = "minisky.html";
+          window.location.href = "pro.html";
         } else {
           e.preventDefault();
           showUpgradePrompt("CVE Lookup requires a Pro or Enterprise plan.");
