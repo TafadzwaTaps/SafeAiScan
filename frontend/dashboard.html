@@ -475,7 +475,7 @@
 
     <!-- Quick Actions -->
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px;">
-      <a href="minisky.html" class="btn btn-outline-light btn-sm">
+      <a href="pro.html" class="btn btn-outline-light btn-sm">
         <i class="bi bi-grid-3x3-gap me-1"></i>Advanced Scanner
       </a>
       <button class="btn btn-danger btn-sm" onclick="logout()">
@@ -643,10 +643,10 @@
   // ============================================================
   function applyNavGating(plan) {
     plan = (plan || "free").toLowerCase();
-    if (window.DEV_MODE) plan = "enterprise";
+    if (window.DEV_MODE) plan = "pro";
 
     // pro_trial has identical access to paid Pro — never show lock/PRO badges
-    const isPro = ["pro", "pro_trial", "enterprise"].includes(plan);
+    const isPro = ["pro", "pro_trial"].includes(plan);
 
     const repoBadge = document.getElementById("repoLockBadge");
     const cveBadge  = document.getElementById("cveLockBadge");
@@ -684,7 +684,7 @@
       repoBtn.addEventListener("click", () => {
         const plan = (localStorage.getItem("user_plan") || "free").toLowerCase();
         const hasPro = window.DEV_MODE ||
-                       ["pro","pro_trial","enterprise"].includes(plan) ||
+                       ["pro","pro_trial"].includes(plan) ||
                        localStorage.getItem("is_pro") === "true" ||
                        localStorage.getItem("trial_active") === "true";
         if (hasPro) {
@@ -701,7 +701,7 @@
       navCve.addEventListener("click", e => {
         const plan = (localStorage.getItem("user_plan") || "free").toLowerCase();
         const hasPro = window.DEV_MODE ||
-                       ["pro","pro_trial","enterprise"].includes(plan) ||
+                       ["pro","pro_trial"].includes(plan) ||
                        localStorage.getItem("is_pro") === "true" ||
                        localStorage.getItem("trial_active") === "true";
         if (hasPro) {
@@ -723,7 +723,7 @@
     }
 
     // Apply nav gating from cached plan (will be refreshed by loadPlan() shortly)
-    const cachedPlan = window.DEV_MODE ? "enterprise" : (localStorage.getItem("user_plan") || "free");
+    const cachedPlan = window.DEV_MODE ? "pro" : (localStorage.getItem("user_plan") || "free");
     applyNavGating(cachedPlan);
 
     // Sidebar upgrade widget — show trial offer for free users, countdown for trial users
