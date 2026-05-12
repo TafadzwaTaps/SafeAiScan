@@ -202,8 +202,8 @@ def check_and_increment_scan(user_id: str) -> tuple[bool, str]:
         update_user(user_id, {"scans_today": 1, "last_scan_date": today})
         return True, "ok"
 
-    if count >= 1:
-        return False, "Free plan allows 1 scan per day. Upgrade to Pro for unlimited scans."
+    if count >= 10:
+        return False, "Free plan allows 10 scans per day. Upgrade to Pro for unlimited scans."
 
     update_user(user_id, {"scans_today": count + 1})
     return True, "ok"
@@ -465,7 +465,7 @@ def _plan_limits_for(plan: str) -> dict:
     """Return scan limits for a given effective plan."""
     LIMITS = {
         "free": {
-            "daily_scans":     5,
+            "daily_scans":     10,   # Improved free tier
             "daily_repos":     2,
             "history_limit":   10,
             "ai_depth":        "basic",

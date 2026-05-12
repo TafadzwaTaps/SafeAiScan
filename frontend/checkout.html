@@ -275,6 +275,11 @@ function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
     document.getElementById('paySub').innerHTML =
       '<span style="color:var(--warning);"><i class="bi bi-lock me-1"></i>Pro plan required</span> — upgrade below to access all Pro features.';
   }
+  if (p.get('reason') === 'trial_expired') {
+    document.getElementById('payTitle').textContent = 'Your Trial Has Ended';
+    document.getElementById('paySub').innerHTML =
+      'Your 30-day free trial has expired. Upgrade to Pro at <strong>$1.99/month</strong> to continue unlimited scanning, PDF reports, and all advanced features.';
+  }
 
   // Pre-fill email
   var email = localStorage.getItem('user_email') || '';

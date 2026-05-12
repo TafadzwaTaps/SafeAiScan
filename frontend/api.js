@@ -19,21 +19,14 @@ function clearAuth() {
 // ── Plan helpers ───────────────────────────────────────────
 // Source of truth: localStorage values set by getMe() after every page load.
 // pro_trial counts as full Pro access.
-let _userPlan   = window.DEV_MODE ? "enterprise" : (localStorage.getItem("user_plan") || "free");
+let _userPlan   = localStorage.getItem("user_plan") || "free";
 let _userLimits = null;
 try {
-  if (window.DEV_MODE) {
-    _userLimits = { daily_scans:-1, history_limit:9999, ai_depth:"full",
-      repo_scan:true, pdf_download:true, advanced_ai:true, api_access:true,
-      cve_enrichment:true, scheduled_scans:true, json_export:true };
-  } else {
-    const s = localStorage.getItem("user_limits");
-    if (s) _userLimits = JSON.parse(s);
-  }
+  const s = localStorage.getItem("user_limits");
+  if (s) _userLimits = JSON.parse(s);
 } catch {}
 
 function isProUser() {
-  if (window.DEV_MODE) return true;
   if (localStorage.getItem("is_pro") === "true")     return true;
   if (localStorage.getItem("trial_active") === "true") return true;
   const p = localStorage.getItem("user_plan") || "free";
@@ -50,14 +43,12 @@ function getTrialDaysLeft() {
 }
 
 function getUserPlan() {
-  if (window.DEV_MODE) return "enterprise";
   return _userPlan;
 }
 
 function getUserLimits() { return _userLimits; }
 
 function cachePlanData(plan, limits) {
-  if (window.DEV_MODE) return;
   _userPlan   = plan;
   _userLimits = limits;
   localStorage.setItem("user_plan", plan);
@@ -65,7 +56,6 @@ function cachePlanData(plan, limits) {
 }
 
 function canAccessFeature(feature) {
-  if (window.DEV_MODE) return true;
   if (isProUser()) return true;
   // Free plan has limited access
   const freeFeatures = { repo_scan: true, basic_scan: true };
@@ -195,8 +185,8 @@ async function analyzeCode(text) {
     body: JSON.stringify({ text })
   });
   const data = await safeJson(res);
-  // Only cache plan data in production mode
-  if (!window.DEV_MODE && data.plan && data.usage_limit) {
+  // Cache plan data from response for usage counters
+  if (data.plan && data.usage_limit) {
     cachePlanData(data.plan, null);
     document.dispatchEvent(new CustomEvent("planUpdated", { detail: data }));
   }
@@ -234,13 +224,11 @@ async function getMe() {
   try {
     const res  = await apiRequest("/api/me");
     const data = await safeJson(res);
-    if (!window.DEV_MODE) {
-      if (data?.plan)   localStorage.setItem("user_plan", data.plan);
-      if (data?.is_pro !== undefined) localStorage.setItem("is_pro", data.is_pro ? "true" : "false");
-      if (data?.trial_active !== undefined) localStorage.setItem("trial_active", data.trial_active ? "true" : "false");
-      if (data?.days_left !== undefined)    localStorage.setItem("trial_days_left", String(data.days_left));
-      cachePlanData(data.plan, data.limits || null);
-    }
+    if (data?.plan)   localStorage.setItem("user_plan", data.plan);
+    if (data?.is_pro !== undefined) localStorage.setItem("is_pro", data.is_pro ? "true" : "false");
+    if (data?.trial_active !== undefined) localStorage.setItem("trial_active", data.trial_active ? "true" : "false");
+    if (data?.days_left !== undefined)    localStorage.setItem("trial_days_left", String(data.days_left));
+    cachePlanData(data.plan, data.limits || null);
     return data;
   } catch (err) {
     if (err.message.includes("404")) {

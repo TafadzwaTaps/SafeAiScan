@@ -920,23 +920,98 @@ function setMode(mode) {
   var sideEl = document.getElementById('sidebarEmail');
   if (sideEl && email) sideEl.textContent = email;
 
-  // Load /auth/me to get email and confirm is_pro
-  fetch(API + '/auth/me', { headers: authHeaders() })
-    .then(function(r) { return r.json(); })
+  // Load /api/me to confirm access and get trial/plan info
+  fetch(API + '/api/me', { headers: authHeaders() })
+    .then(function(r) {
+      if (r.status === 401) { window.location.replace('login.html'); return null; }
+      return r.json();
+    })
     .then(function(raw) {
+      if (!raw) return;
       var d = raw.data || raw;
+
       if (d.email) {
         if (sideEl) sideEl.textContent = d.email;
         localStorage.setItem('user_email', d.email);
       }
-      if (!d.is_pro) {
-        window.location.replace('checkout.html?reason=pro_required');
+
+      var plan        = d.plan || 'free';
+      var isPro       = d.is_pro || false;
+      var trialActive = d.trial_active || false;
+      var daysLeft    = d.days_left || 0;
+      var trialEnd    = d.trial_end || '';
+
+      // Cache plan data for api.js helpers
+      localStorage.setItem('user_plan', plan);
+      localStorage.setItem('is_pro', isPro ? 'true' : 'false');
+      localStorage.setItem('trial_active', trialActive ? 'true' : 'false');
+      localStorage.setItem('trial_days_left', String(daysLeft));
+
+      // Access control: pro, pro_trial (active) and enterprise may enter
+      var hasAccess = (plan === 'pro' || plan === 'enterprise') ||
+                      (plan === 'pro_trial' && trialActive);
+
+      if (!hasAccess) {
+        // Trial expired or plain free user — redirect gracefully
+        var reason = (plan === 'pro_trial' && !trialActive) ? 'trial_expired' : 'pro_required';
+        window.location.replace('checkout.html?reason=' + reason);
+        return;
       }
+
+      // Show trial countdown banner if on active trial
+      if (plan === 'pro_trial' && trialActive && daysLeft > 0) {
+        showTrialBanner(daysLeft, trialEnd);
+      }
+
+      // Update the plan badge in the topbar
+      updatePlanBadge(plan, trialActive, daysLeft);
     })
-    .catch(function(){});
+    .catch(function(e) {
+      console.warn('Auth check failed', e);
+      // Do NOT redirect on network errors — let the user keep working
+    });
 
   setupZipDrop();
 })();
+
+function showTrialBanner(daysLeft, trialEnd) {
+  var urgency = daysLeft <= 3 ? '#f43f5e' : daysLeft <= 7 ? '#fb923c' : '#00ffa3';
+  var banner = document.createElement('div');
+  banner.id  = 'trialBanner';
+  banner.style.cssText = [
+    'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);',
+    'background:rgba(15,23,42,.95);border:1px solid ' + urgency + '44;',
+    'border-radius:12px;padding:10px 20px;display:flex;align-items:center;gap:12px;',
+    'font-size:12px;color:var(--text-muted);z-index:9000;',
+    'box-shadow:0 8px 32px rgba(0,0,0,.5);backdrop-filter:blur(10px);',
+    'animation:popIn .3s ease both;'
+  ].join('');
+  banner.innerHTML =
+    '<i class="bi bi-clock" style="color:' + urgency + ';font-size:14px;"></i>' +
+    '<span>Your <strong style="color:#fff;">Pro Trial</strong> ends in ' +
+    '<strong style="color:' + urgency + ';">' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') + '</strong>' +
+    (trialEnd ? ' · ' + trialEnd : '') + '</span>' +
+    '<a href="checkout.html" style="background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;' +
+    'border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;text-decoration:none;' +
+    'white-space:nowrap;">Upgrade — $1.99/mo</a>' +
+    '<button onclick="document.getElementById(\'trialBanner\').remove()" style="' +
+    'background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;line-height:1;' +
+    'padding:0 0 0 4px;">&times;</button>';
+  document.body.appendChild(banner);
+}
+
+function updatePlanBadge(plan, trialActive, daysLeft) {
+  var badge = document.querySelector('.pro-badge-tag');
+  if (!badge) return;
+  if (plan === 'pro_trial' && trialActive) {
+    badge.textContent = 'Trial · ' + daysLeft + 'd left';
+    badge.style.color = daysLeft <= 3 ? '#f43f5e' : daysLeft <= 7 ? '#fb923c' : '#00ffa3';
+  } else if (plan === 'enterprise') {
+    badge.textContent = 'Enterprise';
+  } else {
+    badge.textContent = 'Pro';
+  }
+}
 
 function doLogout() {
   localStorage.clear();

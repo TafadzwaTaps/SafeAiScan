@@ -1,10 +1,11 @@
+"""
+config.py — Application configuration
+========================================
+DEV_MODE has been removed. All plan gates are enforced in production.
+Configuration is read from environment variables only.
+"""
+
 import os
 
-# ============================================================
-#  CONFIG — single source of truth
-#  DEV_MODE=true in .env → all plan gates unlocked
-#  DEV_MODE=false (or unset) → production gating enforced
-# ============================================================
-
-_raw = os.getenv("DEV_MODE", "true").lower().strip()
-DEV_MODE: bool = _raw in ("1", "true", "yes", "on")
+# App base URL for redirect links (e.g. PayPal return URLs)
+APP_BASE_URL: str = os.getenv("APP_BASE_URL", "http://localhost:3000")

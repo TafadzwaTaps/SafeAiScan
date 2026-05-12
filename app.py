@@ -44,8 +44,8 @@ import db as DB
 
 _PLAN_LIMITS = {
     "free": {
-        "daily_scans":     5,
-        "daily_repos":     2,
+        "daily_scans":     10,   # Improved free tier: 10 file scans per day
+        "daily_repos":     2,    # 2 repository scans per day
         "history_limit":   10,
         "ai_depth":        "basic",
         "repo_scan":       True,
@@ -402,10 +402,7 @@ async def ai_enrich(text: str, findings: list, depth: str = "full") -> dict:
     return {"explanation": "AI unavailable after retries.", "fixes": []}
 
 # ---- ROUTES ----
-@app.get("/api/dev/mode")
-def dev_mode_status():
-    # config.py removed — DEV_MODE no longer applicable
-    return {"dev_mode": False, "status": "PRODUCTION MODE"}
+
 
 @app.post("/auth/register")
 def register(req: RegisterRequest, request: Request):

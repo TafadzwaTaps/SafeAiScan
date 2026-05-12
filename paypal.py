@@ -38,9 +38,9 @@ MODE          = os.getenv("PAYPAL_MODE", "sandbox").lower()   # "sandbox" | "liv
 APP_BASE_URL  = os.getenv("APP_BASE_URL", "http://localhost:3000")
 
 # Pro plan pricing — change here to update everywhere
-PRO_PRICE_USD = "9.99"
+PRO_PRICE_USD = "1.99"
 PRO_CURRENCY  = "USD"
-PRO_PLAN_NAME = "SecretScan Pro — Unlimited Scans + PDF Reports"
+PRO_PLAN_NAME = "SafeAIScan Pro — Unlimited Scans + PDF Reports · $1.99/mo"
 
 _BASE = {
     "sandbox": "https://api-m.sandbox.paypal.com",
