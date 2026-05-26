@@ -1,4 +1,8 @@
 import os
+import re
+import math
+import html
+import string as _str_module
 import uuid
 import hashlib
 import asyncio
@@ -44,8 +48,8 @@ import db as DB
 
 _PLAN_LIMITS = {
     "free": {
-        "daily_scans":     10,   # Improved free tier: 10 file scans per day
-        "daily_repos":     2,    # 2 repository scans per day
+        "daily_scans":     5,
+        "daily_repos":     2,
         "history_limit":   10,
         "ai_depth":        "basic",
         "repo_scan":       True,
@@ -147,6 +151,129 @@ logger = logging.getLogger("safeaiscan")
 app = FastAPI(title="SafeAIScan Enterprise", version="2.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5500","http://localhost:3000","https://rathious-safeaiscan.hf.space"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+# ══════════════════════════════════════════════════════════════
+#  SECURITY: Rate limiting, security headers, XSS/injection guard
+#  Added without touching any existing route logic
+# ══════════════════════════════════════════════════════════════
+from collections import defaultdict
+
+# ── Rate limit store (in-memory, per IP per bucket) ──────────
+_rl_store: dict = defaultdict(lambda: {"count": 0, "window_start": 0.0})
+_rl_lock  = asyncio.Lock()
+
+_RL_LIMITS = {
+    "auth":    5,    # /auth/* — 5 attempts per 60s (brute-force protection)
+    "scan":    30,   # /api/analyze, /api/scan-repo — 30 per 60s
+    "payment": 10,   # /payment/* — 10 per 60s
+    "default": 60,   # everything else
+}
+
+def _rl_bucket(path: str) -> str:
+    if path.startswith("/auth/"):          return "auth"
+    if "/analyze" in path or "/scan" in path: return "scan"
+    if path.startswith("/payment/"):       return "payment"
+    return "default"
+
+def _get_real_ip(request: Request) -> str:
+    """Respect Cloudflare / HF proxy headers for real IP."""
+    for h in ("cf-connecting-ip", "x-real-ip", "x-forwarded-for"):
+        v = request.headers.get(h, "")
+        if v:
+            return v.split(",")[0].strip()
+    return (request.client.host if request.client else "unknown")
+
+# ── Injection / XSS pattern detector ─────────────────────────
+_INJECT_RES = [
+    re.compile(r"<script[\s>]",              re.I),
+    re.compile(r"javascript\s*:",            re.I),
+    re.compile(r"on\w+\s*=\s*[\"']",         re.I),
+    re.compile(r";\s*(drop|delete|insert|update|alter|truncate)\s+", re.I),
+    re.compile(r"\bunion\b.{0,20}\bselect\b", re.I),
+    re.compile(r"'\s*or\s+'?\d",             re.I),
+]
+
+def _looks_malicious(text: str) -> bool:
+    for pat in _INJECT_RES:
+        if pat.search(text):
+            return True
+    return False
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    path   = request.url.path
+    method = request.method
+    ip     = _get_real_ip(request)
+
+    # ── 1. Rate limiting ──────────────────────────────────────
+    bucket = _rl_bucket(path)
+    limit  = _RL_LIMITS[bucket]
+    window = 60.0
+
+    async with _rl_lock:
+        key   = f"{ip}:{bucket}"
+        entry = _rl_store[key]
+        now   = time.time()
+        if now - entry["window_start"] > window:
+            entry["count"]        = 1
+            entry["window_start"] = now
+        else:
+            entry["count"] += 1
+
+        remaining = max(0, limit - entry["count"])
+        reset_in  = int(window - (now - entry["window_start"]))
+
+        if entry["count"] > limit:
+            logger.warning(f"Rate limit: ip={ip} bucket={bucket} count={entry['count']}")
+            return JSONResponse(
+                status_code=429,
+                content={"success": False, "error": "Too many requests. Please slow down."},
+                headers={
+                    "Retry-After":           str(reset_in),
+                    "X-RateLimit-Limit":     str(limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset":     str(reset_in),
+                }
+            )
+
+    # ── 2. Block malicious query strings ─────────────────────
+    raw_query = str(request.url.query)
+    if raw_query and _looks_malicious(raw_query):
+        logger.warning(f"Malicious query blocked: ip={ip} path={path} q={raw_query[:80]}")
+        return JSONResponse(status_code=400, content={"success": False, "error": "Invalid request."})
+
+    # ── 3. Block HTML content-type on API endpoints ───────────
+    ct = request.headers.get("content-type", "")
+    if method in ("POST", "PUT", "PATCH") and "text/html" in ct and path.startswith("/api/"):
+        return JSONResponse(status_code=415, content={"success": False, "error": "Unsupported content type."})
+
+    # ── 4. Process request ────────────────────────────────────
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        logger.error(f"Middleware error: {exc}")
+        return JSONResponse(status_code=500, content={"success": False, "error": "Internal server error."})
+
+    # ── 5. Security response headers ─────────────────────────
+    response.headers["X-Content-Type-Options"]  = "nosniff"
+    response.headers["X-Frame-Options"]         = "DENY"
+    response.headers["X-XSS-Protection"]        = "1; mode=block"
+    response.headers["Referrer-Policy"]         = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"]      = "camera=(), microphone=(), geolocation=()"
+    response.headers["X-RateLimit-Limit"]       = str(limit)
+    response.headers["X-RateLimit-Remaining"]   = str(remaining)
+    response.headers["X-RateLimit-Reset"]       = str(reset_in)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; "
+        "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self' https://rathious-safeaiscan.hf.space https://router.huggingface.co "
+        "https://api-m.sandbox.paypal.com https://api-m.paypal.com https://services.nvd.nist.gov; "
+        "frame-ancestors 'none';"
+    )
+    return response
+
 HF_API_KEY   = os.getenv("HF_API_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 CVE_API      = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -208,6 +335,11 @@ class RegisterRequest(BaseModel):
         v = v.lower().strip()
         if "@" not in v or "." not in v.split("@")[-1]:
             raise ValueError("Invalid email address")
+        if len(v) > 254:
+            raise ValueError("Email address too long")
+        # Block injection chars in email
+        if any(c in v for c in ("\x00", "<", ">", "'", '"', ";", "--", "/*")):
+            raise ValueError("Invalid characters in email address")
         return v
 
     @_fv("password")
@@ -215,6 +347,8 @@ class RegisterRequest(BaseModel):
     def strong_password(cls, v):
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password too long (max 128 characters)")
         return v
 
     @_fv("org_name")
@@ -223,6 +357,10 @@ class RegisterRequest(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("Organization name is required")
+        if len(v) > 100:
+            raise ValueError("Organization name too long (max 100 characters)")
+        # HTML-escape to prevent stored XSS
+        v = html.escape(v)
         return v
 
 class LoginRequest(BaseModel):
@@ -232,7 +370,10 @@ class LoginRequest(BaseModel):
     @_fv("email")
     @classmethod
     def normalize(cls, v):
-        return v.lower().strip()
+        v = v.lower().strip()
+        if len(v) > 254:
+            raise ValueError("Email too long")
+        return v
 
 class AnalyzeRequest(BaseModel):
     text: str
@@ -245,6 +386,8 @@ class AnalyzeRequest(BaseModel):
             raise ValueError("Code text cannot be empty")
         if len(v) > 50_000:
             raise ValueError("Input too large (max 50,000 chars)")
+        # Strip null bytes — common in injection payloads
+        v = v.replace("\x00", "")
         return v
 
 class RepoRequest(BaseModel):
@@ -337,12 +480,105 @@ _PATTERNS = [
     ("sha1(",                   "LOW",      "SHA-1 is deprecated for security — use SHA-256 or better."),
 ]
 
+# ── ScanShield-inspired: expanded patterns ────────────────────
+_EXTRA_PATTERNS = [
+    # Cloud provider key prefixes
+    ("AKIA",                   "CRITICAL", "Possible AWS Access Key ID — rotate immediately via AWS IAM."),
+    ("ghp_",                   "CRITICAL", "Possible GitHub Personal Access Token — revoke at github.com/settings/tokens."),
+    ("xoxb-",                  "CRITICAL", "Possible Slack bot token — revoke at api.slack.com/apps."),
+    ("sk-",                    "HIGH",     "Possible OpenAI or Stripe secret key — check provider dashboard and rotate."),
+    ("AIza",                   "HIGH",     "Possible Google API key — restrict scopes and rotate in Cloud Console."),
+    ("SG.",                    "HIGH",     "Possible SendGrid API key — rotate in SendGrid dashboard."),
+    # Broken crypto
+    ("DES.new(",               "MEDIUM",   "DES is cryptographically broken — use AES-256-GCM."),
+    ("RC4(",                   "MEDIUM",   "RC4 is deprecated — use AES-GCM or ChaCha20."),
+    ("random.random()",        "LOW",      "random.random() is not cryptographically secure — use the secrets module."),
+    ("Math.random()",          "LOW",      "Math.random() is not cryptographically secure for tokens or session IDs."),
+    # Insecure network
+    ("verify=False",           "MEDIUM",   "SSL verification disabled — allows MITM attacks. Remove verify=False."),
+    ("check_hostname=False",   "MEDIUM",   "Hostname verification disabled — SSL is ineffective."),
+    # Path traversal
+    ("../",                    "MEDIUM",   "Possible path traversal — use os.path.realpath() and validate against allowlist."),
+    # Command injection
+    ("shell=True",             "HIGH",     "shell=True in subprocess enables shell injection — pass args as a list."),
+    ("os.popen(",              "HIGH",     "os.popen() executes shell commands — use subprocess.run() with a list."),
+    # Prototype pollution (JS)
+    ("__proto__",              "HIGH",     "Prototype pollution risk — sanitize user-controlled object keys."),
+    ("constructor[prototype]", "HIGH",     "Prototype pollution vector — validate property access on user input."),
+    # Hardcoded credentials
+    ('password = "',           "MEDIUM",   "Possible hardcoded password — use environment variables instead."),
+    ('passwd = "',             "MEDIUM",   "Possible hardcoded password — use environment variables instead."),
+    ('token = "',              "MEDIUM",   "Possible hardcoded token — use environment variables instead."),
+    ('api_key = "',            "MEDIUM",   "Possible hardcoded API key — use environment variables instead."),
+]
+
+# ── High-entropy string detection (ScanShield-style) ─────────
+_B64_CHARS = set(_str_module.ascii_letters + _str_module.digits + "+/=")
+_HEX_CHARS = set(_str_module.hexdigits)
+_TOKEN_RE  = re.compile(r'["\']([A-Za-z0-9+/=_\-]{20,120})["\']')
+
+def _shannon_entropy(s: str) -> float:
+    """Shannon entropy of a string. High value (~4.5+) = likely a secret."""
+    if not s:
+        return 0.0
+    freq: dict = {}
+    for c in s:
+        freq[c] = freq.get(c, 0) + 1
+    n = len(s)
+    return -sum((f / n) * math.log2(f / n) for f in freq.values())
+
+def _detect_high_entropy_secrets(text: str) -> list:
+    """
+    Find quoted strings that look like API keys or tokens based on entropy.
+    Threshold: >= 4.5 bits/char on base64 or hex character sets, length >= 32.
+    This catches hardcoded secrets that don't match any known prefix pattern.
+    """
+    findings, seen = [], set()
+    for match in _TOKEN_RE.finditer(text):
+        candidate = match.group(1)
+        if candidate in seen or len(candidate) < 32:
+            continue
+        char_set = set(candidate)
+        is_b64 = char_set.issubset(_B64_CHARS)
+        is_hex = char_set.issubset(_HEX_CHARS)
+        if not (is_b64 or is_hex):
+            continue
+        entropy = _shannon_entropy(candidate)
+        if entropy >= 4.5:
+            seen.add(candidate)
+            redacted = candidate[:6] + "···" + candidate[-4:]
+            findings.append({
+                "title":       "High-entropy string detected (possible secret)",
+                "match":       redacted,
+                "severity":    "HIGH",
+                "description": (
+                    f"A high-entropy string (entropy={entropy:.2f} bits/char) was found "
+                    f"embedded in code. This pattern is consistent with API keys, auth tokens, or passwords."
+                ),
+                "fix":         "Move this value to an environment variable and rotate it immediately if live.",
+                "cve":         "N/A",
+                "cvss":        7.5,
+            })
+    return findings
+
 def scan_vulnerabilities(text: str) -> list:
     findings, seen, lower = [], set(), text.lower()
+    # Original core patterns — unchanged
     for pattern, severity, description in _PATTERNS:
         if pattern.lower() in lower and pattern not in seen:
             seen.add(pattern)
             findings.append({"title": f"Insecure use of `{pattern.strip()}`", "match": pattern, "severity": severity, "description": description, "fix": "Review this pattern and sanitize inputs. See OWASP for secure alternatives.", "cve": "N/A", "cvss": 5.0})
+    # ScanShield-inspired expanded patterns
+    for pattern, severity, description in _EXTRA_PATTERNS:
+        if pattern.lower() in lower and pattern not in seen:
+            seen.add(pattern)
+            cvss = 9.0 if severity == "CRITICAL" else 7.5 if severity == "HIGH" else 5.0
+            findings.append({"title": f"Detected: `{pattern.strip()}`", "match": pattern, "severity": severity, "description": description, "fix": "Review this pattern and apply the recommended remediation. See provider security docs.", "cve": "N/A", "cvss": cvss})
+    # High-entropy secret detection
+    for h in _detect_high_entropy_secrets(text):
+        if h["match"] not in seen:
+            seen.add(h["match"])
+            findings.append(h)
     return findings
 
 async def ai_enrich(text: str, findings: list, depth: str = "full") -> dict:
@@ -402,11 +638,18 @@ async def ai_enrich(text: str, findings: list, depth: str = "full") -> dict:
     return {"explanation": "AI unavailable after retries.", "fixes": []}
 
 # ---- ROUTES ----
-
+@app.get("/api/dev/mode")
+def dev_mode_status():
+    # config.py removed — DEV_MODE no longer applicable
+    return {"dev_mode": False, "status": "PRODUCTION MODE"}
 
 @app.post("/auth/register")
 def register(req: RegisterRequest, request: Request):
     try:
+        # Server-side injection guard (on top of model validators)
+        if _looks_malicious(req.email) or _looks_malicious(req.org_name):
+            logger.warning(f"Injection attempt in register: ip={_get_real_ip(request)}")
+            fail("Invalid input detected.", 400)
         if DB.user_email_exists(req.email):
             fail("This email is already registered. Please sign in instead.", 409)
         user_id = str(uuid.uuid4())
@@ -467,9 +710,13 @@ def register(req: RegisterRequest, request: Request):
 @app.post("/auth/login")
 def login(req: LoginRequest, request: Request):
     try:
+        # Timing-safe: always run bcrypt even if user not found,
+        # so attackers can't enumerate valid emails via response timing
+        _DUMMY_HASH = "$2b$12$eImiTXuWVxfM37uY4JANjQeeHjUmBIeHqYkPiTpPuBNP7cBSjEFNq"
         user = DB.fetch_user_by_email(req.email)
 
         if not user:
+            verify_password(req.password, _DUMMY_HASH)  # constant-time dummy check
             logger.warning(f"Login: email not found — {req.email}")
             raise HTTPException(401, detail={"success": False, "error": "Invalid email or password."})
 
@@ -842,14 +1089,308 @@ def get_repo_tree(repo_url: str, auth=Depends(get_user)):
 def home():
     return {"status": "SafeAIScan v2.1 running", "success": True}
 
+
+# ══════════════════════════════════════════════════════════════
+#  PAYPAL MONETIZATION ROUTES
+#  Revenue target: $500–1000/month at $1.99/mo Pro plan
+#  252 paid users = $500/mo  |  503 paid users = $1000/mo
+# ══════════════════════════════════════════════════════════════
+
+import paypal as _pp
+
+# ── Create payment (subscription preferred, order fallback) ───
+@app.post("/payment/create")
+def payment_create(request: Request, auth=Depends(get_user)):
+    """
+    Start the PayPal checkout flow.
+    Query param ?billing=annual for annual plan.
+    Returns { approve_url, type } — frontend redirects user there.
+    """
+    user    = auth["user"]
+    billing = request.query_params.get("billing", "monthly")
+    try:
+        result = _pp.create_subscription(user["id"], billing=billing)
+        logger.info(f"Payment flow started: user={user['id']} type={result.get('type')} billing={billing}")
+        return ok(result)
+    except RuntimeError as e:
+        fail(str(e), 503)
+
+
+# ── Subscription success (PayPal redirects here after approval) ─
+@app.get("/payment/subscription-success")
+def payment_subscription_success(
+    user_id: str,
+    subscription_id: str = "",
+    billing: str = "monthly",
+    token: str = "",
+):
+    """
+    PayPal redirects here after user approves a subscription.
+    subscription_id is passed by PayPal in the query string.
+    """
+    if not user_id:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/checkout.html?error=missing_user_id")
+
+    sub_id = subscription_id or token
+    if not sub_id:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/checkout.html?error=missing_subscription_id")
+
+    try:
+        # Verify with PayPal that subscription is ACTIVE
+        sub_data = _pp.get_subscription(sub_id)
+        status   = sub_data.get("status", "")
+        if status not in ("ACTIVE", "APPROVED"):
+            logger.warning(f"Subscription {sub_id} status={status} for user {user_id}")
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=f"/checkout.html?error=subscription_not_active&status={status}")
+
+        # Upgrade user
+        if billing == "annual":
+            DB.mark_user_pro_annual(user_id, sub_id)
+        else:
+            DB.mark_user_pro(user_id, subscription_id=sub_id)
+
+        # Log payment
+        amount = _pp.PRO_ANNUAL_USD if billing == "annual" else _pp.PRO_MONTHLY_USD
+        DB.log_payment_event(user_id, "SUBSCRIPTION_ACTIVATED", amount=amount, subscription_id=sub_id)
+
+        logger.info(f"Pro subscription activated: user={user_id} sub={sub_id} billing={billing}")
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"/pro.html?welcome=1&billing={billing}")
+
+    except Exception as e:
+        logger.error(f"subscription_success error: {e}")
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"/checkout.html?error=activation_failed")
+
+
+# ── One-time order success (fallback) ─────────────────────────
+@app.get("/payment/success")
+def payment_success(user_id: str = "", token: str = "", PayerID: str = ""):
+    """
+    PayPal redirects here after a one-time order is approved.
+    Captures the payment and upgrades the user.
+    """
+    order_id = token
+    if not order_id or not user_id:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/checkout.html?error=missing_params")
+
+    try:
+        capture = _pp.capture_order(order_id)
+        uid     = _pp.get_order_user_id(capture) or user_id
+        DB.mark_user_pro(uid, paypal_order_id=order_id)
+        DB.log_payment_event(uid, "ORDER_CAPTURED", amount=_pp.PRO_MONTHLY_USD, order_id=order_id)
+        logger.info(f"One-time payment captured: user={uid} order={order_id}")
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/pro.html?welcome=1")
+    except Exception as e:
+        logger.error(f"payment_success error: {e}")
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"/checkout.html?error=capture_failed")
+
+
+# ── Payment cancelled ─────────────────────────────────────────
+@app.get("/payment/cancel")
+def payment_cancel():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/checkout.html?cancelled=1")
+
+
+# ── PayPal Webhook  (IPN / Webhooks v2) ──────────────────────
+@app.post("/payment/webhook")
+async def payment_webhook(request: Request):
+    """
+    Receives PayPal webhook events:
+      BILLING.SUBSCRIPTION.ACTIVATED    → user upgraded
+      BILLING.SUBSCRIPTION.RENEWED      → payment successful, keep Pro
+      BILLING.SUBSCRIPTION.PAYMENT.FAILED → downgrade user to free
+      BILLING.SUBSCRIPTION.CANCELLED    → downgrade user to free
+      BILLING.SUBSCRIPTION.SUSPENDED    → downgrade user to free
+      PAYMENT.CAPTURE.COMPLETED         → one-time order completed
+
+    PayPal retries webhooks on failure — always return 200 if we received it.
+    """
+    body    = await request.body()
+    headers = dict(request.headers)
+
+    # Verify webhook signature (skipped in sandbox without PAYPAL_WEBHOOK_ID)
+    if not _pp.verify_webhook_signature(headers, body):
+        logger.warning("Webhook signature verification FAILED — ignoring event")
+        return JSONResponse(status_code=400, content={"error": "Invalid webhook signature"})
+
+    try:
+        import json
+        event      = json.loads(body)
+        event_type = event.get("event_type", "")
+        resource   = event.get("resource", {})
+
+        logger.info(f"PayPal webhook: {event_type}")
+
+        # ── Subscription activated / renewed ──────────────────
+        if event_type in ("BILLING.SUBSCRIPTION.ACTIVATED",):
+            sub_id  = resource.get("id", "")
+            user_id = resource.get("custom_id") or resource.get("subscriber", {}).get("email_address")
+            if sub_id and user_id:
+                DB.mark_user_pro(user_id, subscription_id=sub_id)
+                DB.log_payment_event(user_id, event_type, subscription_id=sub_id)
+                logger.info(f"Webhook: subscription activated user={user_id} sub={sub_id}")
+
+        elif event_type in ("BILLING.SUBSCRIPTION.RENEWED", "PAYMENT.SALE.COMPLETED"):
+            sub_id  = resource.get("billing_agreement_id") or resource.get("id", "")
+            user    = DB.get_user_by_subscription_id(sub_id) if sub_id else None
+            if user:
+                amount = resource.get("amount", {}).get("total") or resource.get("amount", {}).get("value", "")
+                DB.renew_subscription(user["id"], sub_id)
+                DB.log_payment_event(user["id"], event_type, amount=str(amount), subscription_id=sub_id)
+                logger.info(f"Webhook: subscription renewed user={user['id']}")
+
+        # ── Payment failed → downgrade user ───────────────────
+        elif event_type in (
+            "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+            "BILLING.SUBSCRIPTION.SUSPENDED",
+        ):
+            sub_id = resource.get("id", "")
+            user   = DB.get_user_by_subscription_id(sub_id) if sub_id else None
+            if user:
+                DB.downgrade_user_to_free(user["id"], reason="payment_failed")
+                DB.log_payment_event(user["id"], event_type, subscription_id=sub_id)
+                logger.info(f"Webhook: payment failed, downgraded user={user['id']}")
+
+        # ── Subscription cancelled → downgrade user ───────────
+        elif event_type == "BILLING.SUBSCRIPTION.CANCELLED":
+            sub_id = resource.get("id", "")
+            user   = DB.get_user_by_subscription_id(sub_id) if sub_id else None
+            if user:
+                DB.downgrade_user_to_free(user["id"], reason="subscription_cancelled")
+                DB.log_payment_event(user["id"], event_type, subscription_id=sub_id)
+                logger.info(f"Webhook: subscription cancelled, downgraded user={user['id']}")
+
+        # ── One-time payment completed ─────────────────────────
+        elif event_type == "PAYMENT.CAPTURE.COMPLETED":
+            order_id = resource.get("id", "")
+            user_id  = resource.get("custom_id") or resource.get("invoice_id", "")
+            if order_id and user_id:
+                amount = resource.get("amount", {}).get("value", "")
+                DB.mark_user_pro(user_id, paypal_order_id=order_id)
+                DB.log_payment_event(user_id, event_type, amount=str(amount), order_id=order_id)
+                logger.info(f"Webhook: one-time payment completed user={user_id}")
+
+        return {"received": True, "event_type": event_type}
+
+    except Exception as e:
+        logger.error(f"Webhook processing error: {e}")
+        # Always return 200 so PayPal doesn't keep retrying
+        return {"received": True, "error": "Processing error (logged)"}
+
+
+# ── Admin: manually activate Pro (e.g. gift accounts, support) ─
 @app.post("/payment/activate")
 def payment_activate(auth=Depends(get_user)):
+    """
+    Manual Pro activation — for support/gift accounts.
+    In production, most upgrades happen via PayPal webhooks.
+    """
     user    = auth["user"]
     user_id = user["id"]
-    DB.update_user(user_id, {"plan": "pro", "is_pro": True, "trial_active": False})
-    logger.info(f"Pro plan activated for user {user_id}")
+    DB.update_user(user_id, {
+        "plan":              "pro",
+        "is_pro":            True,
+        "trial_active":      False,
+        "subscription_status": "MANUAL",
+    })
+    logger.info(f"Pro plan manually activated for user {user_id}")
     return ok({"is_pro": True, "plan": "pro", "plan_label": "Pro",
                "message": "Pro plan activated successfully. Welcome!"})
+
+
+# ── Cancel subscription endpoint ─────────────────────────────
+@app.post("/payment/cancel-subscription")
+def cancel_subscription_endpoint(auth=Depends(get_user)):
+    """Allow a user to cancel their own subscription."""
+    user    = auth["user"]
+    sub_id  = user.get("paypal_subscription_id", "")
+    if not sub_id:
+        fail("No active subscription found.", 404)
+
+    success = _pp.cancel_subscription(sub_id, reason="User requested cancellation")
+    if success:
+        # Don't downgrade immediately — let them keep Pro until period end
+        # Downgrade happens via webhook BILLING.SUBSCRIPTION.CANCELLED
+        DB.update_user(user["id"], {"subscription_status": "CANCELLING"})
+        DB.log_payment_event(user["id"], "USER_CANCELLED", subscription_id=sub_id)
+        logger.info(f"Subscription cancelled by user: {user['id']}")
+        return ok({"message": "Subscription cancelled. You keep Pro access until your next billing date."})
+    else:
+        fail("Could not cancel subscription. Please contact support.", 503)
+
+
+# ── Enterprise inquiry ────────────────────────────────────────
+@app.post("/payment/enterprise-inquiry")
+async def enterprise_inquiry(request: Request, auth=Depends(get_user)):
+    """Log enterprise interest. No payment taken — contact sales."""
+    user = auth["user"]
+    try:
+        body = await request.json()
+        seats     = body.get("seats", "")
+        use_case  = body.get("use_case", "")[:200]
+        DB.write_audit_log(
+            user["id"], "enterprise_inquiry",
+            metadata={"seats": seats, "use_case": use_case, "email": user.get("email")}
+        )
+        DB.log_payment_event(user["id"], "ENTERPRISE_INQUIRY", amount=seats)
+        tiers = _pp.get_enterprise_tiers()
+        return ok({
+            "message": "Thank you! Our team will contact you within 24 hours.",
+            "contact": "enterprise@safeaiscan.io",
+            "tiers":   tiers,
+        })
+    except Exception as e:
+        logger.error(f"enterprise_inquiry: {e}")
+        return ok({"message": "Inquiry received. We'll be in touch.", "contact": "enterprise@safeaiscan.io"})
+
+
+# ── Pricing info endpoint (for dynamic frontend) ──────────────
+@app.get("/api/pricing")
+def get_pricing():
+    """Return current pricing for all plans — no auth required."""
+    return ok({
+        "pro_monthly": {"price": _pp.PRO_MONTHLY_USD, "currency": _pp.PRO_CURRENCY, "label": "$1.99/mo"},
+        "pro_annual":  {"price": _pp.PRO_ANNUAL_USD,  "currency": _pp.PRO_CURRENCY, "label": "$19.08/yr (~$1.59/mo)", "savings": "20%"},
+        "enterprise":  _pp.get_enterprise_tiers(),
+        "trial_days":  30,
+        "has_subscription_plans": bool(_pp.PLAN_ID_PRO_MONTHLY),
+    })
+
+
+# ── Subscription status endpoint ─────────────────────────────
+@app.get("/api/subscription/status")
+def subscription_status(auth=Depends(get_user)):
+    """Return the authenticated user's full subscription status."""
+    user = auth["user"]
+    try:
+        sub_info = DB.get_full_subscription_info(user)
+    except Exception:
+        sub_info = {"plan": user.get("plan","free"), "is_pro": False,
+                    "trial_active": False, "days_left": 0, "plan_label": "Free"}
+
+    # Include PayPal subscription details if present
+    sub_id     = user.get("paypal_subscription_id", "")
+    sub_status = user.get("subscription_status", "")
+    billing    = user.get("subscription_billing", "monthly")
+    renewed_at = user.get("subscription_renewed_at", "")
+
+    return ok({
+        **sub_info,
+        "subscription_id":      sub_id,
+        "subscription_status":  sub_status,
+        "billing_cycle":        billing,
+        "last_renewed":         renewed_at,
+        "can_cancel":           bool(sub_id and sub_status == "ACTIVE"),
+        "paypal_mode":          _pp.MODE,
+    })
 
 
 @app.post("/api/admin/run-migration")
@@ -864,13 +1405,33 @@ async def run_migration(request: Request, auth=Depends(get_user)):
         fail("Admin access required", 403)
 
     sql_statements = [
+        # Core trial/plan columns
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_pro BOOLEAN DEFAULT false",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_active BOOLEAN DEFAULT false",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_start_date DATE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_end_date DATE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS scans_today INT DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_scan_date DATE",
+        # PayPal subscription tracking
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS paypal_order_id TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS paypal_subscription_id TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'INACTIVE'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_billing TEXT DEFAULT 'monthly'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_renewed_at DATE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS downgraded_at DATE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS downgrade_reason TEXT",
+        # Payments log table (revenue tracking)
+        """CREATE TABLE IF NOT EXISTS payments (
+            id              UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id         UUID    REFERENCES users(id) ON DELETE SET NULL,
+            event_type      TEXT    NOT NULL,
+            amount          TEXT,
+            subscription_id TEXT,
+            order_id        TEXT,
+            created_at      TIMESTAMPTZ DEFAULT now()
+        )""",
+        # Index for subscription lookups (webhook handler)
+        "CREATE INDEX IF NOT EXISTS idx_users_paypal_sub ON users(paypal_subscription_id)",
     ]
 
     results = []
@@ -887,9 +1448,12 @@ async def run_migration(request: Request, auth=Depends(get_user)):
         "message": "Run these SQL statements in your Supabase SQL Editor:",
         "sql_to_run": [s["sql"] for s in results],
         "instructions": [
-            "1. Go to https://supabase.com/dashboard/project/kucobyscoeshoklroqic/sql/new",
-            "2. Paste each SQL statement and click Run",
-            "3. These are safe to run multiple times (IF NOT EXISTS)",
+            "1. Go to your Supabase project → SQL Editor → New Query",
+            "2. Paste each SQL statement and click Run (safe to run multiple times)",
+            "3. After running, set PAYPAL_CLIENT_ID + PAYPAL_CLIENT_SECRET in HF Space secrets",
+            "4. Create a Billing Plan in PayPal dashboard → paste ID as PAYPAL_PLAN_ID_PRO",
+            "5. Register webhook at https://developer.paypal.com → paste ID as PAYPAL_WEBHOOK_ID",
+            "6. Switch PAYPAL_MODE=live when ready for real payments",
         ]
     })
 

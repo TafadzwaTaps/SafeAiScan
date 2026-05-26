@@ -760,3 +760,153 @@ footer {
   .side-drawer { width: 100%; right: -100%; }
   .hero-title { font-size: 32px; }
 }
+
+/* ============================================================
+   MOBILE RESPONSIVE ENHANCEMENTS
+   Breakpoints: 480px (xs) · 640px (sm) · 768px (md) · 900px (lg)
+   Appended without modifying any existing rules.
+============================================================ */
+
+/* ── Touch target minimum 44×44px ── */
+@media (pointer: coarse) {
+  .btn, button, a.btn, [role="button"] { min-height: 44px; }
+  .side-nav-item  { padding: 12px 10px; }
+  .heat-cell      { height: 20px; }
+  .copy-btn       { padding: 8px 12px; }
+  .scan-mode-btn  { min-height: 44px; }
+  .method-tab     { min-height: 44px; }
+}
+
+/* ── ≤768px: tablets and large phones ── */
+@media (max-width: 768px) {
+  /* Navbar */
+  .navbar { padding: 10px 16px; }
+  .navbar-brand { font-size: 16px; }
+
+  /* Hero */
+  .hero          { padding: 60px 16px 48px; }
+  .hero-sub      { font-size: 15px; }
+
+  /* Sections */
+  .section       { padding: 48px 16px; }
+  .section-title { font-size: 22px; }
+
+  /* Login card */
+  .login-card {
+    max-width: 100%;
+    margin: 0 16px;
+    padding: 24px 20px;
+    border-radius: 16px;
+  }
+
+  /* Pricing cards */
+  .pricing-card  { padding: 20px 16px; }
+  .price-amount  { font-size: 34px; }
+
+  /* Metric grid: 2 columns */
+  .metrics-row {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .metric         { margin-bottom: 0; }
+  .metric h3      { font-size: 18px; }
+
+  /* Side drawer: full screen */
+  .side-drawer    { width: 100%; right: -100%; border-radius: 0; }
+
+  /* Code/pre */
+  pre             { max-height: 200px; font-size: 10.5px; }
+
+  /* Timeline */
+  .timeline       { max-height: 240px; }
+
+  /* History items */
+  .history-item   { flex-direction: column; align-items: flex-start; gap: 6px; }
+
+  /* API key */
+  .apikey-box     { font-size: 10px; letter-spacing: 0; }
+
+  /* Heatmap */
+  .heatmap        { grid-template-columns: repeat(6, 1fr); }
+
+  /* Chart */
+  .chart-wrap     { padding: 10px; }
+
+  /* Footer */
+  footer          { font-size: 11px; padding: 16px; }
+
+  /* Vuln cards */
+  .vuln-card      { padding: 12px; }
+}
+
+/* ── ≤480px: phones ── */
+@media (max-width: 480px) {
+  body            { font-size: 13px; }
+  .hero-title     { font-size: 26px !important; letter-spacing: -0.03em; }
+  .hero-sub       { font-size: 14px; }
+  .login-card     { padding: 20px 16px; }
+  .section-title  { font-size: 20px; }
+  .price-amount   { font-size: 28px; }
+
+  /* Single column metrics on very small screens */
+  .metrics-row    { grid-template-columns: 1fr !important; }
+
+  /* Heatmap */
+  .heatmap        { grid-template-columns: repeat(4, 1fr); }
+
+  /* Stack flex rows */
+  .d-flex.gap-2, .d-flex.gap-3 { flex-wrap: wrap; }
+
+  .scan-progress-label { font-size: 10px; }
+  .badge-pill          { font-size: 9px; }
+}
+
+/* ── ≤900px: pro scanner layout ── */
+@media (max-width: 900px) {
+  .scanner-area {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .scanner-right {
+    max-height: 300px;
+    border-top: 1px solid var(--border);
+  }
+  .detail-drawer  { width: 100%; border-radius: 0; }
+}
+
+/* ── Landscape phones ── */
+@media (max-width: 768px) and (orientation: landscape) {
+  .hero     { padding: 40px 16px 28px; }
+  .login-wrap { align-items: flex-start; padding-top: 16px; }
+  .login-card { margin-top: 16px; }
+}
+
+/* ── Checkout page: responsive grid ── */
+@media (max-width: 768px) {
+  .co-body {
+    grid-template-columns: 1fr !important;
+    padding: 16px !important;
+    gap: 16px !important;
+  }
+  .order-col { position: static !important; }
+}
+
+/* ── Enterprise / legal pages ── */
+@media (max-width: 600px) {
+  .legal-wrap  { padding: 24px 16px 48px; }
+  .legal-title { font-size: 24px; }
+  .contact-wrap { grid-template-columns: 1fr !important; gap: 24px !important; }
+  .pricing-grid { grid-template-columns: 1fr !important; }
+  .feat-grid    { grid-template-columns: 1fr !important; }
+  .proof-strip  { gap: 16px; padding: 16px; }
+  .proof-divider { display: none; }
+}
+
+/* ── Utility: hide on mobile ── */
+@media (max-width: 480px) {
+  .hide-xs { display: none !important; }
+}
+@media (max-width: 768px) {
+  .hide-sm { display: none !important; }
+}

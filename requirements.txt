@@ -1,4 +1,4 @@
-# SecretScan — Python dependencies
+# SafeAIScan — Python dependencies
 # Install: pip install -r requirements.txt
 
 # ── Web framework ──────────────────────────────────────────────
@@ -23,6 +23,9 @@ reportlab>=4.1.0
 
 # ── Request validation ─────────────────────────────────────────
 pydantic>=2.7.0
+
+# ── Security: input sanitization ──────────────────────────────
+bleach>=6.1.0                     # HTML sanitization (XSS prevention)
 
 # ── Local dev only ─────────────────────────────────────────────
 python-dotenv>=1.0.0              # Auto-loads .env in development

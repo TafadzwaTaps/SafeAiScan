@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>SecretScan — Upgrade to Pro</title>
+<title>SafeAIScan — Upgrade to Pro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
@@ -14,61 +14,61 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
 .co-nav{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:56px;background:rgba(6,11,20,.9);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
 .co-brand{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;letter-spacing:-.04em;text-decoration:none;color:var(--text-primary);display:flex;align-items:center;gap:8px;}
 .bico{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#5b7bfe,var(--sg));display:flex;align-items:center;justify-content:center;font-size:13px;}
-.co-body{flex:1;display:grid;grid-template-columns:1fr 380px;gap:48px;max-width:960px;margin:0 auto;width:100%;padding:48px 24px;align-items:start;}
-@media(max-width:768px){.co-body{grid-template-columns:1fr;padding:24px 16px;gap:24px;}.order-col{order:-1;}}
-.order-col{background:var(--bg-2);border:1px solid var(--border);border-radius:18px;padding:24px;position:sticky;top:76px;}
-.order-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:18px;}
-.plan-row{display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:16px;}
-.plan-ico{width:44px;height:44px;border-radius:12px;flex-shrink:0;background:linear-gradient(135deg,rgba(91,123,254,.2),rgba(0,255,163,.1));border:1px solid rgba(91,123,254,.3);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--accent);}
+.co-body{flex:1;display:grid;grid-template-columns:1fr 360px;gap:40px;max-width:920px;margin:0 auto;width:100%;padding:40px 24px;align-items:start;}
+@media(max-width:768px){.co-body{grid-template-columns:1fr;padding:20px 16px;gap:20px;}.order-col{order:-1;}}
+.order-col{background:var(--bg-2);border:1px solid var(--border);border-radius:18px;padding:22px;position:sticky;top:76px;}
+.order-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:16px;}
+.billing-toggle{display:inline-flex;background:var(--bg-1);border:1px solid var(--border);border-radius:99px;padding:3px;margin-bottom:24px;gap:2px;}
+.btog-opt{padding:7px 18px;border-radius:99px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text-muted);border:none;background:transparent;transition:all .2s;position:relative;font-family:'DM Sans',sans-serif;}
+.btog-opt.active{background:var(--bg-3);color:var(--text-primary);box-shadow:0 2px 8px rgba(0,0,0,.4);}
+.save-pip{position:absolute;top:-8px;right:-4px;background:var(--sg);color:#021;font-size:8px;font-weight:700;padding:1px 6px;border-radius:99px;letter-spacing:.4px;white-space:nowrap;}
+.plan-row{display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--border);margin-bottom:14px;}
+.plan-ico{width:42px;height:42px;border-radius:11px;flex-shrink:0;background:linear-gradient(135deg,rgba(91,123,254,.2),rgba(0,255,163,.1));border:1px solid rgba(91,123,254,.3);display:flex;align-items:center;justify-content:center;font-size:19px;color:var(--accent);}
 .plan-name{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;}
-.plan-desc{font-size:12px;color:var(--text-muted);margin-top:2px;}
-.pline{display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);padding:5px 0;}
-.pline.total{font-size:15px;font-weight:700;color:var(--text-primary);padding-top:10px;border-top:1px solid var(--border);}
-.feat-list{margin-top:16px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:7px;}
+.plan-desc{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.pline{display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);padding:4px 0;}
+.pline.total{font-size:15px;font-weight:700;color:var(--text-primary);padding-top:10px;border-top:1px solid var(--border);margin-top:4px;}
+.feat-list{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:7px;}
 .feat-li{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);}
 .feat-li i{color:var(--sg);font-size:12px;flex-shrink:0;}
-/* Tabs */
-.method-tabs{display:flex;gap:6px;margin-bottom:22px;background:var(--bg-1);border:1px solid var(--border);border-radius:12px;padding:4px;}
+.method-tabs{display:flex;gap:5px;margin-bottom:20px;background:var(--bg-1);border:1px solid var(--border);border-radius:12px;padding:4px;}
 .method-tab{flex:1;padding:9px 6px;border-radius:8px;border:none;background:transparent;color:var(--text-muted);font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:5px;font-family:'DM Sans',sans-serif;}
 .method-tab.active{background:var(--bg-3);color:var(--text-primary);box-shadow:0 2px 8px rgba(0,0,0,.4);}
 .method-panel{display:none;}
 .method-panel.active{display:block;animation:panIn .2s ease both;}
 @keyframes panIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-/* Input */
 .inp-g{margin-bottom:14px;}
 .inp-lbl{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;font-weight:500;display:block;}
 .inp-w{position:relative;}
 .inp-ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-faint);font-size:14px;pointer-events:none;}
 .inp-w .form-control{padding-left:36px!important;}
-/* PayPal button */
 .pp-btn{width:100%;padding:15px;border-radius:12px;font-size:15px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,var(--pp-gold),#ffb300);color:#1a1a2e;box-shadow:0 8px 24px rgba(255,179,0,.35);}
 .pp-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 32px rgba(255,179,0,.5);}
 .pp-btn:disabled{opacity:.6;cursor:not-allowed;transform:none;}
 .pp-logo{font-size:16px;font-weight:900;font-style:italic;letter-spacing:-1px;}
 .pp-P{color:#003087;}.pp-ay{color:#009cde;}.pp-pal{color:#012169;}
-/* Manual pay */
-.manual-box{background:var(--bg-1);border:1px solid var(--border-bright);border-radius:12px;padding:18px;margin-bottom:14px;}
+.annual-promo{background:linear-gradient(135deg,rgba(0,255,163,.08),rgba(91,123,254,.06));border:1px solid rgba(0,255,163,.2);border-radius:10px;padding:11px 14px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted);}
+.annual-promo i{color:var(--sg);font-size:15px;flex-shrink:0;}
+.manual-box{background:var(--bg-1);border:1px solid var(--border-bright);border-radius:12px;padding:16px;margin-bottom:14px;}
 .manual-step{display:flex;gap:10px;margin-bottom:12px;font-size:13px;color:var(--text-muted);align-items:flex-start;}
+.manual-step:last-child{margin-bottom:0;}
 .step-num{background:var(--accent);color:#fff;font-size:10px;font-weight:700;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
 .copy-btn{background:var(--bg-3);border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap;}
 .copy-btn:hover{border-color:var(--sg);color:var(--sg);}
-.verify-input-wrap{display:flex;gap:8px;margin-top:8px;}
-.verify-input-wrap input{flex:1;font-family:'JetBrains Mono',monospace;font-size:13px;}
-/* Note */
+.verify-wrap{display:flex;gap:8px;margin-top:8px;}
+.verify-wrap input{flex:1;font-family:'JetBrains Mono',monospace;font-size:13px;}
 .info-note{background:rgba(91,123,254,.06);border:1px solid rgba(91,123,254,.18);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text-muted);line-height:1.6;}
 .info-note i{color:var(--accent);}
 .warn-note{background:rgba(251,146,60,.06);border:1px solid rgba(251,146,60,.18);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text-muted);line-height:1.6;}
 .warn-note i{color:var(--warning);}
-/* Error */
-.pay-error{display:none;background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.25);border-radius:10px;padding:11px 14px;font-size:13px;color:var(--danger);margin-top:12px;}
-/* Success */
+.pay-error{display:none;background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.25);border-radius:10px;padding:11px 14px;font-size:13px;color:var(--danger);margin-top:12px;line-height:1.5;}
+.trust-row{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:20px;}
+.trust-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-faint);}
+.trust-item i{color:var(--sg);}
 .success-screen{display:none;text-align:center;padding:40px 20px;}
 .success-ico{width:72px;height:72px;border-radius:50%;margin:0 auto 20px;background:rgba(52,211,153,.12);border:2px solid rgba(52,211,153,.4);display:flex;align-items:center;justify-content:center;font-size:32px;color:var(--sg);animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both;}
 @keyframes popIn{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
 @keyframes confFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
-.trust-row{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:20px;}
-.trust-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-faint);}
-.trust-item i{color:var(--sg);}
 </style>
 </head>
 <body>
@@ -76,11 +76,11 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
 <nav class="co-nav">
   <a href="index.html" class="co-brand">
     <span class="bico"><i class="bi bi-shield-lock-fill" style="font-size:12px;color:#fff;"></i></span>
-    <span style="color:var(--accent);">Secret</span><span style="color:var(--sg);">Scan</span>
+    <span style="color:var(--accent);">Safe</span><span>AI</span><span style="color:var(--sg);">Scan</span>
   </a>
   <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);">
     <i class="bi bi-shield-lock-fill" style="color:var(--sg);"></i>
-    Secure Checkout
+    Secure Checkout &middot; PayPal Protected
   </div>
 </nav>
 
@@ -88,19 +88,25 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
   <!-- PAYMENT FORM -->
   <div>
     <div id="checkoutMain">
-      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-.03em;margin-bottom:6px;" id="payTitle">
-        Upgrade to Pro
-      </div>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:24px;line-height:1.6;" id="paySub">
-        One click away from unlimited scanning, all findings revealed, and PDF reports.
+      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-.03em;margin-bottom:6px;" id="payTitle">Upgrade to Pro</div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6;" id="paySub">
+        Unlimited scans, all findings revealed, PDF reports, and full AI analysis.
       </p>
 
-      <!-- Loading state -->
-      <div id="loadingState" style="text-align:center;padding:32px;color:var(--text-muted);">
-        <span class="spinner-border spinner-border-sm me-2"></span>Checking payment options…
+      <!-- Billing toggle -->
+      <div class="billing-toggle" id="billingToggle">
+        <button class="btog-opt active" id="btnMonthly" onclick="setBilling('monthly')">Monthly</button>
+        <button class="btog-opt" id="btnAnnual" onclick="setBilling('annual')" style="position:relative;">
+          Annual<span class="save-pip">-20%</span>
+        </button>
       </div>
 
-      <!-- Tabs (shown after load) -->
+      <!-- Loading -->
+      <div id="loadingState" style="text-align:center;padding:32px;color:var(--text-muted);">
+        <span class="spinner-border spinner-border-sm me-2"></span>Checking payment options&hellip;
+      </div>
+
+      <!-- Tabs -->
       <div class="method-tabs" id="methodTabs" style="display:none;">
         <button class="method-tab active" id="tab-paypal" onclick="setMethod('paypal')">
           <span class="pp-logo" style="font-size:13px;"><span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span></span>
@@ -115,7 +121,11 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
       <div class="method-panel active" id="panel-paypal" style="display:none;">
         <div class="info-note" id="paypalNote">
           <i class="bi bi-info-circle me-1"></i>
-          You'll be redirected to PayPal to complete payment securely. Your account upgrades automatically as soon as PayPal confirms.
+          You'll be redirected to PayPal to complete payment securely. Your account upgrades automatically once PayPal confirms.
+        </div>
+        <div class="annual-promo" id="annualPromo" style="display:none;">
+          <i class="bi bi-gift-fill"></i>
+          <div><strong style="color:var(--sg);">Save 20% with Annual</strong> &mdash; just $1.59/month, billed $19.08/year. Over 2 months free vs monthly.</div>
         </div>
         <div class="inp-g">
           <label class="inp-lbl">Your Account Email</label>
@@ -126,8 +136,11 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
         </div>
         <button class="pp-btn" id="ppBtn" onclick="handlePayPalCheckout()">
           <span class="pp-logo"><span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span></span>
-          Pay $1.99 with PayPal
+          <span id="ppBtnLabel">Subscribe for $1.99/mo</span>
         </button>
+        <div style="text-align:center;font-size:11px;color:var(--text-faint);margin-top:8px;" id="ppSubNote">
+          Recurring monthly. Cancel anytime from your account.
+        </div>
         <div class="pay-error" id="ppError"></div>
       </div>
 
@@ -135,19 +148,16 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
       <div class="method-panel" id="panel-manual" style="display:none;">
         <div class="info-note">
           <i class="bi bi-info-circle me-1"></i>
-          Send $1.99 via PayPal to our account, include your email in the note, then enter your PayPal transaction ID below to activate Pro instantly.
+          Send payment via PayPal, include your email in the note, then enter the transaction ID below to activate Pro.
         </div>
-
         <div class="manual-box">
           <div class="manual-step">
             <span class="step-num">1</span>
             <div>
-              Open PayPal and send <strong>$1.99 USD</strong> to:
+              Open PayPal and send <strong id="manualAmount">$1.99 USD</strong> to:
               <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-                <code id="paypalEmail" style="font-size:13px;color:var(--sg);font-family:'JetBrains Mono',monospace;background:var(--bg-2);padding:4px 10px;border-radius:6px;border:1px solid var(--border);">payments@secretscan.io</code>
-                <button class="copy-btn" onclick="copyEmail()">
-                  <i class="bi bi-clipboard me-1"></i>Copy
-                </button>
+                <code id="paypalEmailAddr" style="font-size:13px;color:var(--sg);font-family:'JetBrains Mono',monospace;background:var(--bg-2);padding:4px 10px;border-radius:6px;border:1px solid var(--border);">payments@safeaiscan.io</code>
+                <button class="copy-btn" onclick="copyPayPalEmail(this)"><i class="bi bi-clipboard me-1"></i>Copy</button>
               </div>
             </div>
           </div>
@@ -155,45 +165,41 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
             <span class="step-num">2</span>
             <div>In the PayPal payment note, include: <strong>your account email address</strong></div>
           </div>
-          <div class="manual-step" style="margin-bottom:0;">
+          <div class="manual-step">
             <span class="step-num">3</span>
             <div style="width:100%;">
-              Enter your PayPal <strong>Transaction ID</strong> below (find it in your PayPal receipt email):
-              <div class="verify-input-wrap">
-                <input id="txnId" type="text" class="form-control"
-                       placeholder="e.g. 7GH12345AB678901C"
-                       style="font-family:'JetBrains Mono',monospace;font-size:13px;">
-                <button class="btn btn-primary" onclick="verifyPayment()" id="verifyBtn"
-                        style="font-size:13px;padding:8px 16px;white-space:nowrap;">
+              Enter your PayPal <strong>Transaction ID</strong> (from your PayPal receipt):
+              <div class="verify-wrap">
+                <input id="txnId" type="text" class="form-control" placeholder="e.g. 7GH12345AB678901C">
+                <button class="btn btn-primary" onclick="verifyPayment()" id="verifyBtn" style="font-size:13px;padding:8px 16px;white-space:nowrap;">
                   Verify &amp; Activate
                 </button>
               </div>
             </div>
           </div>
         </div>
-
         <div class="warn-note">
           <i class="bi bi-clock me-1"></i>
-          Manual verification is processed within a few minutes during business hours. If you need immediate access, use the PayPal Checkout tab.
+          Manual verification is typically processed within 30 minutes. For instant access, use the PayPal Checkout tab.
         </div>
         <div class="pay-error" id="manualError"></div>
       </div>
 
       <div class="trust-row" id="trustRow" style="display:none;">
-        <div class="trust-item"><i class="bi bi-shield-check"></i>No code stored</div>
+        <div class="trust-item"><i class="bi bi-shield-check"></i>PayPal protected</div>
         <div class="trust-item"><i class="bi bi-arrow-counterclockwise"></i>30-day refund</div>
         <div class="trust-item"><i class="bi bi-x-circle"></i>Cancel anytime</div>
       </div>
       <div style="text-align:center;margin-top:14px;font-size:11px;color:var(--text-faint);" id="poweredBy" style="display:none;">
         <i class="bi bi-lock-fill" style="color:var(--accent);margin-right:4px;"></i>
-        Payments processed by PayPal
+        Payments processed securely by PayPal
       </div>
     </div>
 
     <!-- SUCCESS -->
     <div class="success-screen" id="successScreen">
       <div class="success-ico"><i class="bi bi-check-lg"></i></div>
-      <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:8px;">You're on Pro!</div>
+      <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:8px;">You're on Pro! 🎉</div>
       <div style="font-size:14px;color:var(--text-muted);margin-bottom:24px;line-height:1.6;" id="successMsg">
         Your Pro plan is now active. Start scanning without limits.
       </div>
@@ -201,7 +207,7 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
         <a href="pro.html" style="display:block;background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;padding:13px;border-radius:11px;font-size:14px;font-weight:600;text-decoration:none;text-align:center;">
           <i class="bi bi-lightning-charge-fill me-1"></i>Open Pro Scanner
         </a>
-        <a href="dashboard.html" style="display:block;background:var(--bg-2);color:var(--text-muted);border:1px solid var(--border);padding:11px;border-radius:11px;font-size:13px;text-decoration:none;text-align:center;">
+        <a href="index.html" style="display:block;background:var(--bg-2);color:var(--text-muted);border:1px solid var(--border);padding:11px;border-radius:11px;font-size:13px;text-decoration:none;text-align:center;">
           <i class="bi bi-grid me-1"></i>Dashboard
         </a>
       </div>
@@ -214,342 +220,349 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
     <div class="plan-row">
       <div class="plan-ico"><i class="bi bi-lightning-charge-fill"></i></div>
       <div>
-        <div class="plan-name">SecretScan Pro</div>
-        <div class="plan-desc">Billed monthly &middot; cancel anytime</div>
+        <div class="plan-name">SafeAIScan Pro</div>
+        <div class="plan-desc" id="orderBillingDesc">Billed monthly &middot; cancel anytime</div>
       </div>
     </div>
-    <div class="pline"><span>Pro plan</span><span>$1.99/mo</span></div>
+    <div class="pline"><span>Pro plan</span><span id="orderPrice">$1.99/mo</span></div>
+    <div class="pline" id="orderSavingsRow" style="display:none;">
+      <span style="color:var(--sg);font-size:12px;"><i class="bi bi-tag me-1"></i>Annual savings</span>
+      <span style="color:var(--sg);">-$4.80/yr</span>
+    </div>
     <div class="pline"><span>Tax</span><span style="color:var(--text-faint);">Based on location</span></div>
-    <div class="pline total"><span>Total today</span><span>$1.99</span></div>
+    <div class="pline total"><span>Total today</span><span id="orderTotal">$1.99</span></div>
     <div class="feat-list">
       <div class="feat-li"><i class="bi bi-check-circle-fill"></i>Unlimited scans</div>
       <div class="feat-li"><i class="bi bi-check-circle-fill"></i>All findings revealed</div>
-      <div class="feat-li"><i class="bi bi-check-circle-fill"></i>ZIP file upload scanner</div>
       <div class="feat-li"><i class="bi bi-check-circle-fill"></i>GitHub repo scanning</div>
-      <div class="feat-li"><i class="bi bi-check-circle-fill"></i>Deep AI analysis</div>
-      <div class="feat-li"><i class="bi bi-check-circle-fill"></i>CVE enrichment &amp; lookup</div>
+      <div class="feat-li"><i class="bi bi-check-circle-fill"></i>Full AI analysis + CVE lookup</div>
       <div class="feat-li"><i class="bi bi-check-circle-fill"></i>PDF report download</div>
+      <div class="feat-li"><i class="bi bi-check-circle-fill"></i>REST API access</div>
       <div class="feat-li"><i class="bi bi-check-circle-fill"></i>30-day money-back guarantee</div>
     </div>
-    <div style="margin-top:20px;padding:14px;background:var(--bg-1);border-radius:10px;border:1px solid var(--border);">
+    <div style="margin-top:18px;padding:12px 14px;background:var(--bg-1);border-radius:10px;border:1px solid var(--border);">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-faint);margin-bottom:8px;">What happens next</div>
-      <div style="font-size:12px;color:var(--text-muted);line-height:1.7;">
-        1. Complete payment via PayPal<br>
-        2. Your account upgrades automatically<br>
-        3. Open Pro Scanner and start scanning
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.75;">
+        <i class="bi bi-1-circle me-1" style="color:var(--accent);"></i>Approve via PayPal (30 sec)<br>
+        <i class="bi bi-2-circle me-1" style="color:var(--accent);"></i>Account upgrades instantly<br>
+        <i class="bi bi-3-circle me-1" style="color:var(--accent);"></i>Scan without limits
       </div>
+    </div>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(0,255,163,.04);border:1px solid rgba(0,255,163,.12);border-radius:8px;">
+      <i class="bi bi-people-fill" style="color:var(--sg);font-size:14px;flex-shrink:0;"></i>
+      <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">Trusted by security engineers worldwide.</div>
     </div>
   </div>
 </div>
 
 <script>
-var API    = 'https://rathious-safeaiscan.hf.space';
-var TOKEN  = localStorage.getItem('access_token') || '';
+var API     = 'https://rathious-safeaiscan.hf.space';
+var TOKEN   = localStorage.getItem('access_token') || '';
+var BILLING = 'monthly';
 var PAYPAL_CONFIGURED = false;
 var currentMethod = 'paypal';
 
+var PRICES = {
+  monthly: { label:'$1.99/mo', total:'$1.99',   btnLabel:'Subscribe for $1.99/mo',   subNote:'Recurring monthly. Cancel anytime.', manual:'$1.99 USD' },
+  annual:  { label:'$19.08/yr (~$1.59/mo)', total:'$19.08', btnLabel:'Subscribe for $19.08/yr', subNote:'Billed once yearly. Cancel anytime.', manual:'$19.08 USD' }
+};
+
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function extractError(d){
+  if(!d) return '';
+  if(typeof d==='string') return d;
+  return (d.detail&&d.detail.error)||d.error||d.detail||d.message||'';
+}
 
-/* ── Boot ──────────────────────────────────────────────── */
-(function boot() {
-  // Handle PayPal return redirects
+/* Boot */
+(function boot(){
   var p = new URLSearchParams(window.location.search);
-  if (p.get('upgraded') === '1') {
-    localStorage.setItem('is_pro', 'true');
-    showSuccess('Your payment was confirmed and your Pro plan is now active!');
+
+  if(p.get('welcome')==='1'){
+    localStorage.setItem('is_pro','true');
+    localStorage.setItem('user_plan','pro');
+    var billing = p.get('billing')||'monthly';
+    showSuccess('Your <strong>Pro '+(billing==='annual'?'Annual':'Monthly')+'</strong> subscription is now active. Unlimited scans, PDF reports, and full AI analysis are unlocked.');
     return;
   }
-  if (p.get('cancelled') === '1') {
-    document.getElementById('loadingState').style.display = 'none';
+  if(p.get('cancelled')==='1'){
+    document.getElementById('loadingState').style.display='none';
     revealUI();
-    showErr('ppError', 'Payment was cancelled. No charge was made.');
+    showErr('ppError','Payment cancelled. No charge was made. You can try again anytime.');
     return;
   }
-  if (p.get('error')) {
-    document.getElementById('loadingState').style.display = 'none';
+  if(p.get('error')){
+    document.getElementById('loadingState').style.display='none';
     revealUI();
-    showErr('ppError', decodeURIComponent(p.get('error')).slice(0, 200));
+    var errMap={
+      missing_user_id:'Session error — please log in and try again.',
+      missing_subscription_id:'Payment confirmation missing. Contact support if you were charged.',
+      subscription_not_active:'Subscription not yet active. Please wait a moment and try again.',
+      activation_failed:'Upgrade activation failed. Contact support — you will not be charged twice.',
+      capture_failed:'Payment capture failed. Please try again or contact support.'
+    };
+    var code=p.get('error');
+    showErr('ppError', errMap[code]||'An error occurred: '+esc(decodeURIComponent(code).slice(0,120))+'. Please try again or contact support.');
     return;
   }
-  if (p.get('reason') === 'pro_required') {
-    document.getElementById('paySub').innerHTML =
-      '<span style="color:var(--warning);"><i class="bi bi-lock me-1"></i>Pro plan required</span> — upgrade below to access all Pro features.';
-  }
-  if (p.get('reason') === 'trial_expired') {
-    document.getElementById('payTitle').textContent = 'Your Trial Has Ended';
-    document.getElementById('paySub').innerHTML =
-      'Your 30-day free trial has expired. Upgrade to Pro at <strong>$1.99/month</strong> to continue unlimited scanning, PDF reports, and all advanced features.';
+  if(p.get('reason')==='trial_expired'){
+    document.getElementById('payTitle').textContent='Your Trial Has Ended';
+    document.getElementById('paySub').innerHTML='Your 30-day free trial has expired. Continue with Pro at <strong>$1.99/month</strong> &mdash; less than a coffee.';
+  } else if(p.get('reason')==='pro_required'){
+    document.getElementById('paySub').innerHTML='<span style="color:var(--warning);"><i class="bi bi-lock me-1"></i>Pro plan required</span> &mdash; upgrade below to unlock this feature.';
   }
 
-  // Pre-fill email
-  var email = localStorage.getItem('user_email') || '';
-  if (email) {
-    var ppEl = document.getElementById('ppEmail');
-    if (ppEl) ppEl.value = email;
-  }
-
-  // Check if PayPal is configured on the server
-  checkPayPalConfig();
   prefillEmail();
+  checkPayPalConfig();
 })();
 
-async function checkPayPalConfig() {
-  try {
-    var res  = await fetch(API + '/health');
-    var data = await res.json();
-    PAYPAL_CONFIGURED = !!(data.paypal_configured);
-  } catch(e) {
-    PAYPAL_CONFIGURED = false;
-  }
+/* Billing toggle */
+function setBilling(mode){
+  BILLING=mode;
+  document.getElementById('btnMonthly').classList.toggle('active',mode==='monthly');
+  document.getElementById('btnAnnual').classList.toggle('active',mode==='annual');
+  var pr=PRICES[mode];
+  var lblEl=document.getElementById('ppBtnLabel');
+  var noteEl=document.getElementById('ppSubNote');
+  var promoEl=document.getElementById('annualPromo');
+  if(lblEl) lblEl.textContent=pr.btnLabel;
+  if(noteEl) noteEl.textContent=pr.subNote;
+  if(promoEl) promoEl.style.display=(mode==='annual')?'flex':'none';
+  var manEl=document.getElementById('manualAmount');
+  if(manEl) manEl.textContent=pr.manual;
+  document.getElementById('orderPrice').textContent=pr.label;
+  document.getElementById('orderTotal').textContent=pr.total;
+  document.getElementById('orderBillingDesc').textContent=
+    mode==='annual'?'Billed annually \xb7 cancel anytime':'Billed monthly \xb7 cancel anytime';
+  var savRow=document.getElementById('orderSavingsRow');
+  if(savRow) savRow.style.display=(mode==='annual')?'flex':'none';
+}
 
-  document.getElementById('loadingState').style.display = 'none';
+/* Check PayPal config */
+async function checkPayPalConfig(){
+  try{
+    var res=await fetch(API+'/api/pricing');
+    var data=(await res.json()).data||{};
+    PAYPAL_CONFIGURED=!!(data.has_subscription_plans||data.pro_monthly);
+  }catch(e){ PAYPAL_CONFIGURED=false; }
+  document.getElementById('loadingState').style.display='none';
   revealUI();
-
-  if (!PAYPAL_CONFIGURED) {
-    // Switch default tab to manual and update note
-    var ppNote = document.getElementById('paypalNote');
-    if (ppNote) {
-      ppNote.className = 'warn-note';
-      ppNote.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' +
-        'PayPal automatic checkout is not configured on this server yet. ' +
-        'Use the <strong>Send Payment</strong> tab to pay manually and activate Pro instantly.';
+  if(!PAYPAL_CONFIGURED){
+    var ppNote=document.getElementById('paypalNote');
+    if(ppNote){
+      ppNote.className='warn-note';
+      ppNote.innerHTML='<i class="bi bi-exclamation-triangle me-1"></i>'+
+        'Automatic PayPal checkout is being set up. Use the <strong>Send Payment</strong> tab for instant manual activation, '+
+        'or try the PayPal tab &mdash; it may still work.';
     }
-    // Auto-switch to manual tab
-    setMethod('manual');
   }
 }
 
-function revealUI() {
-  document.getElementById('methodTabs').style.display = 'flex';
-  ['panel-paypal','panel-manual'].forEach(function(id) {
-    var el = document.getElementById(id);
-    if (el) el.style.removeProperty('display');
+function revealUI(){
+  document.getElementById('methodTabs').style.display='flex';
+  ['panel-paypal','panel-manual'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.style.removeProperty('display');
   });
-  document.getElementById('trustRow').style.display = 'flex';
+  document.getElementById('trustRow').style.display='flex';
   document.getElementById('poweredBy').style.removeProperty('display');
-  // Force the active panel to show
   setMethod(currentMethod);
 }
 
-function setMethod(m) {
-  currentMethod = m;
-  ['paypal','manual'].forEach(function(t) {
-    var tb = document.getElementById('tab-' + t);
-    var pb = document.getElementById('panel-' + t);
-    if (tb) tb.classList.toggle('active', t === m);
-    if (pb) pb.classList.toggle('active', t === m);
+function setMethod(m){
+  currentMethod=m;
+  ['paypal','manual'].forEach(function(t){
+    var tb=document.getElementById('tab-'+t);
+    var pb=document.getElementById('panel-'+t);
+    if(tb) tb.classList.toggle('active',t===m);
+    if(pb) pb.classList.toggle('active',t===m);
   });
   clearErrors();
 }
 
-function clearErrors() {
-  ['ppError','manualError'].forEach(function(id) {
-    var el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+function clearErrors(){
+  ['ppError','manualError'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.style.display='none';
   });
 }
 
-function showErr(id, msg) {
-  var el = document.getElementById(id);
-  if (!el) return;
-  el.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i>' + esc(msg);
-  el.style.display = 'block';
-  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+function showErr(id,msg){
+  var el=document.getElementById(id);
+  if(!el) return;
+  el.innerHTML='<i class="bi bi-exclamation-circle me-1"></i>'+msg;
+  el.style.display='block';
+  el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
-function setLoading(btnId, loading) {
-  var btn = document.getElementById(btnId);
-  if (!btn) return;
-  btn.disabled = loading;
-  if (loading) {
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing…';
-  }
-}
-
-/* ── PayPal Checkout ────────────────────────────────────── */
-async function handlePayPalCheckout() {
+/* PayPal Checkout */
+async function handlePayPalCheckout(){
   clearErrors();
-
-  if (!TOKEN || TOKEN === 'undefined') { window.location.href = 'login.html'; return; }
-
-  var email = (document.getElementById('ppEmail') || {}).value || '';
-  email = email.trim();
-
-  if (!email) { showErr('ppError', 'Please enter your email address so we can confirm the upgrade.'); return; }
-
-  var btn = document.getElementById('ppBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Connecting to PayPal…';
+  if(!TOKEN||TOKEN==='undefined'||TOKEN==='null'){
+    sessionStorage.setItem('pending_upgrade',BILLING);
+    window.location.href='login.html?redirect=checkout';
+    return;
   }
+  var email=(document.getElementById('ppEmail')||{}).value||'';
+  email=email.trim();
+  if(!email){
+    showErr('ppError','Please enter your email address so we can confirm the upgrade.');
+    document.getElementById('ppEmail').focus();
+    return;
+  }
+  var btn=document.getElementById('ppBtn');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-2"></span>Connecting to PayPal&hellip;'; }
 
-  try {
-    var res  = await fetch(API + '/payment/create', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
-      body:    JSON.stringify({ paypal_email: email })
+  try{
+    var res=await fetch(API+'/payment/create?billing='+BILLING,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},
+      body:JSON.stringify({paypal_email:email,billing:BILLING})
     });
+    var raw=await res.json();
+    var data=raw.data||raw;
 
-    var raw  = await res.json();
-    var data = raw.data || raw;
-
-    if (res.status === 503) {
-      // PayPal not configured — switch to manual tab with explanation
-      showErr('ppError',
-        (data.error || 'PayPal checkout is not available.') +
-        ' Please use the Send Payment tab instead.'
-      );
+    if(res.status===401||res.status===403){
+      sessionStorage.setItem('pending_upgrade',BILLING);
+      window.location.href='login.html?redirect=checkout';
+      return;
+    }
+    if(res.status===503){
+      showErr('ppError',(extractError(data)||'PayPal checkout not available right now.')+' <strong>Use the Send Payment tab</strong> for immediate activation.');
       setMethod('manual');
       return;
     }
-
-    if (!res.ok) {
-      showErr('ppError', data.detail && data.detail.error
-        ? data.detail.error
-        : (data.error || data.detail || 'Payment setup failed. Please try again.'));
+    if(!res.ok){
+      showErr('ppError',extractError(data)||'Payment setup failed. Please try again or use Send Payment.');
       return;
     }
-
-    var approveUrl = data.approve_url || data.approval_url;
-    if (approveUrl) {
-      window.location.href = approveUrl;
+    var approveUrl=data.approve_url||data.approval_url;
+    if(approveUrl){
+      if(btn) btn.innerHTML='<span class="spinner-border spinner-border-sm me-2"></span>Redirecting to PayPal&hellip;';
+      setTimeout(function(){ window.location.href=approveUrl; },300);
       return;
     }
-
-    showErr('ppError', 'Unexpected response from payment server. Please try again or use Send Payment.');
-
-  } catch(e) {
-    showErr('ppError', 'Network error: ' + e.message + '. Please try again or use the Send Payment tab.');
-  } finally {
-    var btn2 = document.getElementById('ppBtn');
-    if (btn2) {
-      btn2.disabled = false;
-      btn2.innerHTML = '<span class="pp-logo"><span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span></span> Pay $1.99 with PayPal';
+    showErr('ppError','Unexpected response from payment server. Please try the Send Payment tab or contact support.');
+  }catch(e){
+    var msg=e.message||'Unknown error';
+    if(msg.includes('fetch')||msg.includes('Network')){
+      showErr('ppError','Network error &mdash; could not reach the payment server. Check your connection and try again.');
+    }else{
+      showErr('ppError','Error: '+esc(msg)+'. Try again or use the Send Payment tab.');
     }
+  }finally{
+    setTimeout(function(){
+      var btn2=document.getElementById('ppBtn');
+      if(btn2&&btn2.disabled){
+        btn2.disabled=false;
+        btn2.innerHTML='<span class="pp-logo"><span class="pp-P">P</span><span class="pp-ay">ay</span><span class="pp-pal">Pal</span></span><span>'+esc(PRICES[BILLING].btnLabel)+'</span>';
+      }
+    },5000);
   }
 }
 
-/* ── Manual payment verification ───────────────────────── */
-async function verifyPayment() {
+/* Manual payment verification */
+async function verifyPayment(){
   clearErrors();
+  var txnId=(document.getElementById('txnId')||{}).value||'';
+  txnId=txnId.trim().replace(/\s+/g,'');
+  if(!txnId){ showErr('manualError','Please enter your PayPal Transaction ID.'); return; }
+  if(txnId.length<8){ showErr('manualError','Transaction ID seems too short &mdash; check your PayPal email receipt.'); return; }
+  if(!/^[A-Z0-9]+$/i.test(txnId)){ showErr('manualError','Transaction ID should only contain letters and numbers.'); return; }
+  if(!TOKEN||TOKEN==='undefined'){
+    sessionStorage.setItem('pending_upgrade','manual:'+txnId);
+    window.location.href='login.html?redirect=checkout';
+    return;
+  }
+  var btn=document.getElementById('verifyBtn');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-2"></span>Verifying&hellip;'; }
 
-  var txnId = (document.getElementById('txnId') || {}).value || '';
-  txnId = txnId.trim();
-
-  if (!txnId) { showErr('manualError', 'Please enter your PayPal Transaction ID.'); return; }
-  if (txnId.length < 8) { showErr('manualError', 'Transaction ID looks too short — check your PayPal receipt.'); return; }
-
-  if (!TOKEN || TOKEN === 'undefined') { window.location.href = 'login.html'; return; }
-
-  var btn = document.getElementById('verifyBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
-
-  try {
-    // Try the activate endpoint (manual activation path)
-    var res  = await fetch(API + '/payment/activate', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
-      body:    JSON.stringify({ transaction_id: txnId })
+  try{
+    var res=await fetch(API+'/payment/activate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},
+      body:JSON.stringify({transaction_id:txnId,billing:BILLING,amount:PRICES[BILLING].manual})
     });
-
-    var raw  = await res.json();
-    var data = raw.data || raw;
-
-    if (res.status === 404) {
-      // /payment/activate not deployed yet — use a temporary manual flow
-      // Store the transaction ID locally and show a pending message
-      localStorage.setItem('pending_txn', txnId);
-      showSuccess(
-        'Thank you! Your Transaction ID <strong>' + esc(txnId) + '</strong> has been recorded. ' +
-        'Our team will activate your Pro account within a few minutes. ' +
-        'You\'ll receive a confirmation — or refresh this page.'
-      );
+    var raw=await res.json();
+    var data=raw.data||raw;
+    if(res.status===401||res.status===403){ window.location.href='login.html?redirect=checkout'; return; }
+    if(!res.ok){
+      localStorage.setItem('pending_txn',txnId);
+      showErr('manualError',extractError(data)||
+        'Could not auto-verify. Your Transaction ID <strong>'+esc(txnId)+'</strong> has been saved. '+
+        'Contact support and we\'ll activate your account within 1 hour.');
       return;
     }
-
-    if (!res.ok) {
-      showErr('manualError',
-        (data.detail && data.detail.error ? data.detail.error : data.error || data.detail)
-        || 'Verification failed. Please double-check your Transaction ID.');
-      return;
-    }
-
-    localStorage.setItem('is_pro', 'true');
-    showSuccess('Pro plan activated! Your Transaction ID has been verified.');
-
-  } catch(e) {
-    showErr('manualError', 'Network error: ' + e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Verify & Activate'; }
+    localStorage.setItem('is_pro','true');
+    localStorage.setItem('user_plan','pro');
+    showSuccess('Pro plan activated. Transaction ID <strong>'+esc(txnId)+'</strong> verified.');
+  }catch(e){
+    localStorage.setItem('pending_txn',txnId);
+    showErr('manualError','Network error. Your Transaction ID <strong>'+esc(txnId)+'</strong> has been saved. Please contact support with this ID.');
+  }finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='Verify &amp; Activate'; }
   }
 }
 
-/* ── Copy email ─────────────────────────────────────────── */
-function copyEmail() {
-  var el  = document.getElementById('paypalEmail');
-  var btn = event.currentTarget;
-  navigator.clipboard.writeText(el.textContent.trim()).then(function() {
-    btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
-    btn.style.color = 'var(--sg)';
-    setTimeout(function() {
-      btn.innerHTML = '<i class="bi bi-clipboard me-1"></i>Copy';
-      btn.style.color = '';
-    }, 2000);
-  }).catch(function() {
-    // Fallback for browsers without clipboard API
-    var range = document.createRange();
-    range.selectNode(el);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-    document.execCommand('copy');
-    window.getSelection().removeAllRanges();
-    btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
-    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard me-1"></i>Copy'; }, 2000);
+/* Copy PayPal email */
+function copyPayPalEmail(btn){
+  var el=document.getElementById('paypalEmailAddr');
+  var text=el?el.textContent.trim():'payments@safeaiscan.io';
+  navigator.clipboard.writeText(text).then(function(){
+    btn.innerHTML='<i class="bi bi-check me-1"></i>Copied!';
+    btn.style.color='var(--sg)';
+    setTimeout(function(){ btn.innerHTML='<i class="bi bi-clipboard me-1"></i>Copy'; btn.style.color=''; },2000);
+  }).catch(function(){
+    var ta=document.createElement('textarea');
+    ta.value=text; ta.style.cssText='position:fixed;opacity:0;';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); }catch(e){}
+    document.body.removeChild(ta);
+    btn.innerHTML='<i class="bi bi-check me-1"></i>Copied!';
+    setTimeout(function(){ btn.innerHTML='<i class="bi bi-clipboard me-1"></i>Copy'; },2000);
   });
 }
 
-/* ── Pre-fill email ─────────────────────────────────────── */
-function prefillEmail() {
-  var email = localStorage.getItem('user_email') || '';
-  if (!email) return;
-  var el = document.getElementById('ppEmail');
-  if (el && !el.value) el.value = email;
+/* Pre-fill email */
+function prefillEmail(){
+  var email=localStorage.getItem('user_email')||'';
+  if(!email) return;
+  var el=document.getElementById('ppEmail');
+  if(el&&!el.value) el.value=email;
 }
 
-/* ── Success screen ─────────────────────────────────────── */
-function showSuccess(msg) {
-  localStorage.setItem('is_pro', 'true');
-  document.getElementById('checkoutMain').style.display = 'none';
-  var ss = document.getElementById('successScreen');
-  if (ss) ss.style.display = 'block';
-  if (msg) {
-    var me = document.getElementById('successMsg');
-    if (me) me.innerHTML = msg;
-  }
+/* Success screen */
+function showSuccess(msg){
+  localStorage.setItem('is_pro','true');
+  localStorage.setItem('user_plan','pro');
+  document.getElementById('checkoutMain').style.display='none';
+  document.getElementById('billingToggle').style.display='none';
+  var ss=document.getElementById('successScreen');
+  if(ss) ss.style.display='block';
+  if(msg){ var me=document.getElementById('successMsg'); if(me) me.innerHTML=msg; }
   spawnConfetti();
 }
 
-function spawnConfetti() {
-  var cols = ['#5b7bfe','#00ffa3','#38bdf8','#e879f9','#fb923c'];
-  var style = document.createElement('style');
-  style.textContent = '@keyframes confFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}';
-  document.head.appendChild(style);
-  for (var i = 0; i < 24; i++) {
-    (function(d) {
-      setTimeout(function() {
-        var el = document.createElement('div');
-        el.style.cssText = 'position:fixed;left:'+(15+Math.random()*70)+'vw;top:-10px;width:'+(6+Math.random()*8)+'px;height:'+(6+Math.random()*8)+'px;border-radius:'+(Math.random()>.5?'50%':'2px')+';pointer-events:none;z-index:99999;background:'+cols[Math.floor(Math.random()*cols.length)]+';animation:confFall '+(1.2+Math.random()*1.5)+'s ease-in forwards;';
+function spawnConfetti(){
+  var cols=['#5b7bfe','#00ffa3','#38bdf8','#e879f9','#fb923c'];
+  for(var i=0;i<28;i++){
+    (function(d){
+      setTimeout(function(){
+        var el=document.createElement('div');
+        el.style.cssText='position:fixed;left:'+(10+Math.random()*80)+'vw;top:-10px;width:'+(5+Math.random()*8)+'px;height:'+(5+Math.random()*8)+'px;border-radius:'+(Math.random()>.5?'50%':'2px')+';pointer-events:none;z-index:99999;background:'+cols[Math.floor(Math.random()*cols.length)]+';animation:confFall '+(1.2+Math.random()*1.5)+'s ease-in forwards;';
         document.body.appendChild(el);
-        setTimeout(function(){ el.remove(); }, 3000);
-      }, d);
-    })(i * 55);
+        setTimeout(function(){ el.remove(); },3500);
+      },d);
+    })(i*50);
   }
 }
 
-/* ── Keyboard ───────────────────────────────────────────── */
-document.addEventListener('keydown', function(e) {
-  if (e.key !== 'Enter') return;
-  if (currentMethod === 'paypal') handlePayPalCheckout();
+/* Keyboard submit */
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Enter') return;
+  var active=document.activeElement;
+  if(active&&active.id==='txnId'){ verifyPayment(); return; }
+  if(currentMethod==='paypal') handlePayPalCheckout();
   else verifyPayment();
 });
 </script>

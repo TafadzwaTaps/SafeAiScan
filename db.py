@@ -170,12 +170,99 @@ def update_user(user_id: str, fields: dict) -> bool:
         return False
 
 
-def mark_user_pro(user_id: str, paypal_order_id: str = "") -> bool:
-    """Flip is_pro=True and record the PayPal order ID."""
+def mark_user_pro(user_id: str, paypal_order_id: str = "", subscription_id: str = "") -> bool:
+    """Upgrade user to paid Pro — clears trial, sets subscription fields."""
+    fields = {
+        "is_pro":           True,
+        "plan":             "pro",
+        "trial_active":     False,
+        "paypal_order_id":  paypal_order_id,
+    }
+    if subscription_id:
+        fields["paypal_subscription_id"] = subscription_id
+        fields["subscription_status"]    = "ACTIVE"
+        fields["subscription_billing"]   = "monthly"
+    return update_user(user_id, fields)
+
+
+def mark_user_pro_annual(user_id: str, subscription_id: str) -> bool:
+    """Upgrade user to annual Pro subscription."""
     return update_user(user_id, {
-        "is_pro":          True,
-        "paypal_order_id": paypal_order_id,
+        "is_pro":                    True,
+        "plan":                      "pro",
+        "trial_active":              False,
+        "paypal_subscription_id":    subscription_id,
+        "subscription_status":       "ACTIVE",
+        "subscription_billing":      "annual",
+        "subscription_renewed_at":   str(_date.today()),
     })
+
+
+def downgrade_user_to_free(user_id: str, reason: str = "payment_failed") -> bool:
+    """
+    Downgrade a user from Pro → Free.
+    Called when:
+      - PayPal payment fails (webhook BILLING.SUBSCRIPTION.PAYMENT.FAILED)
+      - Subscription cancelled (webhook BILLING.SUBSCRIPTION.CANCELLED)
+      - Trial expires (expire_trial_if_needed)
+    Never raises — graceful failure.
+    """
+    try:
+        success = update_user(user_id, {
+            "is_pro":                 False,
+            "plan":                   "free",
+            "trial_active":           False,
+            "subscription_status":    "INACTIVE",
+            "downgraded_at":          str(_date.today()),
+            "downgrade_reason":       reason,
+        })
+        if success:
+            logger.info(f"User {user_id} downgraded to free — reason: {reason}")
+        return success
+    except Exception as e:
+        logger.error(f"downgrade_user_to_free({user_id}): {e}")
+        return False
+
+
+def get_user_by_subscription_id(subscription_id: str) -> dict | None:
+    """Find a user by their PayPal subscription ID."""
+    try:
+        return _one(
+            _get_db().table("users")
+            .select("*")
+            .eq("paypal_subscription_id", subscription_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"get_user_by_subscription_id({subscription_id}): {e}")
+        return None
+
+
+def renew_subscription(user_id: str, subscription_id: str) -> bool:
+    """Mark a successful subscription renewal payment."""
+    return update_user(user_id, {
+        "is_pro":                   True,
+        "plan":                     "pro",
+        "subscription_status":      "ACTIVE",
+        "subscription_renewed_at":  str(_date.today()),
+    })
+
+
+def log_payment_event(user_id: str, event_type: str, amount: str = "", subscription_id: str = "", order_id: str = "") -> None:
+    """Log a PayPal payment event to the payments table (non-fatal)."""
+    try:
+        import datetime as _dt
+        _get_db().table("payments").insert({
+            "user_id":         user_id,
+            "event_type":      event_type,
+            "amount":          amount,
+            "subscription_id": subscription_id,
+            "order_id":        order_id,
+            "created_at":      _dt.datetime.utcnow().isoformat(),
+        }).execute()
+    except Exception as e:
+        logger.debug(f"log_payment_event (non-fatal): {e}")
 
 
 def check_and_increment_scan(user_id: str) -> tuple[bool, str]:
@@ -202,8 +289,8 @@ def check_and_increment_scan(user_id: str) -> tuple[bool, str]:
         update_user(user_id, {"scans_today": 1, "last_scan_date": today})
         return True, "ok"
 
-    if count >= 10:
-        return False, "Free plan allows 10 scans per day. Upgrade to Pro for unlimited scans."
+    if count >= 1:
+        return False, "Free plan allows 1 scan per day. Upgrade to Pro for unlimited scans."
 
     update_user(user_id, {"scans_today": count + 1})
     return True, "ok"
@@ -465,7 +552,7 @@ def _plan_limits_for(plan: str) -> dict:
     """Return scan limits for a given effective plan."""
     LIMITS = {
         "free": {
-            "daily_scans":     10,   # Improved free tier
+            "daily_scans":     5,
             "daily_repos":     2,
             "history_limit":   10,
             "ai_depth":        "basic",

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>SecretScan Pro</title>
+<title>SafeAIScan Pro</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -499,16 +499,20 @@ input[type=file]#zipInput { display: none; }
 </head>
 <body>
 
-<!-- Auth guard: redirect free users to checkout -->
+<!-- Auth guard: allow pro AND active trial users; redirect only expired/free -->
 <script>
   (function() {
     var token  = localStorage.getItem('access_token');
     var isPro  = localStorage.getItem('is_pro') === 'true';
+    var plan   = localStorage.getItem('user_plan') || 'free';
+    var trial  = localStorage.getItem('trial_active') === 'true';
     if (!token || token === 'undefined') {
       window.location.replace('login.html');
       return;
     }
-    if (!isPro) {
+    // Allow: paid pro, active trial — block only plain free
+    var hasAccess = isPro || trial || plan === 'pro' || plan === 'pro_trial' || plan === 'enterprise';
+    if (!hasAccess) {
       window.location.replace('checkout.html?reason=pro_required');
     }
   })();
@@ -520,7 +524,7 @@ input[type=file]#zipInput { display: none; }
   <header class="pro-topbar">
     <a href="dashboard.html" class="pro-brand" style="text-decoration:none;">
       <i class="bi bi-shield-lock-fill" style="color:var(--sg);font-size:16px;"></i>
-      <span><span style="color:var(--accent);">Secret</span><span style="color:var(--sg);">Scan</span></span>
+      <span><span style="color:var(--accent);">Safe</span><span>AI</span><span style="color:var(--sg);">Scan</span></span>
       <span class="pro-badge-tag">PRO</span>
     </a>
 
@@ -574,9 +578,21 @@ input[type=file]#zipInput { display: none; }
     <button class="side-nav-item" id="sb-reports" onclick="setMode('reports')"><i class="bi bi-file-earmark-pdf"></i>PDF Reports<span class="pro-feature-badge">PRO</span></button>
 
     <div style="margin-top:auto; padding-top:16px; border-top:1px solid var(--border);">
+      <!-- Trial upgrade CTA — shown only when on trial -->
+      <div id="sidebarTrialCTA" style="display:none;margin-bottom:12px;padding:10px;background:linear-gradient(135deg,rgba(0,255,163,.08),rgba(91,123,254,.06));border:1px solid rgba(0,255,163,.2);border-radius:10px;">
+        <div style="font-size:10px;font-weight:700;color:#00ffa3;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px;">
+          <i class="bi bi-gift-fill me-1"></i>Free Trial Active
+        </div>
+        <div id="sidebarTrialDays" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">
+          Enjoying all Pro features for free.
+        </div>
+        <a href="checkout.html" style="display:block;text-align:center;background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border-radius:8px;padding:7px;font-size:11px;font-weight:600;text-decoration:none;">
+          Upgrade — $1.99/mo
+        </a>
+      </div>
       <div style="font-size:11px;color:var(--text-faint);padding:8px 8px 4px;">Signed in as</div>
       <div id="sidebarEmail" style="font-size:12px;color:var(--text-muted);padding:0 8px 8px;word-break:break-all;"></div>
-      <a href="dashboard.html" class="side-nav-item"><i class="bi bi-arrow-left"></i>Back to Dashboard</a>
+      <a href="index.html" class="side-nav-item"><i class="bi bi-arrow-left"></i>Back to Dashboard</a>
     </div>
   </aside>
 
@@ -614,7 +630,7 @@ input[type=file]#zipInput { display: none; }
           <textarea class="code-editor" id="codeInput"
             placeholder="# Paste your code here...&#10;&#10;# Example of what we detect:&#10;OPENAI_API_KEY = &quot;sk-abc123...&quot;&#10;GITHUB_TOKEN = &quot;ghp_xyz...&quot;&#10;AWS_ACCESS_KEY_ID = &quot;AKIA...&quot;"></textarea>
           <div class="log-strip" id="logStrip">
-            <span class="log-ok">✓</span> SecretScan Pro ready — all features unlocked
+            <span class="log-ok">✓</span> SafeAIScan Pro ready — all features unlocked
           </div>
         </div>
 
@@ -916,11 +932,11 @@ function setMode(mode) {
 
 /* ── Init ─────────────────────────────────────────────────── */
 (function init() {
-  var email = localStorage.getItem('user_email') || localStorage.getItem('user_id') || '';
+  var email = localStorage.getItem('user_email') || '';
   var sideEl = document.getElementById('sidebarEmail');
   if (sideEl && email) sideEl.textContent = email;
 
-  // Load /api/me to confirm access and get trial/plan info
+  // Verify session and get live plan/trial data from backend
   fetch(API + '/api/me', { headers: authHeaders() })
     .then(function(r) {
       if (r.status === 401) { window.location.replace('login.html'); return null; }
@@ -930,87 +946,138 @@ function setMode(mode) {
       if (!raw) return;
       var d = raw.data || raw;
 
+      // Update email display
       if (d.email) {
         if (sideEl) sideEl.textContent = d.email;
         localStorage.setItem('user_email', d.email);
       }
 
-      var plan        = d.plan || 'free';
-      var isPro       = d.is_pro || false;
-      var trialActive = d.trial_active || false;
-      var daysLeft    = d.days_left || 0;
-      var trialEnd    = d.trial_end || '';
+      var plan         = (d.plan || 'free').toLowerCase();
+      var isPro        = d.is_pro || false;
+      var trialActive  = d.trial_active || false;
+      var daysLeft     = typeof d.days_left === 'number' ? d.days_left : 0;
+      var trialEnd     = d.trial_end || '';
 
-      // Cache plan data for api.js helpers
-      localStorage.setItem('user_plan', plan);
-      localStorage.setItem('is_pro', isPro ? 'true' : 'false');
-      localStorage.setItem('trial_active', trialActive ? 'true' : 'false');
-      localStorage.setItem('trial_days_left', String(daysLeft));
+      // Persist to localStorage for offline use
+      localStorage.setItem('user_plan',        plan);
+      localStorage.setItem('is_pro',           isPro ? 'true' : 'false');
+      localStorage.setItem('trial_active',     trialActive ? 'true' : 'false');
+      localStorage.setItem('trial_days_left',  String(daysLeft));
 
-      // Access control: pro, pro_trial (active) and enterprise may enter
+      // Access control: paid pro OR active trial = allowed
       var hasAccess = (plan === 'pro' || plan === 'enterprise') ||
                       (plan === 'pro_trial' && trialActive);
 
       if (!hasAccess) {
-        // Trial expired or plain free user — redirect gracefully
+        // Expired trial → tell them exactly why
         var reason = (plan === 'pro_trial' && !trialActive) ? 'trial_expired' : 'pro_required';
         window.location.replace('checkout.html?reason=' + reason);
         return;
       }
 
-      // Show trial countdown banner if on active trial
-      if (plan === 'pro_trial' && trialActive && daysLeft > 0) {
+      // Update PRO badge in topbar to show trial status
+      updateProBadge(plan, trialActive, daysLeft);
+
+      // Show trial countdown banner if in active trial
+      if (plan === 'pro_trial' && trialActive) {
         showTrialBanner(daysLeft, trialEnd);
       }
 
-      // Update the plan badge in the topbar
-      updatePlanBadge(plan, trialActive, daysLeft);
+      // Update usage pill
+      var pill = document.getElementById('usagePill');
+      if (pill) {
+        if (plan === 'pro_trial' && trialActive) {
+          pill.textContent = 'Trial \u2022 ' + daysLeft + 'd left';
+        } else {
+          pill.textContent = 'Unlimited scans';
+        }
+      }
     })
     .catch(function(e) {
-      console.warn('Auth check failed', e);
-      // Do NOT redirect on network errors — let the user keep working
+      // Network error — don't redirect, let user keep working
+      console.warn('[SafeAIScan] Auth check failed (non-fatal):', e.message);
     });
 
   setupZipDrop();
 })();
 
-function showTrialBanner(daysLeft, trialEnd) {
-  var urgency = daysLeft <= 3 ? '#f43f5e' : daysLeft <= 7 ? '#fb923c' : '#00ffa3';
-  var banner = document.createElement('div');
-  banner.id  = 'trialBanner';
-  banner.style.cssText = [
-    'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);',
-    'background:rgba(15,23,42,.95);border:1px solid ' + urgency + '44;',
-    'border-radius:12px;padding:10px 20px;display:flex;align-items:center;gap:12px;',
-    'font-size:12px;color:var(--text-muted);z-index:9000;',
-    'box-shadow:0 8px 32px rgba(0,0,0,.5);backdrop-filter:blur(10px);',
-    'animation:popIn .3s ease both;'
-  ].join('');
-  banner.innerHTML =
-    '<i class="bi bi-clock" style="color:' + urgency + ';font-size:14px;"></i>' +
-    '<span>Your <strong style="color:#fff;">Pro Trial</strong> ends in ' +
-    '<strong style="color:' + urgency + ';">' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') + '</strong>' +
-    (trialEnd ? ' · ' + trialEnd : '') + '</span>' +
-    '<a href="checkout.html" style="background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;' +
-    'border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;text-decoration:none;' +
-    'white-space:nowrap;">Upgrade — $1.99/mo</a>' +
-    '<button onclick="document.getElementById(\'trialBanner\').remove()" style="' +
-    'background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;line-height:1;' +
-    'padding:0 0 0 4px;">&times;</button>';
-  document.body.appendChild(banner);
-}
-
-function updatePlanBadge(plan, trialActive, daysLeft) {
+function updateProBadge(plan, trialActive, daysLeft) {
   var badge = document.querySelector('.pro-badge-tag');
   if (!badge) return;
   if (plan === 'pro_trial' && trialActive) {
-    badge.textContent = 'Trial · ' + daysLeft + 'd left';
-    badge.style.color = daysLeft <= 3 ? '#f43f5e' : daysLeft <= 7 ? '#fb923c' : '#00ffa3';
+    badge.textContent = 'TRIAL';
+    badge.style.background = 'linear-gradient(135deg,rgba(0,255,163,.2),rgba(91,123,254,.15))';
+    badge.style.color = '#00ffa3';
+    badge.style.border = '1px solid rgba(0,255,163,.35)';
+    badge.title = daysLeft + ' days left in your free trial';
+    // Show sidebar CTA
+    var cta = document.getElementById('sidebarTrialCTA');
+    var ctaDays = document.getElementById('sidebarTrialDays');
+    if (cta) cta.style.display = 'block';
+    if (ctaDays) {
+      var isUrgent = daysLeft <= 3;
+      ctaDays.innerHTML = isUrgent
+        ? '<strong style="color:#f43f5e;">' + daysLeft + ' day' + (daysLeft===1?'':'s') + ' left!</strong> Upgrade to keep access.'
+        : daysLeft + ' day' + (daysLeft===1?'':'s') + ' remaining. All Pro features active.';
+    }
   } else if (plan === 'enterprise') {
-    badge.textContent = 'Enterprise';
+    badge.textContent = 'ENTERPRISE';
+    badge.style.color = '#e879f9';
+    badge.style.background = 'linear-gradient(135deg,rgba(192,38,211,.2),rgba(91,123,254,.15))';
+    badge.style.border = '1px solid rgba(192,38,211,.35)';
   } else {
-    badge.textContent = 'Pro';
+    badge.textContent = 'PRO';
   }
+}
+
+function showTrialBanner(daysLeft, trialEnd) {
+  // Don't show if already dismissed this session
+  if (sessionStorage.getItem('trialBannerDismissed')) return;
+  if (document.getElementById('trialBanner')) return;
+
+  var isUrgent = daysLeft <= 3;
+  var isWarning = daysLeft <= 7;
+  var color = isUrgent ? '#f43f5e' : isWarning ? '#fb923c' : '#00ffa3';
+  var bgColor = isUrgent
+    ? 'rgba(244,63,94,.08)' : isWarning
+    ? 'rgba(251,146,60,.06)' : 'rgba(0,255,163,.06)';
+  var borderColor = isUrgent
+    ? 'rgba(244,63,94,.3)' : isWarning
+    ? 'rgba(251,146,60,.25)' : 'rgba(0,255,163,.2)';
+
+  var msg = isUrgent
+    ? '<strong style="color:' + color + ';">Trial ends in ' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') + '!</strong> Upgrade now to keep all Pro features.'
+    : 'Your free Pro trial ends in <strong style="color:' + color + ';">' + daysLeft + ' days</strong>' + (trialEnd ? ' (' + trialEnd + ')' : '') + '. All features are fully unlocked.';
+
+  var banner = document.createElement('div');
+  banner.id = 'trialBanner';
+  banner.style.cssText = [
+    'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);',
+    'background:' + bgColor + ';border:1px solid ' + borderColor + ';',
+    'border-radius:12px;padding:10px 16px;',
+    'display:flex;align-items:center;gap:12px;',
+    'font-family:"DM Sans",sans-serif;font-size:12px;color:var(--text-muted);',
+    'z-index:9000;box-shadow:0 8px 32px rgba(0,0,0,.5);backdrop-filter:blur(10px);',
+    'max-width:90vw;white-space:nowrap;',
+    'animation:toastIn .3s ease both;'
+  ].join('');
+
+  banner.innerHTML =
+    '<i class="bi bi-clock" style="color:' + color + ';font-size:14px;flex-shrink:0;"></i>' +
+    '<span>' + msg + '</span>' +
+    '<a href="checkout.html" style="flex-shrink:0;background:linear-gradient(135deg,#5b7bfe,#4361ee);' +
+      'color:#fff;border-radius:8px;padding:5px 14px;font-size:11px;font-weight:600;' +
+      'text-decoration:none;white-space:nowrap;">Upgrade \u2014 $1.99/mo</a>' +
+    '<button onclick="dismissTrialBanner()" style="flex-shrink:0;background:none;border:none;' +
+      'color:var(--text-faint);cursor:pointer;font-size:18px;line-height:1;padding:0;">&times;</button>';
+
+  document.body.appendChild(banner);
+}
+
+function dismissTrialBanner() {
+  var el = document.getElementById('trialBanner');
+  if (el) el.remove();
+  sessionStorage.setItem('trialBannerDismissed', '1');
 }
 
 function doLogout() {

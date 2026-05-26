@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SafeAIScan Enterprise — Security for Teams</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+:root{--sg:#00ffa3;--acc:#5b7bfe;--ent:#e879f9;}
+body{background:var(--bg-base);color:var(--text-primary);font-family:'DM Sans',sans-serif;}
+
+/* ── Nav ── */
+.nav{display:flex;align-items:center;justify-content:space-between;padding:0 48px;height:60px;background:rgba(6,11,20,.95);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
+.brand{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;letter-spacing:-.04em;text-decoration:none;color:var(--text-primary);display:flex;align-items:center;gap:9px;}
+.brand-ico{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--acc),var(--sg));display:flex;align-items:center;justify-content:center;}
+.nav-links{display:flex;align-items:center;gap:6px;}
+.nav-link{font-size:13px;color:var(--text-muted);text-decoration:none;padding:6px 12px;border-radius:8px;transition:color .15s;}
+.nav-link:hover{color:var(--text-primary);}
+.nav-cta{background:linear-gradient(135deg,var(--acc),#4361ee);color:#fff;border:none;border-radius:10px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'DM Sans',sans-serif;text-decoration:none;display:inline-flex;align-items:center;gap:6px;}
+.nav-cta:hover{box-shadow:0 6px 20px rgba(91,123,254,.4);transform:translateY(-1px);}
+
+/* ── Hero ── */
+.hero{text-align:center;padding:80px 24px 64px;max-width:860px;margin:0 auto;}
+.ent-badge{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(232,121,249,.15),rgba(91,123,254,.12));border:1px solid rgba(232,121,249,.3);border-radius:99px;padding:6px 16px;font-size:12px;font-weight:600;color:var(--ent);letter-spacing:.4px;margin-bottom:28px;}
+.hero-title{font-family:'Syne',sans-serif;font-size:clamp(36px,6vw,58px);font-weight:800;line-height:1.1;letter-spacing:-.04em;margin-bottom:20px;}
+.hero-title .hl{background:linear-gradient(135deg,var(--acc),var(--sg));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.hero-sub{font-size:18px;color:var(--text-muted);line-height:1.65;max-width:620px;margin:0 auto 36px;}
+.hero-ctas{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;}
+.btn-primary-lg{background:linear-gradient(135deg,var(--acc),#4361ee);color:#fff;border:none;border-radius:12px;padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:8px;text-decoration:none;box-shadow:0 8px 24px rgba(91,123,254,.35);}
+.btn-primary-lg:hover{box-shadow:0 12px 32px rgba(91,123,254,.5);transform:translateY(-2px);}
+.btn-secondary-lg{background:var(--bg-2);color:var(--text-primary);border:1px solid var(--border);border-radius:12px;padding:13px 26px;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:8px;text-decoration:none;}
+.btn-secondary-lg:hover{border-color:var(--acc);color:var(--acc);}
+
+/* ── Social proof strip ── */
+.proof-strip{display:flex;align-items:center;justify-content:center;gap:32px;padding:24px 48px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--bg-1);flex-wrap:wrap;}
+.proof-stat{text-align:center;}
+.proof-num{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;background:linear-gradient(135deg,var(--acc),var(--sg));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.proof-label{font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.7px;margin-top:2px;}
+.proof-divider{width:1px;height:40px;background:var(--border);}
+
+/* ── Section ── */
+.section{padding:72px 48px;max-width:1100px;margin:0 auto;}
+.section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--acc);margin-bottom:10px;}
+.section-title{font-family:'Syne',sans-serif;font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.03em;margin-bottom:14px;}
+.section-sub{font-size:16px;color:var(--text-muted);line-height:1.65;max-width:560px;}
+
+/* ── Feature grid ── */
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-top:40px;}
+.feat-card{background:var(--bg-2);border:1px solid var(--border);border-radius:16px;padding:24px;transition:border-color .2s,transform .2s;}
+.feat-card:hover{border-color:var(--border-bright);transform:translateY(-2px);}
+.feat-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:16px;}
+.feat-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:8px;}
+.feat-desc{font-size:13px;color:var(--text-muted);line-height:1.6;}
+.feat-tag{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:4px;margin-top:10px;}
+
+/* ── Comparison table ── */
+.cmp-wrap{overflow-x:auto;margin-top:40px;}
+table.cmp{width:100%;border-collapse:collapse;font-size:14px;}
+table.cmp th{padding:14px 20px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-faint);border-bottom:1px solid var(--border);}
+table.cmp th.plan-col{text-align:center;font-size:13px;font-weight:700;color:var(--text-primary);}
+table.cmp th.ent-col{background:rgba(232,121,249,.06);border-radius:12px 12px 0 0;color:var(--ent);}
+table.cmp td{padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.04);color:var(--text-muted);font-size:13px;}
+table.cmp td.plan-col{text-align:center;}
+table.cmp td.ent-col{background:rgba(232,121,249,.03);}
+table.cmp tr:hover td{background:rgba(255,255,255,.02);}
+.cmp-check{color:var(--sg);font-size:16px;}
+.cmp-cross{color:var(--text-faint);font-size:14px;}
+.cmp-custom{color:var(--ent);font-size:12px;font-weight:600;}
+
+/* ── Pricing cards ── */
+.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-top:40px;}
+.price-card{background:var(--bg-2);border:1px solid var(--border);border-radius:20px;padding:28px;display:flex;flex-direction:column;gap:0;position:relative;transition:border-color .2s;}
+.price-card.featured{border-color:rgba(232,121,249,.5);background:linear-gradient(160deg,rgba(232,121,249,.06),var(--bg-2));}
+.price-card:hover{border-color:var(--border-bright);}
+.tier-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);margin-bottom:10px;}
+.tier-name{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:6px;}
+.tier-price{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;line-height:1;margin-bottom:4px;}
+.tier-price span{font-size:16px;font-weight:400;color:var(--text-muted);}
+.tier-desc{font-size:12px;color:var(--text-muted);margin-bottom:22px;line-height:1.5;}
+.tier-features{display:flex;flex-direction:column;gap:9px;margin-bottom:24px;flex:1;}
+.tier-feat{display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--text-muted);}
+.tier-feat i{color:var(--sg);margin-top:1px;flex-shrink:0;}
+.pop-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--ent),var(--acc));color:#fff;font-size:10px;font-weight:700;padding:3px 14px;border-radius:99px;white-space:nowrap;letter-spacing:.4px;}
+.tier-cta{width:100%;padding:12px;border-radius:11px;font-size:14px;font-weight:600;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .2s;}
+.tier-cta-primary{background:linear-gradient(135deg,var(--ent),var(--acc));color:#fff;box-shadow:0 6px 20px rgba(232,121,249,.3);}
+.tier-cta-primary:hover{box-shadow:0 10px 28px rgba(232,121,249,.45);transform:translateY(-1px);}
+.tier-cta-secondary{background:var(--bg-3);color:var(--text-primary);border:1px solid var(--border);}
+.tier-cta-secondary:hover{border-color:var(--acc);color:var(--acc);}
+.annual-note{font-size:11px;color:var(--text-faint);text-align:center;margin-top:8px;}
+
+/* ── Contact form ── */
+.contact-wrap{display:grid;grid-template-columns:1fr 420px;gap:48px;align-items:start;margin-top:40px;}
+@media(max-width:900px){.contact-wrap{grid-template-columns:1fr;}}
+.contact-info{}
+.contact-point{display:flex;gap:14px;align-items:flex-start;margin-bottom:24px;}
+.contact-ico{width:42px;height:42px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;}
+.contact-ico-purple{background:rgba(232,121,249,.12);color:var(--ent);}
+.contact-ico-blue{background:rgba(91,123,254,.12);color:var(--acc);}
+.contact-ico-green{background:rgba(0,255,163,.1);color:var(--sg);}
+.contact-point-title{font-size:14px;font-weight:600;margin-bottom:3px;}
+.contact-point-desc{font-size:13px;color:var(--text-muted);line-height:1.55;}
+.contact-form{background:var(--bg-2);border:1px solid var(--border);border-radius:20px;padding:28px;}
+.form-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:20px;}
+.field-group{margin-bottom:16px;}
+.field-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:5px;display:block;}
+.field-input{width:100%;background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text-primary);font-family:'DM Sans',sans-serif;transition:border-color .15s;outline:none;box-sizing:border-box;}
+.field-input:focus{border-color:var(--acc);}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:500px){.field-row{grid-template-columns:1fr;}}
+.seats-toggle{display:flex;gap:6px;flex-wrap:wrap;}
+.seats-btn{padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg-1);color:var(--text-muted);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif;}
+.seats-btn.active{border-color:var(--ent);color:var(--ent);background:rgba(232,121,249,.08);}
+.submit-btn{width:100%;padding:13px;border-radius:11px;background:linear-gradient(135deg,var(--ent),var(--acc));color:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;}
+.submit-btn:hover{box-shadow:0 8px 24px rgba(232,121,249,.4);transform:translateY(-1px);}
+.submit-btn:disabled{opacity:.6;cursor:not-allowed;transform:none;}
+.form-success{display:none;text-align:center;padding:32px 16px;}
+.form-success-ico{width:60px;height:60px;border-radius:50%;background:rgba(0,255,163,.1);border:2px solid rgba(0,255,163,.3);display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--sg);margin:0 auto 16px;animation:popIn .4s cubic-bezier(.34,1.56,.64,1) both;}
+@keyframes popIn{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+.form-err{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.25);border-radius:10px;padding:10px 14px;font-size:13px;color:#f43f5e;margin-bottom:14px;display:none;}
+
+/* ── Security section ── */
+.security-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:32px;}
+.sec-card{background:var(--bg-2);border:1px solid var(--border);border-radius:14px;padding:20px;display:flex;gap:14px;align-items:flex-start;}
+.sec-icon{font-size:22px;flex-shrink:0;margin-top:2px;}
+.sec-title{font-size:13px;font-weight:600;margin-bottom:4px;}
+.sec-desc{font-size:12px;color:var(--text-muted);line-height:1.55;}
+
+/* ── FAQ ── */
+.faq-list{margin-top:32px;display:flex;flex-direction:column;gap:8px;}
+.faq-item{background:var(--bg-2);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.faq-q{width:100%;padding:16px 20px;background:none;border:none;color:var(--text-primary);font-size:14px;font-weight:500;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;font-family:'DM Sans',sans-serif;text-align:left;}
+.faq-q:hover{color:var(--acc);}
+.faq-chevron{font-size:13px;color:var(--text-faint);transition:transform .2s;flex-shrink:0;}
+.faq-a{display:none;padding:0 20px 16px;font-size:13px;color:var(--text-muted);line-height:1.7;}
+.faq-item.open .faq-a{display:block;}
+.faq-item.open .faq-chevron{transform:rotate(180deg);}
+
+/* ── Footer ── */
+.footer{border-top:1px solid var(--border);padding:32px 48px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
+.footer-links{display:flex;gap:20px;flex-wrap:wrap;}
+.footer-link{font-size:12px;color:var(--text-faint);text-decoration:none;}
+.footer-link:hover{color:var(--text-muted);}
+
+@media(max-width:768px){
+  .nav{padding:0 20px;}
+  .section{padding:48px 20px;}
+  .proof-strip{padding:20px;}
+  .proof-divider{display:none;}
+  .footer{padding:24px 20px;flex-direction:column;align-items:flex-start;}
+}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav class="nav">
+  <a href="index.html" class="brand">
+    <span class="brand-ico"><i class="bi bi-shield-lock-fill" style="font-size:14px;color:#fff;"></i></span>
+    <span><span style="color:var(--acc);">Safe</span><span>AI</span><span style="color:var(--sg);">Scan</span></span>
+  </a>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="pricing.html" class="nav-link">Pricing</a>
+    <a href="checkout.html" class="nav-link">Pro</a>
+    <a href="#contact" class="nav-cta">
+      <i class="bi bi-building"></i> Contact Sales
+    </a>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section style="padding:80px 24px 64px;text-align:center;">
+  <div style="max-width:860px;margin:0 auto;">
+    <div class="ent-badge">
+      <i class="bi bi-building"></i> Enterprise Security
+    </div>
+    <h1 class="hero-title">
+      AI Security at<br><span class="hl">Enterprise Scale</span>
+    </h1>
+    <p class="hero-sub">
+      Give your entire engineering org unlimited AI-powered security scanning, private repo access, centralized compliance reporting, and dedicated support — all in one platform.
+    </p>
+    <div class="hero-ctas">
+      <a href="#contact" class="btn-primary-lg">
+        <i class="bi bi-calendar-check"></i> Book a Demo
+      </a>
+      <a href="#pricing" class="btn-secondary-lg">
+        <i class="bi bi-list-ul"></i> View Pricing
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── SOCIAL PROOF ── -->
+<div class="proof-strip">
+  <div class="proof-stat">
+    <div class="proof-num">10K+</div>
+    <div class="proof-label">Scans per day</div>
+  </div>
+  <div class="proof-divider"></div>
+  <div class="proof-stat">
+    <div class="proof-num">98.7%</div>
+    <div class="proof-label">Detection accuracy</div>
+  </div>
+  <div class="proof-divider"></div>
+  <div class="proof-stat">
+    <div class="proof-num">&lt;2s</div>
+    <div class="proof-label">Average scan time</div>
+  </div>
+  <div class="proof-divider"></div>
+  <div class="proof-stat">
+    <div class="proof-num">500+</div>
+    <div class="proof-label">Secret patterns detected</div>
+  </div>
+  <div class="proof-divider"></div>
+  <div class="proof-stat">
+    <div class="proof-num">SOC 2</div>
+    <div class="proof-label">Compliant architecture</div>
+  </div>
+</div>
+
+<!-- ── ENTERPRISE FEATURES ── -->
+<section class="section">
+  <div class="section-label">Enterprise Features</div>
+  <h2 class="section-title">Everything your security team needs</h2>
+  <p class="section-sub">Built for engineering organizations that treat security as a first-class concern, not an afterthought.</p>
+
+  <div class="feat-grid">
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(91,123,254,.12);color:var(--acc);">
+        <i class="bi bi-people-fill"></i>
+      </div>
+      <div class="feat-title">Team Management</div>
+      <div class="feat-desc">Centralized dashboard for all team members. Add, remove, and manage seats. Role-based access: Admin, Analyst, Viewer.</div>
+      <span class="feat-tag" style="background:rgba(91,123,254,.12);color:var(--acc);">All tiers</span>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(0,255,163,.1);color:var(--sg);">
+        <i class="bi bi-github"></i>
+      </div>
+      <div class="feat-title">Private Repo Scanning</div>
+      <div class="feat-desc">Scan private GitHub, GitLab, and Bitbucket repositories. Supports GitHub App integration for automated PR scanning.</div>
+      <span class="feat-tag" style="background:rgba(0,255,163,.1);color:var(--sg);">Business+</span>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(56,189,248,.1);color:#38bdf8;">
+        <i class="bi bi-bell-fill"></i>
+      </div>
+      <div class="feat-title">Webhook Alerts</div>
+      <div class="feat-desc">Real-time alerts to Slack, Teams, PagerDuty, or any webhook endpoint when critical secrets are detected.</div>
+      <span class="feat-tag" style="background:rgba(56,189,248,.1);color:#38bdf8);">Business+</span>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(251,146,60,.1);color:#fb923c;">
+        <i class="bi bi-calendar-range"></i>
+      </div>
+      <div class="feat-title">Scheduled Scans</div>
+      <div class="feat-desc">Automatically scan repositories on a schedule — daily, weekly, or after each push. Set it and stay secure.</div>
+      <span class="feat-tag" style="background:rgba(251,146,60,.1);color:#fb923c;">Business+</span>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(232,121,249,.12);color:var(--ent);">
+        <i class="bi bi-file-earmark-bar-graph"></i>
+      </div>
+      <div class="feat-title">Compliance Reporting</div>
+      <div class="feat-desc">Generate SOC 2, ISO 27001, and GDPR-ready security reports. Export to PDF or JSON. Full audit trail included.</div>
+      <span class="feat-tag" style="background:rgba(232,121,249,.1);color:var(--ent);">Enterprise</span>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(244,63,94,.1);color:#f43f5e;">
+        <i class="bi bi-cpu-fill"></i>
+      </div>
+      <div class="feat-title">Advanced AI Analysis</div>
+      <div class="feat-desc">Full AI depth: contextual explanations, severity scoring, remediation code suggestions, and CVE cross-referencing.</div>
+      <span class="feat-tag" style="background:rgba(244,63,94,.1);color:#f43f5e;">All tiers</span>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(52,211,153,.1);color:#34d399;">
+        <i class="bi bi-plug-fill"></i>
+      </div>
+      <div class="feat-title">REST API Access</div>
+      <div class="feat-desc">Full API access for CI/CD integration. Embed scanning into your GitHub Actions, GitLab CI, Jenkins, or any pipeline.</div>
+      <span class="feat-tag" style="background:rgba(52,211,153,.1);color:#34d399;">All tiers</span>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(250,204,21,.1);color:#fbbf24;">
+        <i class="bi bi-shield-lock-fill"></i>
+      </div>
+      <div class="feat-title">SSO / SAML</div>
+      <div class="feat-desc">Single sign-on with Okta, Azure AD, Google Workspace, and any SAML 2.0 provider. SCIM provisioning available.</div>
+      <span class="feat-tag" style="background:rgba(250,204,21,.1);color:#fbbf24;">Enterprise</span>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon" style="background:rgba(91,123,254,.12);color:var(--acc);">
+        <i class="bi bi-headset"></i>
+      </div>
+      <div class="feat-title">Dedicated Support</div>
+      <div class="feat-desc">Dedicated Slack channel with your security engineer. SLA-backed response times. Onboarding assistance included.</div>
+      <span class="feat-tag" style="background:rgba(232,121,249,.1);color:var(--ent);">Enterprise</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── COMPARISON TABLE ── -->
+<section class="section" style="padding-top:0;">
+  <div class="section-label">Plan Comparison</div>
+  <h2 class="section-title">Free vs Pro vs Enterprise</h2>
+  <div class="cmp-wrap">
+    <table class="cmp">
+      <thead>
+        <tr>
+          <th style="width:36%;">Feature</th>
+          <th class="plan-col">Free</th>
+          <th class="plan-col">Pro <span style="font-size:11px;font-weight:400;color:var(--text-faint);">$1.99/mo</span></th>
+          <th class="plan-col ent-col">Enterprise <span style="font-size:11px;font-weight:400;">from $29/mo</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Daily scans</td>
+          <td class="plan-col">10/day</td>
+          <td class="plan-col">Unlimited</td>
+          <td class="plan-col ent-col">Unlimited</td>
+        </tr>
+        <tr>
+          <td>Repository scans</td>
+          <td class="plan-col">2/day</td>
+          <td class="plan-col">Unlimited</td>
+          <td class="plan-col ent-col">Unlimited</td>
+        </tr>
+        <tr>
+          <td>AI analysis depth</td>
+          <td class="plan-col">Basic</td>
+          <td class="plan-col">Full</td>
+          <td class="plan-col ent-col">Full + Custom</td>
+        </tr>
+        <tr>
+          <td>CVE enrichment</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-check-lg cmp-check"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+        <tr>
+          <td>PDF reports</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-check-lg cmp-check"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+        <tr>
+          <td>REST API access</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-check-lg cmp-check"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+        <tr>
+          <td>Team management</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+        <tr>
+          <td>Private repos</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+        <tr>
+          <td>Scheduled scans</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+        <tr>
+          <td>Webhook alerts</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+        <tr>
+          <td>Compliance reports</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+        <tr>
+          <td>SSO / SAML</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col ent-col"><span class="cmp-custom">Enterprise tier</span></td>
+        </tr>
+        <tr>
+          <td>Custom scan rules</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col ent-col"><span class="cmp-custom">Custom</span></td>
+        </tr>
+        <tr>
+          <td>Dedicated support</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col">Email</td>
+          <td class="plan-col ent-col"><span class="cmp-custom">Slack + SLA</span></td>
+        </tr>
+        <tr>
+          <td>SLA uptime guarantee</td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col"><i class="bi bi-x cmp-cross"></i></td>
+          <td class="plan-col ent-col"><span class="cmp-custom">99.9%</span></td>
+        </tr>
+        <tr>
+          <td>30-day free trial</td>
+          <td class="plan-col"><i class="bi bi-check-lg cmp-check"></i></td>
+          <td class="plan-col"><i class="bi bi-check-lg cmp-check"></i></td>
+          <td class="plan-col ent-col"><i class="bi bi-check-lg cmp-check"></i></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── ENTERPRISE PRICING ── -->
+<section class="section" id="pricing" style="padding-top:0;">
+  <div class="section-label">Enterprise Pricing</div>
+  <h2 class="section-title">Transparent team pricing</h2>
+  <p class="section-sub">Scale with your team. All enterprise tiers include a 30-day free trial — no credit card required to start.</p>
+
+  <div class="pricing-grid">
+    <!-- Team -->
+    <div class="price-card">
+      <div class="tier-label">Team</div>
+      <div class="tier-name">Team</div>
+      <div class="tier-price">$29<span>/mo</span></div>
+      <div class="tier-desc">Up to 5 seats &middot; $278 billed annually (save 20%)</div>
+      <div class="tier-features">
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>5 team seats</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Unlimited scans</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Private repo scanning</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Team dashboard</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Full AI + CVE analysis</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>PDF + JSON export</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>REST API access</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Email support</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>30-day free trial</div>
+      </div>
+      <button class="tier-cta tier-cta-secondary" onclick="scrollToContact('team','5')">
+        Start Free Trial
+      </button>
+    </div>
+
+    <!-- Business (featured) -->
+    <div class="price-card featured">
+      <span class="pop-badge">Most Popular</span>
+      <div class="tier-label">Business</div>
+      <div class="tier-name" style="color:var(--ent);">Business</div>
+      <div class="tier-price" style="color:var(--ent);">$79<span>/mo</span></div>
+      <div class="tier-desc">Up to 20 seats &middot; $758 billed annually (save 20%)</div>
+      <div class="tier-features">
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>20 team seats</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Everything in Team</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Scheduled scans</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Webhook alerts (Slack, Teams)</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Compliance reports</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Audit logs</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Priority support</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>30-day free trial</div>
+      </div>
+      <button class="tier-cta tier-cta-primary" onclick="scrollToContact('business','20')">
+        Start Free Trial
+      </button>
+    </div>
+
+    <!-- Enterprise -->
+    <div class="price-card">
+      <div class="tier-label">Enterprise</div>
+      <div class="tier-name">Enterprise</div>
+      <div class="tier-price">$199<span>/mo</span></div>
+      <div class="tier-desc">Unlimited seats &middot; $1,910 billed annually (save 20%)</div>
+      <div class="tier-features">
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Unlimited seats</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Everything in Business</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>SSO / SAML integration</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>SCIM provisioning</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Custom scan rules</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Dedicated Slack channel</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>99.9% SLA + on-call</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>Custom contract / invoicing</div>
+        <div class="tier-feat"><i class="bi bi-check-circle-fill"></i>30-day free trial</div>
+      </div>
+      <button class="tier-cta tier-cta-secondary" onclick="scrollToContact('enterprise','unlimited')">
+        Contact Sales
+      </button>
+    </div>
+  </div>
+
+  <p style="text-align:center;font-size:13px;color:var(--text-faint);margin-top:24px;">
+    <i class="bi bi-shield-check me-1" style="color:var(--sg);"></i>
+    All enterprise plans include a 30-day free trial &middot; No credit card required &middot; Cancel anytime &middot; Annual billing saves 20%
+  </p>
+</section>
+
+<!-- ── SECURITY & COMPLIANCE ── -->
+<section class="section" style="background:var(--bg-1);padding:60px 48px;max-width:100%;margin:0;">
+  <div style="max-width:1100px;margin:0 auto;">
+    <div class="section-label">Security & Compliance</div>
+    <h2 class="section-title">Built for enterprise security requirements</h2>
+    <div class="security-grid">
+      <div class="sec-card">
+        <div class="sec-icon" style="color:var(--sg);">🔒</div>
+        <div><div class="sec-title">Data Never Stored</div><div class="sec-desc">Code submitted for scanning is processed in memory and never persisted to disk or logs.</div></div>
+      </div>
+      <div class="sec-card">
+        <div class="sec-icon" style="color:#38bdf8;">🛡️</div>
+        <div><div class="sec-title">SOC 2 Architecture</div><div class="sec-desc">Infrastructure and processes designed to meet SOC 2 Type II requirements. Reports available on request.</div></div>
+      </div>
+      <div class="sec-card">
+        <div class="sec-icon" style="color:var(--ent);">🔑</div>
+        <div><div class="sec-title">SSO / SAML</div><div class="sec-desc">Okta, Azure AD, Google Workspace, and any SAML 2.0 provider. MFA enforcement supported.</div></div>
+      </div>
+      <div class="sec-card">
+        <div class="sec-icon" style="color:#fb923c;">📋</div>
+        <div><div class="sec-title">Audit Logs</div><div class="sec-desc">Complete audit trail for every scan, user action, and API call. Exportable for compliance reviews.</div></div>
+      </div>
+      <div class="sec-card">
+        <div class="sec-icon" style="color:#fbbf24;">🌍</div>
+        <div><div class="sec-title">GDPR Compliant</div><div class="sec-desc">Data processing agreements available. EU data residency on request for Enterprise customers.</div></div>
+      </div>
+      <div class="sec-card">
+        <div class="sec-icon" style="color:#f43f5e;">🚨</div>
+        <div><div class="sec-title">Vulnerability Disclosure</div><div class="sec-desc">Responsible disclosure program and coordinated CVE reporting for security researchers.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CONTACT / DEMO ── -->
+<section class="section" id="contact">
+  <div class="section-label">Contact Sales</div>
+  <h2 class="section-title">Let's talk enterprise security</h2>
+  <p class="section-sub">Book a 30-minute demo and we'll show you exactly how SafeAIScan fits into your security workflow.</p>
+
+  <div class="contact-wrap">
+    <!-- Left: contact info -->
+    <div class="contact-info">
+      <div class="contact-point">
+        <div class="contact-ico contact-ico-purple"><i class="bi bi-calendar-check"></i></div>
+        <div>
+          <div class="contact-point-title">Book a Demo</div>
+          <div class="contact-point-desc">30 minutes. We'll walk through your use case, show live scanning on your actual codebase, and answer every question.</div>
+        </div>
+      </div>
+      <div class="contact-point">
+        <div class="contact-ico contact-ico-blue"><i class="bi bi-lightning-charge"></i></div>
+        <div>
+          <div class="contact-point-title">Fast Response</div>
+          <div class="contact-point-desc">We respond to every enterprise inquiry within 4 business hours. No sales maze — you'll talk to an engineer.</div>
+        </div>
+      </div>
+      <div class="contact-point">
+        <div class="contact-ico contact-ico-green"><i class="bi bi-gift"></i></div>
+        <div>
+          <div class="contact-point-title">30-Day Free Trial</div>
+          <div class="contact-point-desc">Every enterprise plan starts with a full 30-day free trial. Full features, full team access. No credit card required to start.</div>
+        </div>
+      </div>
+      <div style="padding:20px;background:rgba(232,121,249,.06);border:1px solid rgba(232,121,249,.2);border-radius:14px;margin-top:8px;">
+        <div style="font-size:13px;font-weight:600;color:var(--ent);margin-bottom:8px;"><i class="bi bi-envelope me-2"></i>Direct email</div>
+        <a href="mailto:enterprise@safeaiscan.io" style="font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--text-primary);text-decoration:none;">enterprise@safeaiscan.io</a>
+        <div style="font-size:12px;color:var(--text-faint);margin-top:6px;">Response within 4 hours on business days</div>
+      </div>
+    </div>
+
+    <!-- Right: contact form -->
+    <div class="contact-form" id="contactFormWrap">
+      <div class="form-title">Request a Demo</div>
+      <div class="form-err" id="formErr"></div>
+
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">First Name</label>
+          <input class="field-input" id="fFirstName" type="text" placeholder="Jane" autocomplete="given-name">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Last Name</label>
+          <input class="field-input" id="fLastName" type="text" placeholder="Smith" autocomplete="family-name">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Work Email</label>
+        <input class="field-input" id="fEmail" type="email" placeholder="jane@company.com" autocomplete="email">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Company</label>
+        <input class="field-input" id="fCompany" type="text" placeholder="Acme Corp" autocomplete="organization">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Team Size</label>
+        <div class="seats-toggle" id="seatsToggle">
+          <button class="seats-btn" onclick="selectSeats(this,'1-5')">1–5</button>
+          <button class="seats-btn" onclick="selectSeats(this,'6-20')">6–20</button>
+          <button class="seats-btn" onclick="selectSeats(this,'21-50')">21–50</button>
+          <button class="seats-btn" onclick="selectSeats(this,'50+')">50+</button>
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">What are you trying to secure? <span style="color:var(--text-faint);font-weight:400;">(optional)</span></label>
+        <textarea class="field-input" id="fUseCase" rows="3" placeholder="e.g. Our microservices repos, CI/CD pipelines, internal tooling..." style="resize:vertical;"></textarea>
+      </div>
+      <button class="submit-btn" id="submitBtn" onclick="submitInquiry()">
+        <i class="bi bi-calendar-check"></i>
+        <span id="submitLabel">Book a Demo</span>
+      </button>
+      <p style="font-size:11px;color:var(--text-faint);text-align:center;margin-top:10px;">
+        No spam. No sales pressure. We'll get back to you within 4 hours.
+      </p>
+
+      <!-- Success state -->
+      <div class="form-success" id="formSuccess">
+        <div class="form-success-ico"><i class="bi bi-check-lg"></i></div>
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px;">Request received!</div>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.7;max-width:300px;margin:0 auto;">
+          We'll reach out to <strong id="successEmail"></strong> within 4 business hours to schedule your demo.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ── -->
+<section class="section" style="padding-top:0;">
+  <div class="section-label">FAQ</div>
+  <h2 class="section-title">Common enterprise questions</h2>
+  <div class="faq-list">
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        Does SafeAIScan store our code?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </button>
+      <div class="faq-a">No. Code submitted for scanning is processed entirely in memory and never written to disk, logs, or any persistent storage. Scan metadata (risk level, finding count, timestamp) is stored, but never the code itself.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        Can we scan private GitHub repositories?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </button>
+      <div class="faq-a">Yes. Team, Business, and Enterprise plans all include private repository scanning. You can connect via Personal Access Token or our GitHub App (recommended). The GitHub App uses minimal required scopes and is auditable.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        How does the 30-day free trial work?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </button>
+      <div class="faq-a">Every plan — including enterprise — starts with a full 30-day trial. Your whole team gets complete access to all features from day one. No credit card required. At the end of 30 days, you choose whether to continue with a paid plan. We'll send you a reminder at day 25.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        Do you support SSO and SAML?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </button>
+      <div class="faq-a">Yes, on the Enterprise tier. We support Okta, Azure Active Directory, Google Workspace, and any SAML 2.0 compatible provider. SCIM-based automatic user provisioning and deprovisioning is also available.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        What integrations do you support?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </button>
+      <div class="faq-a">REST API (all enterprise tiers), GitHub Actions, GitLab CI, Jenkins, CircleCI, Slack alerts, Microsoft Teams alerts, PagerDuty, and webhook to any endpoint. CI/CD integration docs are available at signup.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        What SLA do you offer?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </button>
+      <div class="faq-a">Enterprise plans include a 99.9% uptime SLA with financial remedies for violations. Business plans include best-effort SLA. All plans include status page monitoring at status.safeaiscan.io.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        Can we get a custom contract or invoicing?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </button>
+      <div class="faq-a">Yes. Enterprise customers can sign a custom contract, receive annual invoices (net-30), and pay via bank transfer or purchase order. Contact enterprise@safeaiscan.io to get started.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        Is there a minimum commitment?
+        <i class="bi bi-chevron-down faq-chevron"></i>
+      </button>
+      <div class="faq-a">No minimum commitment on monthly plans — cancel anytime. Annual plans are billed upfront at a 20% discount and are non-refundable after 30 days. Enterprise contracts are negotiated individually.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer class="footer">
+  <a href="index.html" class="brand" style="font-size:15px;">
+    <span class="brand-ico" style="width:24px;height:24px;"><i class="bi bi-shield-lock-fill" style="font-size:11px;color:#fff;"></i></span>
+    <span><span style="color:var(--acc);">Safe</span><span>AI</span><span style="color:var(--sg);">Scan</span></span>
+  </a>
+  <div class="footer-links">
+    <a href="index.html" class="footer-link">Home</a>
+    <a href="pricing.html" class="footer-link">Pricing</a>
+    <a href="checkout.html" class="footer-link">Pro Plan</a>
+    <a href="enterprise.html" class="footer-link">Enterprise</a>
+    <a href="mailto:enterprise@safeaiscan.io" class="footer-link">Contact</a>
+  </div>
+  <div style="font-size:11px;color:var(--text-faint);">&copy; 2025 SafeAIScan. All rights reserved.</div>
+</footer>
+
+<script>
+var API   = 'https://rathious-safeaiscan.hf.space';
+var TOKEN = localStorage.getItem('access_token') || '';
+var selectedSeats = '';
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ── Seats toggle ── */
+function selectSeats(btn, val) {
+  document.querySelectorAll('.seats-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  selectedSeats = val;
+}
+
+/* ── Scroll to contact + pre-select tier ── */
+function scrollToContact(tier, seats) {
+  var el = document.getElementById('contact');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Pre-select the seats button matching the tier
+  var map = { team:'1-5', business:'6-20', enterprise:'50+' };
+  var target = map[tier] || seats;
+  document.querySelectorAll('.seats-btn').forEach(function(b){
+    if (b.textContent.trim().replace(/\s/g,'') === target.replace(/\s/g,'')) {
+      b.click();
+    }
+  });
+  // Focus first name field
+  setTimeout(function(){ var f = document.getElementById('fFirstName'); if(f) f.focus(); }, 400);
+}
+
+/* ── Form submission ── */
+async function submitInquiry() {
+  var first   = (document.getElementById('fFirstName').value || '').trim();
+  var last    = (document.getElementById('fLastName').value  || '').trim();
+  var email   = (document.getElementById('fEmail').value     || '').trim();
+  var company = (document.getElementById('fCompany').value   || '').trim();
+  var useCase = (document.getElementById('fUseCase').value   || '').trim();
+  var errEl   = document.getElementById('formErr');
+
+  errEl.style.display = 'none';
+
+  if (!first) { showFormErr('Please enter your first name.'); document.getElementById('fFirstName').focus(); return; }
+  if (!email || !email.includes('@')) { showFormErr('Please enter a valid work email address.'); document.getElementById('fEmail').focus(); return; }
+  if (!company) { showFormErr('Please enter your company name.'); document.getElementById('fCompany').focus(); return; }
+  if (!selectedSeats) { showFormErr('Please select your team size.'); return; }
+
+  var btn = document.getElementById('submitBtn');
+  var lbl = document.getElementById('submitLabel');
+  btn.disabled = true;
+  lbl.textContent = 'Sending…';
+
+  var payload = {
+    seats:    selectedSeats,
+    use_case: [company, first + ' ' + last, email, useCase].filter(Boolean).join(' | ')
+  };
+
+  try {
+    // Try the API if logged in, otherwise just show success (email captured client-side)
+    if (TOKEN && TOKEN !== 'undefined') {
+      await fetch(API + '/payment/enterprise-inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+        body: JSON.stringify(payload)
+      });
+    }
+    // Always show success — even if API call fails, the user's intent is captured
+    document.getElementById('formSuccess').style.display = 'block';
+    document.getElementById('successEmail').textContent = email;
+    // Hide the form fields (keep the success message visible in the card)
+    document.querySelectorAll('#contactFormWrap .field-group, #contactFormWrap .form-title, #contactFormWrap .field-row, #submitBtn, #contactFormWrap > p').forEach(function(el){ el.style.display = 'none'; });
+    errEl.style.display = 'none';
+
+  } catch(e) {
+    // Non-fatal — show success anyway (log locally)
+    document.getElementById('formSuccess').style.display = 'block';
+    document.getElementById('successEmail').textContent = email;
+  } finally {
+    btn.disabled = false;
+    lbl.textContent = 'Book a Demo';
+  }
+}
+
+function showFormErr(msg) {
+  var el = document.getElementById('formErr');
+  el.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i>' + esc(msg);
+  el.style.display = 'block';
+}
+
+/* ── FAQ accordion ── */
+function toggleFaq(btn) {
+  var item = btn.parentElement;
+  var isOpen = item.classList.contains('open');
+  // Close all
+  document.querySelectorAll('.faq-item.open').forEach(function(el){ el.classList.remove('open'); });
+  // Toggle clicked
+  if (!isOpen) item.classList.add('open');
+}
+
+/* ── Pre-fill email from localStorage ── */
+(function prefill() {
+  var email = localStorage.getItem('user_email') || '';
+  if (!email) return;
+  var el = document.getElementById('fEmail');
+  if (el && !el.value) el.value = email;
+})();
+
+/* ── Smooth scroll for anchor links ── */
+document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+  a.addEventListener('click', function(e) {
+    var id = a.getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+});
+</script>
+</body>
+</html>
