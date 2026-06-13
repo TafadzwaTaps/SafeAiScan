@@ -602,6 +602,7 @@ pre {
 ============================================================ */
 .login-wrap {
   min-height: 100vh;
+  min-height: 100dvh; /* better mobile keyboard handling on supporting browsers */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -609,6 +610,7 @@ pre {
     radial-gradient(ellipse 70% 60% at 30% 30%, rgba(91,123,254,0.1) 0%, transparent 65%),
     radial-gradient(ellipse 50% 40% at 75% 75%, rgba(56,189,248,0.07) 0%, transparent 55%),
     var(--bg-base);
+  padding: 16px 0;
 }
 .login-card {
   width: 100%;
@@ -782,6 +784,9 @@ footer {
   /* Navbar */
   .navbar { padding: 10px 16px; }
   .navbar-brand { font-size: 16px; }
+  .badge-new { display: none; } /* hide "v2.0" pill on narrow screens to fit auth buttons */
+  .navbar .btn-sm { padding: 6px 10px; font-size: 12px; }
+  .navbar .d-flex.gap-2 { gap: 6px !important; }
 
   /* Hero */
   .hero          { padding: 60px 16px 48px; }
@@ -860,6 +865,14 @@ footer {
 
   .scan-progress-label { font-size: 10px; }
   .badge-pill          { font-size: 9px; }
+}
+
+/* ── ≤380px: very small phones (iPhone SE, older Android) ── */
+@media (max-width: 380px) {
+  .navbar-brand   { font-size: 14px; }
+  .navbar .btn-sm { padding: 5px 8px; font-size: 11px; }
+  .hero-title     { font-size: 22px !important; }
+  .login-card     { padding: 16px 12px; margin: 0 8px; }
 }
 
 /* ── ≤900px: pro scanner layout ── */

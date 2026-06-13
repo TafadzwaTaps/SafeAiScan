@@ -15,7 +15,24 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
 .co-brand{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;letter-spacing:-.04em;text-decoration:none;color:var(--text-primary);display:flex;align-items:center;gap:8px;}
 .bico{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#5b7bfe,var(--sg));display:flex;align-items:center;justify-content:center;font-size:13px;}
 .co-body{flex:1;display:grid;grid-template-columns:1fr 360px;gap:40px;max-width:920px;margin:0 auto;width:100%;padding:40px 24px;align-items:start;}
-@media(max-width:768px){.co-body{grid-template-columns:1fr;padding:20px 16px;gap:20px;}.order-col{order:-1;}}
+@media(max-width:768px){
+  .co-body{grid-template-columns:1fr;padding:20px 16px;gap:20px;}
+  .order-col{order:-1;position:static;}
+  .co-nav{padding:0 16px;height:52px;}
+  .co-nav > div{font-size:11px;}
+  .method-tabs{flex-direction:column;}
+  .method-tab{justify-content:flex-start;padding:10px 12px;}
+  .verify-wrap{flex-direction:column;}
+  .verify-wrap button{width:100%;}
+  .manual-step{font-size:12px;}
+  .pp-btn{font-size:14px;padding:13px;}
+  .trust-row{gap:10px;}
+}
+@media(max-width:420px){
+  .co-body{padding:14px 12px;}
+  .order-col{padding:16px;}
+  .legal-title, .order-title{font-size:13px;}
+}
 .order-col{background:var(--bg-2);border:1px solid var(--border);border-radius:18px;padding:22px;position:sticky;top:76px;}
 .order-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:16px;}
 .billing-toggle{display:inline-flex;background:var(--bg-1);border:1px solid var(--border);border-radius:99px;padding:3px;margin-bottom:24px;gap:2px;}
@@ -57,6 +74,9 @@ body{min-height:100vh;display:flex;flex-direction:column;background:var(--bg-bas
 .copy-btn:hover{border-color:var(--sg);color:var(--sg);}
 .verify-wrap{display:flex;gap:8px;margin-top:8px;}
 .verify-wrap input{flex:1;font-family:'JetBrains Mono',monospace;font-size:13px;}
+@media(max-width:768px){
+  .verify-wrap input{font-size:16px;} /* prevent iOS zoom-on-focus */
+}
 .info-note{background:rgba(91,123,254,.06);border:1px solid rgba(91,123,254,.18);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text-muted);line-height:1.6;}
 .info-note i{color:var(--accent);}
 .warn-note{background:rgba(251,146,60,.06);border:1px solid rgba(251,146,60,.18);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text-muted);line-height:1.6;}

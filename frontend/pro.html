@@ -473,6 +473,7 @@ input[type=file]#zipInput { display: none; }
   display: flex; flex-direction: column; gap: 14px;
 }
 .detail-drawer.open { transform: translateX(0); }
+.detail-drawer { touch-action: pan-y; }
 .drawer-close {
   position: absolute; top: 12px; right: 14px;
   background: var(--bg-3); border: 1px solid var(--border);
@@ -498,13 +499,376 @@ input[type=file]#zipInput { display: none; }
   font-size: 13px; color: var(--text-muted); line-height: 1.6;
 }
 
-@media (max-width: 900px) {
-  .pro-layout { grid-template-columns: 1fr; }
-  .pro-sidebar { display: none; }
-  .scanner-area { grid-template-columns: 1fr; }
-  .scanner-right { height: 300px; }
-  .detail-drawer { width: 100%; }
+/* ════════════════════════════════════════════════════════════
+   MOBILE & TABLET OPTIMIZATION — "On the go coders"
+   Tiers: ≥1025px desktop (unchanged) · 769-1024px tablet ·
+          481-768px phone-landscape/small-tablet · ≤480px phone
+   All additive — desktop layout above is untouched.
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Mobile menu button (hidden on desktop) ─────────────────── */
+.mobile-menu-btn {
+  display: none;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  width: 36px; height: 36px;
+  align-items: center; justify-content: center;
+  font-size: 18px; cursor: pointer;
+  flex-shrink: 0;
 }
+.mobile-sidebar-close { display: none; }
+.mobile-sidebar-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(4,12,24,.6);
+  backdrop-filter: blur(2px);
+  z-index: 250;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.mobile-sidebar-overlay.show {
+  display: block;
+  opacity: 1;
+}
+body.mobile-nav-open { overflow: hidden; }
+
+/* ════════════════════════════════════════════════════════════
+   TABLET TIER — 769px to 1024px
+   Narrower sidebar, narrower results column, larger touch targets
+═══════════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .pro-layout { grid-template-columns: 76px 1fr; }
+  .pro-sidebar { padding: 12px 6px; }
+  .side-section-label { display: none; }
+  .side-nav-item {
+    justify-content: center;
+    padding: 12px 6px;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 9px;
+    text-align: center;
+  }
+  .side-nav-item i { font-size: 18px; }
+  .side-nav-item span:not(.pro-feature-badge) { display: none; }
+  .pro-feature-badge { position: absolute; top: 4px; right: 4px; }
+  .side-nav-item { position: relative; }
+  #sidebarTrialCTA, #sidebarEmail, #sidebarEmail + a,
+  div[style*="Signed in as"] { display: none !important; }
+
+  .scanner-area { grid-template-columns: 1fr 300px; }
+
+  .topbar-center { gap: 4px; }
+  .scan-mode-btn {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .scan-mode-btn i { font-size: 13px; }
+
+  .detail-drawer { width: 360px; }
+
+  .ai-panel-inner, .repo-panel-inner { padding: 0 20px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   PHONE / SMALL TABLET TIER — ≤768px
+   Sidebar becomes slide-out drawer, topbar mode tabs scroll
+   horizontally, scanner stacks vertically, drawer goes full-screen
+═══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  html, body { overflow-x: hidden; }
+
+  /* ── Layout: single column, sidebar off-canvas ── */
+  .pro-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  /* ── Topbar ── */
+  .pro-topbar {
+    padding: 0 10px;
+    gap: 8px;
+    height: 52px;
+    flex-wrap: nowrap;
+  }
+  .mobile-menu-btn { display: flex; }
+  .pro-brand { font-size: 13px; gap: 6px; }
+  .pro-brand span:first-of-type { display: none; } /* hide "SafeAIScan" text wordmark, keep icon+badge */
+  .pro-brand .pro-badge-tag { display: none; }
+
+  /* Topbar mode tabs: horizontal scroll instead of center-flex/wrap */
+  .topbar-center {
+    position: absolute;
+    left: 0; right: 0; top: 52px;
+    flex: none;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--border);
+    scrollbar-width: none;
+  }
+  .topbar-center::-webkit-scrollbar { display: none; }
+  .scan-mode-btn {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    padding: 8px 12px;
+    font-size: 12px;
+    min-height: 40px;
+  }
+
+  /* Push main content down to clear the now-wrapped topbar+tabs */
+  .pro-layout { grid-template-rows: 96px 1fr; }
+
+  .topbar-right { gap: 6px; }
+  .usage-pill { font-size: 10px; padding: 4px 8px; }
+  .usage-pill span:not(.usage-dot) { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hide-on-mobile { display: none !important; }
+
+  /* ── Sidebar becomes a slide-out drawer ── */
+  .pro-sidebar {
+    position: fixed;
+    top: 0; bottom: 0; left: 0;
+    width: 78vw;
+    max-width: 300px;
+    z-index: 260;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    box-shadow: 8px 0 32px rgba(0,0,0,.5);
+    padding-top: 56px;
+  }
+  .pro-sidebar.mobile-open { transform: translateX(0); }
+  .mobile-sidebar-close {
+    display: flex;
+    position: absolute; top: 10px; right: 10px;
+    background: var(--bg-3); border: 1px solid var(--border);
+    color: var(--text-muted); border-radius: 8px;
+    width: 32px; height: 32px;
+    align-items: center; justify-content: center;
+    font-size: 14px; cursor: pointer;
+  }
+  .side-section-label { display: block; }
+  .side-nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    font-size: 14px;
+    padding: 12px 10px;
+    min-height: 44px;
+  }
+  .side-nav-item i { font-size: 16px; }
+  .side-nav-item span:not(.pro-feature-badge) { display: inline; }
+  #sidebarTrialCTA, #sidebarEmail, div[style*="Signed in as"] { display: block !important; }
+
+  /* ── Scanner area: stack editor above results ── */
+  .scanner-area {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+    overflow: visible;
+  }
+  .scanner-left {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    min-height: 280px;
+  }
+  .scanner-right {
+    height: auto;
+    max-height: 60vh;
+  }
+  textarea.code-editor {
+    font-size: 16px;        /* prevents iOS auto-zoom on focus */
+    padding: 12px 14px;
+    min-height: 220px;
+  }
+
+  /* ── Editor header: wrap actions onto their own row ── */
+  .editor-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .editor-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+  .btn-sm-action {
+    padding: 8px 12px;
+    font-size: 12px;
+    min-height: 40px;
+  }
+  .lang-select { min-height: 36px; }
+
+  /* ── Results summary: 2x2 grid instead of 1x4 row ── */
+  .results-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 12px;
+  }
+  .sum-stat {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 4px;
+  }
+
+  /* ── Security score card ── */
+  #securityScoreCard { padding: 12px; }
+
+  /* ── Repo health: 2-column grid on phones ── */
+  #repoHealthCard div[style*="grid-template-columns:repeat(auto-fit"],
+  div[style*="grid-template-columns:repeat(auto-fit,minmax(90px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* ── Detail drawer: full screen with swipe handle ── */
+  .detail-drawer {
+    top: 0;
+    width: 100%;
+    padding: 20px 16px 24px;
+    border-left: none;
+  }
+  .detail-drawer::before {
+    content: '';
+    display: block;
+    width: 40px; height: 4px;
+    background: var(--border-bright);
+    border-radius: 99px;
+    margin: 0 auto 12px;
+  }
+  .drawer-close {
+    width: 36px; height: 36px;
+    top: 16px; right: 16px;
+    font-size: 18px;
+  }
+
+  /* AI auto-fix before/after: stack into single column */
+  .vuln-details > div[style*="grid-template-columns:1fr 1fr"],
+  div[style*="display:grid;grid-template-columns:1fr 1fr;gap:8px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Repo / ZIP / AI / CVE panels: full-width with safe padding ── */
+  .repo-panel-inner, .ai-panel-inner {
+    max-width: 100%;
+    margin: 16px auto;
+    padding: 0 14px;
+  }
+  .panel-card { padding: 18px; border-radius: 14px; }
+  .zip-drop-zone { padding: 28px 16px; }
+  .zip-icon { font-size: 36px; }
+
+  /* ── Reports grid: single column ── */
+  .reports-grid {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  /* ── CVE / dependency tables: horizontal scroll wrapper ── */
+  .dep-table { display: block; overflow-x: auto; white-space: nowrap; }
+
+  /* ── Log strip: allow wrap, smaller font ── */
+  .log-strip { font-size: 10px; padding: 4px 12px; }
+
+  /* ── Toasts: full width, anchored to bottom ── */
+  .toast-area {
+    left: 12px; right: 12px; bottom: 12px;
+    align-items: stretch;
+  }
+  .toast-item { max-width: none; width: 100%; }
+
+  /* ── Touch target floor for any interactive element ── */
+  button, .btn, a.btn, select, input[type="text"], input[type="url"],
+  input[type="email"], input[type="password"], input[type="file"] + label {
+    min-height: 40px;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   SMALL PHONE TIER — ≤480px
+   Tighter spacing, single-column everything, smaller type scale
+═══════════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+  .pro-brand { font-size: 12px; }
+  .pro-layout { grid-template-rows: 90px 1fr; }
+
+  .topbar-center { top: 48px; padding: 6px 8px; }
+  .pro-topbar { height: 48px; }
+
+  .scan-mode-btn {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .scan-mode-btn span, .scan-mode-btn { white-space: nowrap; }
+
+  .usage-pill span:not(.usage-dot) { max-width: 56px; }
+
+  textarea.code-editor { font-size: 15px; padding: 10px 12px; }
+
+  .results-summary { grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; }
+  .sum-num { font-size: 17px; }
+
+  #securityScoreCard svg { width: 48px; height: 48px; }
+
+  #repoHealthCard div[style*="grid-template-columns:repeat(auto-fit"],
+  div[style*="grid-template-columns:repeat(auto-fit,minmax(90px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .panel-card { padding: 14px; border-radius: 12px; }
+  .panel-card-title { font-size: 15px; }
+
+  .results-list { padding: 6px; }
+  .finding-card { padding: 10px; }
+
+  .drawer-fix-box, .drawer-field-value { font-size: 12px; padding: 8px 10px; }
+
+  .editor-actions { gap: 4px; }
+  .btn-sm-action { padding: 8px 10px; font-size: 11px; }
+  .btn-sm-action span { display: none; } /* icon-only buttons on tiny screens */
+  .btn-sm-action i { font-size: 14px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   LANDSCAPE PHONES — short viewport height
+═══════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+  .pro-layout { grid-template-rows: 48px 1fr; }
+  .topbar-center {
+    position: static;
+    top: auto;
+    flex: 1;
+    justify-content: center;
+    border-bottom: none;
+    padding: 0;
+  }
+  .pro-topbar { height: 48px; flex-wrap: nowrap; }
+  .scanner-left { min-height: 180px; }
+  .scanner-right { max-height: 40vh; }
+  textarea.code-editor { min-height: 140px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   TOUCH DEVICES — applies regardless of screen size
+═══════════════════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  .scan-mode-btn, .side-nav-item, .btn-sm-action,
+  .finding-card, .drawer-close, .mobile-menu-btn,
+  .copy-btn, .seats-btn, .method-tab {
+    min-height: 40px;
+  }
+  .finding-card { padding: 14px 12px; }
+  /* Slightly larger tap targets for chevrons / icon-only buttons */
+  .drawer-close, .mobile-menu-btn, .mobile-sidebar-close {
+    width: 40px; height: 40px;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -532,6 +896,9 @@ input[type=file]#zipInput { display: none; }
 
   <!-- ── TOPBAR ─────────────────────────────────────────────── -->
   <header class="pro-topbar">
+    <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" aria-label="Open menu">
+      <i class="bi bi-list"></i>
+    </button>
     <a href="dashboard.html" class="pro-brand" style="text-decoration:none;">
       <i class="bi bi-shield-lock-fill" style="color:var(--sg);font-size:16px;"></i>
       <span><span style="color:var(--accent);">Safe</span><span>AI</span><span style="color:var(--sg);">Scan</span></span>
@@ -564,7 +931,7 @@ input[type=file]#zipInput { display: none; }
         <span class="usage-dot"></span>
         <span id="usagePill">Unlimited scans</span>
       </div>
-      <a href="dashboard.html" class="btn-sm-action btn-scan-secondary" style="text-decoration:none;font-size:12px;padding:6px 12px;border-radius:8px;">
+      <a href="dashboard.html" class="btn-sm-action btn-scan-secondary hide-on-mobile" style="text-decoration:none;font-size:12px;padding:6px 12px;border-radius:8px;">
         <i class="bi bi-grid"></i> Dashboard
       </a>
       <button class="btn-sm-action btn-scan-secondary" onclick="doLogout()" style="padding:6px 10px;">
@@ -573,8 +940,14 @@ input[type=file]#zipInput { display: none; }
     </div>
   </header>
 
+  <!-- ── MOBILE SIDEBAR OVERLAY ─────────────────────────────── -->
+  <div class="mobile-sidebar-overlay" id="mobileSidebarOverlay" onclick="closeMobileSidebar()"></div>
+
   <!-- ── SIDEBAR ────────────────────────────────────────────── -->
-  <aside class="pro-sidebar">
+  <aside class="pro-sidebar" id="proSidebar">
+    <button class="mobile-sidebar-close" id="mobileSidebarClose" onclick="closeMobileSidebar()" aria-label="Close menu">
+      <i class="bi bi-x-lg"></i>
+    </button>
     <div class="side-section-label">Scanner</div>
     <button class="side-nav-item active" id="sb-code"    onclick="setMode('code')"><i class="bi bi-code-slash"></i>Code Scanner</button>
     <button class="side-nav-item" id="sb-zip"     onclick="setMode('zip')"><i class="bi bi-file-zip"></i>ZIP Upload<span class="pro-feature-badge">PRO</span></button>
@@ -992,7 +1365,41 @@ function setMode(mode) {
     loadReports();
     loadSecurityTrendChart();  // PHASE 1
   }
+  // Mobile: close the slide-out sidebar after navigating
+  closeMobileSidebar();
+  // Mobile: scroll the active topbar mode button into view (horizontal scroll tabs)
+  var activeBtn = document.getElementById('mode-' + mode);
+  if (activeBtn && activeBtn.scrollIntoView) {
+    activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
 }
+
+/* ── MOBILE SIDEBAR TOGGLE ──────────────────────────────────── */
+function toggleMobileSidebar() {
+  var sidebar  = document.getElementById('proSidebar');
+  var overlay  = document.getElementById('mobileSidebarOverlay');
+  if (!sidebar) return;
+  var isOpen = sidebar.classList.contains('mobile-open');
+  if (isOpen) closeMobileSidebar();
+  else {
+    sidebar.classList.add('mobile-open');
+    if (overlay) overlay.classList.add('show');
+    document.body.classList.add('mobile-nav-open');
+  }
+}
+function closeMobileSidebar() {
+  var sidebar = document.getElementById('proSidebar');
+  var overlay = document.getElementById('mobileSidebarOverlay');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.remove('show');
+  document.body.classList.remove('mobile-nav-open');
+}
+
+// Auto-close mobile sidebar if the window is resized/rotated past the
+// phone/tablet breakpoint (e.g. rotating a tablet to landscape)
+window.addEventListener('resize', function() {
+  if (window.innerWidth > 768) closeMobileSidebar();
+});
 
 /* ── PHASE 1: Security Trend Analytics (Chart.js) ──────────── */
 var securityTrendChart = null;
@@ -1457,8 +1864,44 @@ function openDrawer(idx) {
   document.getElementById('detailDrawer').classList.add('open');
 }
 function closeDrawer() {
-  document.getElementById('detailDrawer').classList.remove('open');
+  var drawer = document.getElementById('detailDrawer');
+  drawer.classList.remove('open');
+  drawer.style.transform = '';
+  drawer.style.transition = '';
 }
+
+/* ── MOBILE: Swipe-down-to-close for the detail drawer ─────── */
+(function setupDrawerSwipe() {
+  var drawer = document.getElementById('detailDrawer');
+  if (!drawer) return;
+  var startY = 0, currentY = 0, dragging = false;
+
+  drawer.addEventListener('touchstart', function(e) {
+    // Only start swipe-to-close if touch begins near the top of the drawer
+    // (avoids hijacking scroll gestures inside the drawer content)
+    if (e.touches[0].clientY - drawer.getBoundingClientRect().top > 60) return;
+    startY = e.touches[0].clientY;
+    dragging = true;
+    drawer.style.transition = 'none';
+  }, { passive: true });
+
+  drawer.addEventListener('touchmove', function(e) {
+    if (!dragging) return;
+    currentY = e.touches[0].clientY;
+    var delta = Math.max(0, currentY - startY);
+    if (delta > 0) drawer.style.transform = 'translateY(' + delta + 'px)';
+  }, { passive: true });
+
+  drawer.addEventListener('touchend', function() {
+    if (!dragging) return;
+    dragging = false;
+    drawer.style.transition = '';
+    var delta = Math.max(0, currentY - startY);
+    drawer.style.transform = '';
+    if (delta > 100) closeDrawer();
+    startY = 0; currentY = 0;
+  });
+})();
 
 /* ── ZIP UPLOAD ───────────────────────────────────────────── */
 function setupZipDrop() {

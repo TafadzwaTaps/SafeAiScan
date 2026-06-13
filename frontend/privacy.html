@@ -29,7 +29,16 @@
 .highlight-box strong{color:var(--text-primary);}
 .legal-footer{border-top:1px solid var(--border);padding-top:24px;margin-top:48px;font-size:12px;color:var(--text-faint);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;}
 .legal-footer a{color:var(--accent);text-decoration:none;}
-@media(max-width:600px){.legal-wrap{padding:32px 16px 60px;}.legal-nav{padding:0 16px;}}
+@media(max-width:600px){
+  .legal-wrap{padding:32px 16px 60px;}
+  .legal-nav{padding:0 16px;}
+  .legal-toc a{display:inline-block;padding:4px 0;}
+  .legal-section h2{font-size:16px;}
+  .legal-title{font-size:24px;}
+}
+@media (pointer: coarse) {
+  .legal-toc a{padding:6px 0;}
+}
 </style>
 </head>
 <body>

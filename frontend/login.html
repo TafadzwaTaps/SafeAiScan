@@ -126,6 +126,22 @@
       border-radius: 10px;
     }
     .reset-panel.open { display: block; animation: popIn 0.2s ease both; }
+
+    /* ── Mobile: larger touch targets for tabs, inputs, eye toggle ── */
+    @media (max-width: 480px), (pointer: coarse) {
+      .auth-tab { padding: 11px 8px; font-size: 13px; }
+      .input-wrap .btn-eye {
+        padding: 10px;
+        right: 2px;
+        font-size: 16px;
+      }
+      .input-wrap .form-control { min-height: 44px; }
+      .feature-item { font-size: 13px; }
+    }
+    @media (max-width: 380px) {
+      .login-brand { font-size: 18px; }
+      .login-tagline { font-size: 12px; }
+    }
   </style>
 </head>
 

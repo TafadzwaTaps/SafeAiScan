@@ -34,6 +34,9 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+  @media (max-width: 480px) {
+    .stat-num { font-size: 26px; }
+  }
 
   .badge-new {
     background: rgba(91,123,254,0.15);
@@ -296,8 +299,8 @@
 </footer>
 
 <!-- REGISTER MODAL -->
-<div id="registerModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
-  <div class="login-card" style="max-width:420px;width:100%;margin:20px;animation:popIn 0.25s ease both;">
+<div id="registerModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);align-items:center;justify-content:center;overflow-y:auto;padding:20px 0;">
+  <div class="login-card" style="max-width:420px;width:100%;margin:20px;animation:popIn 0.25s ease both;max-height:90vh;overflow-y:auto;">
 
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
       <div class="login-brand" style="font-size:18px;"><span style="color:var(--accent);">Safe</span>AIScan</div>
