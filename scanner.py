@@ -67,9 +67,10 @@ SKIP_DIRS = {
 class _Pattern:
     label:       str
     regex:       re.Pattern
-    severity:    str   # HIGH | MEDIUM | LOW
+    severity:    str   # HIGH | MEDIUM | LOW | CRITICAL
     description: str
     fix:         str
+    category:    str = ""   # NEW: optional category, e.g. "Secrets Exposure"
 
 
 # Patterns are evaluated in order. HIGH severity patterns come first.
@@ -219,6 +220,141 @@ _PATTERNS: list[_Pattern] = [
         "Supabase service role key found. Bypasses Row Level Security — treat as root credential.",
         "Store as SUPABASE_KEY env var. Never expose the service role key in frontend code."),
 
+    # ── CRITICAL: .env files and named environment secrets ────
+    #  ENTERPRISE SECRET DETECTION ENGINE — Phase 1
+    #  Detects specific high-value env var names regardless of value shape.
+
+    _Pattern(".env File Included",
+        re.compile(r''),   # matched on filename, not content — handled separately
+        "CRITICAL",
+        ".env file found in the upload or repository. Environment files often "
+        "contain live production credentials and should never be committed.",
+        "Add .env, .env.local, .env.production, etc. to .gitignore. "
+        "Commit only .env.example with placeholder values.",
+        category="Secrets Exposure"),
+
+    _Pattern("OPENAI_API_KEY Assignment",
+        re.compile(r'(?i)\bOPENAI_API_KEY\s*[=:]\s*["\']?(sk-[A-Za-z0-9\-_]{10,})["\']?'),
+        "CRITICAL",
+        "OPENAI_API_KEY found with a live-looking value in source or env file.",
+        "Revoke at platform.openai.com/api-keys. Inject via deployment secrets, never commit.",
+        category="Secrets Exposure"),
+
+    _Pattern("SUPABASE_SERVICE_ROLE_KEY Assignment",
+        re.compile(r'(?i)\bSUPABASE_SERVICE_ROLE_KEY\s*[=:]\s*["\']?(eyJ[A-Za-z0-9\-_.=]{10,})["\']?'),
+        "CRITICAL",
+        "SUPABASE_SERVICE_ROLE_KEY found. This key bypasses Row Level Security entirely "
+        "and is equivalent to a root database credential.",
+        "Rotate immediately in Supabase project settings → API. Never expose to the frontend.",
+        category="Secrets Exposure"),
+
+    _Pattern("SUPABASE_ANON_KEY Assignment",
+        re.compile(r'(?i)\bSUPABASE_ANON_KEY\s*[=:]\s*["\']?(eyJ[A-Za-z0-9\-_.=]{10,})["\']?'),
+        "MEDIUM",
+        "SUPABASE_ANON_KEY found in source. This key is meant to be public but its "
+        "presence here may indicate a misconfigured .env file leak.",
+        "Verify Row Level Security policies are correctly enforced; this key alone "
+        "should not grant unintended access.",
+        category="Secrets Exposure"),
+
+    _Pattern("JWT_SECRET Assignment",
+        re.compile(r'(?i)\bJWT_SECRET\s*[=:]\s*["\']'
+                   r'(?!your|example|changeme|placeholder|xxx)([A-Za-z0-9!@#$%^&*\-_+=]{8,})["\']'),
+        "CRITICAL",
+        "JWT_SECRET found with a live-looking value. Anyone with this value can forge "
+        "valid authentication tokens for any user.",
+        "Generate a new strong random secret (32+ bytes). Store only in deployment secrets.",
+        category="Secrets Exposure"),
+
+    _Pattern("SECRET_KEY Assignment",
+        re.compile(r'(?i)\bSECRET_KEY\s*[=:]\s*["\']'
+                   r'(?!your|example|changeme|placeholder|xxx)([A-Za-z0-9!@#$%^&*\-_+=]{8,})["\']'),
+        "CRITICAL",
+        "SECRET_KEY found with a live-looking value. This key signs sessions/tokens — "
+        "exposure allows session forgery and cookie tampering.",
+        "Rotate the secret and store it only in deployment environment variables.",
+        category="Secrets Exposure"),
+
+    _Pattern("DATABASE_URL Assignment",
+        re.compile(r'(?i)\bDATABASE_URL\s*[=:]\s*["\']?'
+                   r'(postgres|mysql|mongodb|redis|mssql)://[^\s\'"]{10,}["\']?'),
+        "CRITICAL",
+        "DATABASE_URL found with embedded connection details — likely includes "
+        "a username and password for your production database.",
+        "Move to deployment secrets. Rotate database credentials if this was committed.",
+        category="Secrets Exposure"),
+
+    _Pattern("PAYPAL_CLIENT_SECRET Assignment",
+        re.compile(r'(?i)\bPAYPAL_(CLIENT_SECRET|SECRET)\s*[=:]\s*["\']'
+                   r'(?!your|example|changeme|placeholder|xxx)([A-Za-z0-9\-_]{10,})["\']'),
+        "CRITICAL",
+        "PayPal client secret found with a live-looking value. Allows full API access "
+        "to your PayPal app, including payment operations.",
+        "Rotate in PayPal Developer Dashboard immediately. Store only in deployment secrets.",
+        category="Secrets Exposure"),
+
+    _Pattern("AWS_ACCESS_KEY_ID Assignment",
+        re.compile(r'(?i)\bAWS_ACCESS_KEY_ID\s*[=:]\s*["\']?((AKIA|ASIA|AROA|AIDA)[A-Z0-9]{16})["\']?'),
+        "CRITICAL",
+        "AWS_ACCESS_KEY_ID found with a live-looking value.",
+        "Deactivate in IAM console immediately. Use IAM roles or short-lived STS credentials.",
+        category="Secrets Exposure"),
+
+    _Pattern("AWS_SECRET_ACCESS_KEY Assignment",
+        re.compile(r'(?i)\bAWS_SECRET_ACCESS_KEY\s*[=:]\s*["\']?([A-Za-z0-9/+]{40})["\']?'),
+        "CRITICAL",
+        "AWS_SECRET_ACCESS_KEY found with a live-looking value. Combined with the "
+        "access key ID, this grants full programmatic AWS access.",
+        "Rotate in IAM immediately. Use environment-injected credentials or instance profiles.",
+        category="Secrets Exposure"),
+
+    _Pattern("GITHUB_TOKEN Assignment",
+        re.compile(r'(?i)\bGITHUB_TOKEN\s*[=:]\s*["\']?((ghp|gho|github_pat)_[A-Za-z0-9_]{20,})["\']?'),
+        "CRITICAL",
+        "GITHUB_TOKEN found with a live-looking value — grants repository or org access "
+        "depending on token scope.",
+        "Revoke at github.com/settings/tokens. Use repository/organization secrets in CI.",
+        category="Secrets Exposure"),
+
+    _Pattern("HF_API_KEY Assignment",
+        re.compile(r'(?i)\bHF_API_KEY\s*[=:]\s*["\']?(hf_[A-Za-z0-9]{20,})["\']?'),
+        "HIGH",
+        "HF_API_KEY (Hugging Face) found with a live-looking value.",
+        "Revoke at huggingface.co/settings/tokens. Store only in deployment secrets.",
+        category="Secrets Exposure"),
+
+    # ── HIGH: Bearer tokens, generic JWTs, SSH keys ────────────
+
+    _Pattern("Bearer Token Hardcoded",
+        re.compile(r'(?i)Authorization["\']?\s*[:=]\s*["\']Bearer\s+[A-Za-z0-9\-_.=]{16,}["\']'),
+        "HIGH",
+        "A Bearer authentication token is hardcoded in source code.",
+        "Move the token to an environment variable and inject it at request time.",
+        category="Secrets Exposure"),
+
+    _Pattern("JWT Token Hardcoded",
+        re.compile(r'\beyJ[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_]{10,}\b'),
+        "HIGH",
+        "A JWT (JSON Web Token) is hardcoded in source code. Even expired tokens can "
+        "leak information about claims, audiences, and signing algorithms.",
+        "Remove hardcoded tokens. Generate tokens dynamically at runtime and never commit them.",
+        category="Secrets Exposure"),
+
+    _Pattern("SSH Private Key",
+        re.compile(r'-----BEGIN OPENSSH PRIVATE KEY-----'),
+        "CRITICAL",
+        "An OpenSSH private key is embedded in source code — grants direct server/SSH access.",
+        "Remove immediately and rotate the corresponding public key on all servers. "
+        "Store private keys outside the repo, in a secrets manager.",
+        category="Secrets Exposure"),
+
+    _Pattern("RSA Private Key",
+        re.compile(r'-----BEGIN RSA PRIVATE KEY-----'),
+        "CRITICAL",
+        "An RSA private key is embedded in source code.",
+        "Remove immediately and rotate the key pair. Store private keys in a secrets manager.",
+        category="Secrets Exposure"),
+
     # ── MEDIUM: Suspicious assignments ────────────────────────
 
     _Pattern("Hardcoded Password",
@@ -291,6 +427,7 @@ class Finding:
     description: str
     fix:         str
     match:       str = ""   # redacted snippet
+    category:    str = ""   # NEW: e.g. "Secrets Exposure", "Dependency Vulnerability"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -337,7 +474,7 @@ def _scan_file(abs_path: str, rel_path: str) -> list[Finding]:
         findings.append(Finding(
             type=pat.label, file=rel_path, line=0,
             severity=pat.severity, description=pat.description,
-            fix=pat.fix, match=basename,
+            fix=pat.fix, match=basename, category=pat.category,
         ))
 
     # ── Content-based scan ────────────────────────────────────
@@ -367,6 +504,7 @@ def _scan_file(abs_path: str, rel_path: str) -> list[Finding]:
                     description = pat.description,
                     fix         = pat.fix,
                     match       = _redact(match.group(0)),
+                    category    = pat.category,
                 ))
 
     return findings
@@ -378,7 +516,7 @@ def scan_directory(base_dir: str) -> list[Finding]:
     Returns a list of Finding objects sorted HIGH → MEDIUM → LOW.
     """
     all_findings: list[Finding] = []
-    order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
 
     for root, dirs, files in os.walk(base_dir):
         # Prune ignored dirs so os.walk never descends into them
@@ -406,6 +544,8 @@ def _risk_level(findings: list[Finding]) -> str:
     if not findings:
         return "NONE"
     severities = {f.severity for f in findings}
+    if "CRITICAL" in severities:
+        return "CRITICAL"
     if "HIGH" in severities:
         return "HIGH"
     if "MEDIUM" in severities:
@@ -417,7 +557,9 @@ def _risk_level(findings: list[Finding]) -> str:
 #  RESULT BUILDER
 # ──────────────────────────────────────────────────────────────
 
-def build_result(findings: list[Finding], source: str, is_pro: bool) -> dict:
+def build_result(findings: list[Finding], source: str, is_pro: bool,
+                  dependency_findings: list | None = None,
+                  dependency_count: int = 0) -> dict:
     """
     Assemble the final API response dict.
 
@@ -425,32 +567,55 @@ def build_result(findings: list[Finding], source: str, is_pro: bool) -> dict:
     Pro users:  see everything.
 
     Args:
-        findings:  All Finding objects from the scan.
-        source:    Human-readable label ("zip_upload" or a repo URL).
-        is_pro:    Whether the requesting user has a Pro account.
+        findings:            All Finding objects from the secret scan.
+        source:              Human-readable label ("zip_upload" or a repo URL).
+        is_pro:              Whether the requesting user has a Pro account.
+        dependency_findings: NEW (Phase 1) — optional list of dependency
+                              vulnerability dicts from dependency_scanner.py.
+                              Backward compatible: defaults to None.
+        dependency_count:    NEW (Phase 1) — total dependency count for the
+                              repository health card. Defaults to 0.
 
-    Returns a dict matching the documented output schema.
+    Returns a dict matching the documented output schema, PLUS new
+    Phase 1 fields: security_score, repo_health, and (for findings)
+    owasp/nist/auto_fix enrichment when security_engine is available.
     """
     risk       = _risk_level(findings)
     total      = len(findings)
-    counts     = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    counts     = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
     for f in findings:
         counts[f.severity] = counts.get(f.severity, 0) + 1
 
+    finding_dicts = [f.to_dict() for f in findings]
+
+    # ── Phase 1: compliance + auto-fix enrichment (additive) ───
+    # Imported lazily to avoid a hard dependency if security_engine.py
+    # is not present in older deployments — falls back gracefully.
+    try:
+        from security_engine import enrich_findings_full, compute_security_score, compute_repo_health
+        finding_dicts = enrich_findings_full(finding_dicts)
+        score_info    = compute_security_score(finding_dicts + (dependency_findings or []))
+        repo_health   = compute_repo_health(finding_dicts, dependency_findings, dependency_count)
+    except Exception as _exc:  # pragma: no cover — defensive fallback
+        logger.debug(f"security_engine enrichment unavailable: {_exc}")
+        score_info  = {"security_score": max(0, 100 - total * 10), "risk_level": "Moderate"}
+        repo_health = None
+
     if is_pro:
-        visible   = [f.to_dict() for f in findings]
+        visible   = finding_dicts
         truncated = False
     else:
-        visible   = [f.to_dict() for f in findings[:FREE_FINDINGS]]
+        visible   = finding_dicts[:FREE_FINDINGS]
         truncated = total > FREE_FINDINGS
 
-    return {
+    result = {
         "risk_level":     risk,
         "total_secrets":  total,
         "summary": {
-            "high":   counts["HIGH"],
-            "medium": counts["MEDIUM"],
-            "low":    counts["LOW"],
+            "critical": counts["CRITICAL"],
+            "high":     counts["HIGH"],
+            "medium":   counts["MEDIUM"],
+            "low":      counts["LOW"],
         },
         "source":    source,
         "findings":  visible,
@@ -459,7 +624,20 @@ def build_result(findings: list[Finding], source: str, is_pro: bool) -> dict:
             f"Upgrade to Pro to see all {total} findings and download the PDF report."
             if truncated else ""
         ),
+        # ── Phase 1 additions ──────────────────────────────────
+        "security_score": score_info["security_score"],
+        "score_risk_level": score_info["risk_level"],   # "Excellent"/"Good"/"Moderate"/"High Risk"/"Critical"
     }
+
+    if dependency_findings is not None or dependency_count:
+        dep_dicts = [d if isinstance(d, dict) else d.to_dict() for d in (dependency_findings or [])]
+        result["dependency_findings"] = dep_dicts if is_pro else dep_dicts[:FREE_FINDINGS]
+        result["dependency_count"]    = dependency_count
+
+    if repo_health is not None:
+        result["repo_health"] = repo_health
+
+    return result
 
 
 # ──────────────────────────────────────────────────────────────
@@ -501,7 +679,21 @@ def scan_zip(zip_path: str, is_pro: bool = True) -> dict:
             zf.extractall(extract_dir)
 
         findings = scan_directory(extract_dir)
-        return build_result(findings, "zip_upload", is_pro)
+
+        dependency_findings = None
+        dependency_count    = 0
+        try:
+            from dependency_scanner import scan_dependencies, count_dependencies
+            dependency_findings = scan_dependencies(extract_dir)
+            dependency_count    = count_dependencies(extract_dir)
+        except Exception as _exc:  # pragma: no cover — defensive fallback
+            logger.debug(f"dependency_scanner unavailable: {_exc}")
+
+        return build_result(
+            findings, "zip_upload", is_pro,
+            dependency_findings=dependency_findings,
+            dependency_count=dependency_count,
+        )
 
     finally:
         shutil.rmtree(extract_dir, ignore_errors=True)
@@ -597,6 +789,12 @@ def scan_repo(repo_url: str, is_pro: bool = True) -> dict:
     """
     Clone a GitHub repo, validate size, scan for secrets, clean up, return result.
 
+    Phase 1: also runs the dependency vulnerability scanner over any
+    requirements.txt / package.json / lockfiles found in the repo, and
+    includes the results + dependency count in the returned dict via
+    build_result()'s new optional parameters. Falls back gracefully
+    (no dependency data) if dependency_scanner.py is unavailable.
+
     Returns:
         Result dict from build_result().
     """
@@ -604,6 +802,20 @@ def scan_repo(repo_url: str, is_pro: bool = True) -> dict:
     try:
         validate_repo_size(clone_dir)
         findings = scan_directory(clone_dir)
-        return build_result(findings, repo_url, is_pro)
+
+        dependency_findings = None
+        dependency_count    = 0
+        try:
+            from dependency_scanner import scan_dependencies, count_dependencies
+            dependency_findings = scan_dependencies(clone_dir)
+            dependency_count    = count_dependencies(clone_dir)
+        except Exception as _exc:  # pragma: no cover — defensive fallback
+            logger.debug(f"dependency_scanner unavailable: {_exc}")
+
+        return build_result(
+            findings, repo_url, is_pro,
+            dependency_findings=dependency_findings,
+            dependency_count=dependency_count,
+        )
     finally:
         shutil.rmtree(clone_dir, ignore_errors=True)

@@ -1,0 +1,1438 @@
+// ============================================================
+//  SafeAIScan — Dashboard App Logic v2.0
+// ============================================================
+
+let scanProgressInterval = null;
+let findings = [];
+let lastScanResult = {};   // Phase 1: holds security_score/repo_health/etc for PDF export
+let currentContext = "";
+let usageChart = null;
+let riskChart  = null;
+
+// ============================================================
+//  CODE SCAN
+// ============================================================
+async function scan() {
+  const code = document.getElementById("code")?.value?.trim();
+  if (!code) { showToast("Paste some code to analyze", "warning"); return; }
+
+  setLoader(true);
+  startLiveProgress();
+
+  try {
+    const data = await analyzeCode(code);
+    findings = data.findings || [];
+    lastScanResult = data;  // Phase 1: cache full result for executive PDF export
+
+    renderAIInsights(data);
+    renderVulnerabilities(data);
+    updateStatus(findings);
+    renderSeverityTabs(data);
+
+    // Update usage counter from scan response — no extra request needed
+    const plan      = (localStorage.getItem("user_plan") || "free").toLowerCase();
+    const limits    = getUserLimits() || {};
+    const dailyLimit = limits.daily_scans ?? (plan === "free" ? 10 : -1);
+    updateUsageMeter(data.usage_today ?? 0, data.usage_limit ?? dailyLimit);
+
+    // Refresh usage chart with new data point, then render risk distribution
+    loadUsageChart();
+    loadRiskChart(findings);
+
+    // Phase 1: weighted security score (separate from old findings-count "score")
+    if (typeof data.security_score === "number") {
+      renderSecurityScore(data.security_score, data.score_risk_level);
+    }
+    // Phase 1: refresh the 30-day security trend chart with the new point
+    if (typeof loadSecurityTrendChart === "function") loadSecurityTrendChart();
+
+    if (findings.length > 0) enrichCVE(findings);
+
+    stopLiveProgress();
+    showToast(
+      `Scan complete — ${findings.length} issue(s) found`,
+      findings.length > 0 ? "warning" : "success"
+    );
+
+  } catch (err) {
+    console.error(err);
+    stopLiveProgress();
+
+    if (err instanceof PlanError) {
+      showUpgradePrompt(err.message);
+    } else if (err instanceof LimitError) {
+      showToast(err.message, "warning");
+      showLimitBanner();
+    } else {
+      showToast("Scan failed: " + err.message, "error");
+    }
+  } finally {
+    setLoader(false);
+  }
+}
+
+// ============================================================
+//  REPO SCAN
+// ============================================================
+async function scanRepo() {
+  // Check plan before even prompting
+  // All users can scan repos — backend limits by daily scan count
+  // Pro trial and Pro get unlimited; free gets 2 repos/day
+
+  const repoUrl = prompt("Enter GitHub repo URL (https://github.com/user/repo):");
+  if (!repoUrl?.trim()) return;
+
+  if (!repoUrl.startsWith("https://github.com/")) {
+    showToast("Only GitHub HTTPS URLs are supported", "warning");
+    return;
+  }
+
+  setLoader(true);
+  showToast("Queuing repo scan…", "info");
+
+  try {
+    const data = await scanRepoAPI(repoUrl);
+    showToast(`Scan queued · Task: ${data.task_id}`, "success");
+    pollTask(data.task_id);
+  } catch (err) {
+    console.error(err);
+    if (err instanceof PlanError) {
+      showUpgradePrompt(err.message);
+    } else {
+      showToast("Repo scan failed: " + err.message, "error");
+    }
+  } finally {
+    setLoader(false);
+  }
+}
+
+// ============================================================
+//  TASK POLLING
+// ============================================================
+async function pollTask(taskId) {
+  const states = { CLONING: 15, VALIDATING: 35, SCANNING: 65, FINALIZING: 88, DONE: 100, FAILED: 0 };
+  const bar   = document.getElementById("scanProgressBar");
+  const text  = document.getElementById("scanProgressText");
+  let attempts = 0;
+
+  const interval = setInterval(async () => {
+    attempts++;
+    if (attempts > 120) { // 5 min max
+      clearInterval(interval);
+      showToast("Scan is taking too long — check back later", "warning");
+      return;
+    }
+
+    try {
+      const data = await getTaskStatus(taskId);
+      const pct  = states[data.state] ?? 50;
+      if (bar)  bar.style.width  = pct + "%";
+      if (text) text.innerText   = data.message || data.state || "Processing…";
+
+      if (data.state === "DONE") {
+        clearInterval(interval);
+        // result_json is the build_result() dict — contains findings,
+        // security_score, repo_health, dependency_findings (Phase 1)
+        const result = data.result_json || data.result || {};
+        findings = result.findings || data.findings || [];
+        lastScanResult = result;  // Phase 1: cache full result for executive PDF export
+        renderVulnerabilities({ findings, ...result });
+        updateStatus(findings);
+        renderSeverityTabs({ findings, ...result });
+        loadRiskChart(findings);
+
+        // Phase 1: Repository Health Dashboard
+        if (result.repo_health) {
+          renderRepoHealth(result.repo_health);
+        }
+        // Phase 1: refresh security trend chart with new data point
+        if (typeof loadSecurityTrendChart === "function") loadSecurityTrendChart();
+
+        stopLiveProgress();
+        showToast("Repo scan complete!", "success");
+      }
+
+      if (data.state === "FAILED") {
+        clearInterval(interval);
+        if (text) text.innerText = "Scan failed";
+        stopLiveProgress();
+        const result = data.result_json || data.result || {};
+        showToast("Scan failed: " + (result.error || "Unknown error"), "error");
+      }
+
+    } catch (err) {
+      console.error("Poll error:", err);
+      clearInterval(interval);
+      if (text) text.innerText = "Poll error";
+    }
+  }, 2500);
+}
+
+// ============================================================
+//  LOADERS / PROGRESS
+// ============================================================
+function setLoader(active) {
+  const el = document.getElementById("loader");
+  if (!el) return;
+  el.classList.toggle("active", active);
+
+  // Disable scan buttons during scan
+  const btns = document.querySelectorAll(".scan-actions .btn");
+  btns.forEach(b => {
+    if (active) {
+      b.disabled = true;
+      b.style.opacity = "0.6";
+    } else {
+      b.disabled = false;
+      b.style.opacity = "";
+    }
+  });
+}
+
+function startLiveProgress() {
+  let progress = 2;
+  const bar  = document.getElementById("scanProgressBar");
+  const text = document.getElementById("scanProgressText");
+  const steps = [
+    "Parsing code…", "Running static analysis…", "Checking vulnerability patterns…",
+    "AI risk modeling…", "Mapping CVE database…", "Finalizing report…"
+  ];
+  let stepIdx = 0;
+
+  clearInterval(scanProgressInterval);
+  scanProgressInterval = setInterval(() => {
+    if (progress >= 95) { return; }
+    progress += Math.random() * 5 + 1.5;
+    if (bar)  bar.style.width = Math.min(95, progress) + "%";
+    if (text && Math.floor(stepIdx) < steps.length) {
+      text.innerText = steps[Math.floor(stepIdx)];
+      stepIdx += 0.35;
+    }
+  }, 340);
+}
+
+function stopLiveProgress() {
+  clearInterval(scanProgressInterval);
+  const bar  = document.getElementById("scanProgressBar");
+  const text = document.getElementById("scanProgressText");
+  if (bar)  bar.style.width = "100%";
+  if (text) text.innerText  = "Complete";
+  setTimeout(() => {
+    if (bar)  bar.style.width = "0%";
+    if (text) text.innerText  = "";
+  }, 2200);
+}
+
+// ============================================================
+//  USAGE METER
+// ============================================================
+function updateUsageMeter(used, limit) {
+  const el = document.getElementById("usage");
+  if (!el) return;
+
+  // -1 or very large = unlimited (Pro / pro_trial / enterprise)
+  const isUnlimited = !limit || limit < 0 || limit > 9000;
+
+  if (isUnlimited) {
+    // Show raw count with ∞ label — no progress bar
+    el.innerHTML = `
+      <span style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;">${used ?? 0}</span>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:4px;">/ ∞</span>
+      <div style="margin-top:4px;font-size:10px;color:var(--text-faint);">Unlimited scans</div>
+    `;
+  } else {
+    const safeUsed = Math.max(0, used ?? 0);
+    const pct      = Math.min(100, Math.round((safeUsed / limit) * 100));
+    const color    = pct >= 90 ? "var(--danger)" : pct >= 70 ? "var(--warning)" : "var(--success)";
+    el.innerHTML = `
+      <span style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;">${safeUsed}</span>
+      <span style="font-size:11px;color:var(--text-muted);">/ ${limit}</span>
+      <div style="margin-top:6px;height:4px;background:var(--bg-3);border-radius:99px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:99px;transition:width 0.4s;"></div>
+      </div>
+      <div style="margin-top:3px;font-size:10px;color:var(--text-faint);">${safeUsed} / ${limit} used today</div>
+    `;
+  }
+}
+
+function showLimitBanner() {
+  const plan = getUserPlan();
+  const existing = document.getElementById("limitBanner");
+  if (existing) return;
+
+  const banner = document.createElement("div");
+  banner.id = "limitBanner";
+  banner.style.cssText = `
+    background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.25);
+    border-radius:12px;padding:12px 16px;margin-bottom:14px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    animation:popIn 0.3s ease both;
+  `;
+  banner.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <i class="bi bi-exclamation-triangle" style="color:var(--warning);font-size:16px;"></i>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--warning);">Daily scan limit reached</div>
+        <div style="font-size:11px;color:var(--text-muted);">
+          ${plan === "free" ? "Free plan: 10 scans/day. " : ""}Upgrade for more scans.
+        </div>
+      </div>
+    </div>
+    <button onclick="showUpgradePrompt('You have reached your daily scan limit. Start your free 30-day Pro trial for unlimited scans.')" style="
+      background:linear-gradient(135deg,#fb923c,#ea580c);color:#fff;border:none;
+      padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;
+      font-family:'DM Sans',sans-serif;white-space:nowrap;">
+      Upgrade Now
+    </button>
+  `;
+
+  const scanPanel = document.querySelector(".scan-panel");
+  if (scanPanel) scanPanel.parentNode.insertBefore(banner, scanPanel);
+}
+
+// ============================================================
+//  DATA LOADERS
+// ============================================================
+async function loadUsage() {
+  const el = document.getElementById("usage");
+  if (!el) return;
+
+  try {
+    // Primary: /api/me gives us today's usage + limits in one request
+    // (avoids the /api/usage 403 for users without usage_tracking table access)
+    const data = await getMe();
+    const plan        = (data.plan || "free").toLowerCase();
+    const limits      = data.limits || {};
+    const dailyLimit  = limits.daily_scans ?? (plan === "free" ? 10 : -1);
+
+    // Fetch today's usage count separately — fall back to 0 gracefully
+    let todayCount = 0;
+    try {
+      const usageData = await getUsage();
+      const arr       = Array.isArray(usageData) ? usageData : [];
+      const today     = new Date().toISOString().slice(0, 10);
+      const record    = arr.find(d => (d.date || "").startsWith(today));
+      todayCount      = record?.request_count ?? record?.count ?? 0;
+    } catch {
+      // /api/usage may 403 — that's OK, just show 0
+    }
+
+    updateUsageMeter(todayCount, dailyLimit);
+  } catch (err) {
+    console.warn("[SafeAIScan] loadUsage:", err.message);
+    el.innerHTML = `<span style="font-size:22px;font-weight:700;font-family:'Syne',sans-serif;">—</span>`;
+  }
+}
+
+async function loadHistory() {
+  const list = document.getElementById("history");
+  if (!list) return;
+
+  list.innerHTML = [1,2,3].map(() =>
+    `<div class="skeleton mb-2" style="height:40px;border-radius:8px;"></div>`
+  ).join("");
+
+  try {
+    const data = await getHistory();
+    const arr  = Array.isArray(data) ? data : [];
+
+    if (!arr.length) {
+      list.innerHTML = `
+        <div style="text-align:center;padding:16px 8px;color:var(--text-faint);font-size:12px;">
+          <i class="bi bi-shield" style="display:block;font-size:20px;margin-bottom:6px;color:var(--border-bright);"></i>
+          No scans yet — run your first scan!
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = arr.slice(0, 8).map(item => {
+      const risk  = (item.risk || "LOW").toUpperCase();
+      const count = item.findings_count ?? item.score ?? "—";
+      const time  = item.timestamp ? new Date(item.timestamp).toLocaleDateString() : "";
+      const sevClass = risk === "HIGH" || risk === "CRITICAL" ? "sev-high" : risk === "MEDIUM" ? "sev-medium" : "sev-low";
+      return `
+        <div class="history-item pop-in" style="
+          display:flex;align-items:center;justify-content:space-between;gap:8px;
+          padding:8px 10px;border-radius:8px;background:var(--bg-2);
+          border:1px solid var(--border);margin-bottom:6px;
+          transition:border-color 0.15s;cursor:default;">
+          <span class="badge-pill ${sevClass}">${risk}</span>
+          <span style="color:var(--text-muted);font-size:11px;flex:1;">
+            ${typeof count === "number" ? `${count} issue${count !== 1 ? "s" : ""}` : count}
+          </span>
+          <span style="color:var(--text-faint);font-size:10px;">${time}</span>
+        </div>
+      `;
+    }).join("");
+
+  } catch (err) {
+    console.warn("[SecretScan] loadHistory:", err.message);
+    list.innerHTML = `<div style="text-align:center;padding:16px 8px;color:var(--text-faint);font-size:12px;">
+      <i class="bi bi-shield" style="display:block;font-size:20px;margin-bottom:6px;"></i>
+      No scan history yet — run your first scan!
+    </div>`;
+  }
+}
+
+async function loadPlan() {
+  const el = document.getElementById("plan");
+  if (!el) return;
+
+  try {
+    const data       = await getMe();
+    const plan       = (data.plan || "free").toLowerCase();
+    const limits     = data.limits || {};
+    const isPro      = data.is_pro || isProUser();
+    const isTrial    = plan === "pro_trial";
+    const daysLeft   = data.days_left || 0;
+    const trialActive= data.trial_active || false;
+
+    // Store everything for offline use
+    localStorage.setItem("user_plan",        plan);
+    localStorage.setItem("is_pro",           isPro ? "true" : "false");
+    localStorage.setItem("trial_active",     trialActive ? "true" : "false");
+    localStorage.setItem("trial_days_left",  String(daysLeft));
+    if (data.email) localStorage.setItem("user_email", data.email);
+
+    // Build plan badge
+    const badgeMap = {
+      free:       { cls: "sev-low",      icon: "bi-person",           label: "FREE" },
+      pro_trial:  { cls: "",             icon: "bi-gift-fill",        label: "PRO TRIAL",
+                    style: "background:linear-gradient(135deg,rgba(0,255,163,.2),rgba(91,123,254,.15));color:#00ffa3;border:1px solid rgba(0,255,163,.35);" },
+      pro:        { cls: "sev-high",     icon: "bi-lightning-charge", label: "PRO" },
+      enterprise: { cls: "sev-critical", icon: "bi-building",         label: "ENTERPRISE" },
+    };
+    const badge = badgeMap[plan] || badgeMap.free;
+    const badgeStyle = badge.style ? `style="padding:4px 10px;font-size:11px;${badge.style}"` :
+                                     `class="badge-pill ${badge.cls}" style="padding:4px 10px;font-size:11px;"`;
+
+    const scanLabel = (limits.daily_scans === -1 || limits.daily_scans > 900)
+      ? "Unlimited scans"
+      : `${limits.daily_scans} scans/day`;
+
+    // Trial countdown line
+    const trialLine = isTrial && trialActive ? `
+      <div style="margin-top:6px;display:flex;align-items:center;gap:5px;font-size:11px;
+                  color:${daysLeft <= 5 ? "var(--warning)" : "var(--text-faint)"};">
+        <i class="bi bi-clock${daysLeft <= 5 ? " text-warning" : ""} me-1"></i>
+        ${daysLeft <= 5
+          ? `<strong style="color:var(--warning);">Trial ends in ${daysLeft} day${daysLeft !== 1 ? "s" : ""}!</strong>`
+          : `Trial ends in <strong>${daysLeft} days</strong>`}
+        &nbsp;·&nbsp;
+        <a href="checkout.html" style="color:var(--accent);text-decoration:none;font-size:10px;">Upgrade →</a>
+      </div>` : "";
+
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span ${badgeStyle}>
+          <i class="bi ${badge.icon} me-1"></i>${badge.label}
+        </span>
+        <span style="font-size:11px;color:var(--text-muted);overflow:hidden;
+                     text-overflow:ellipsis;white-space:nowrap;max-width:150px;"
+              title="${escHtml(data.email || "")}">
+          ${escHtml(data.email || "")}
+        </span>
+      </div>
+      <div style="margin-top:6px;font-size:11px;color:var(--text-faint);">
+        <i class="bi bi-bar-chart me-1"></i>${scanLabel}
+      </div>
+      ${trialLine}`;
+
+    applyPlanGating(plan, limits);
+    if (typeof window.applyNavGating === "function") window.applyNavGating(plan);
+
+    // Trial info shown inline in sidebar — no layout-breaking banner needed
+
+  } catch (err) {
+    console.warn("[SecretScan] loadPlan failed:", err.message);
+    el.innerHTML = `<span class="badge-pill sev-low"><i class="bi bi-person me-1"></i>FREE</span>`;
+  }
+}
+
+/* ── Trial banner — intentionally disabled to avoid layout distortion.
+   Trial status is shown inline in the sidebar plan widget instead.  ── */
+function renderTrialBanner() {
+  // No-op: banner removed to prevent sticky overlay breaking the dashboard layout.
+  document.getElementById("trialBannerGlobal")?.remove();
+}
+
+function applyPlanGating(plan, limits) {
+  // pro_trial = full Pro access
+  if (plan === "pro_trial") plan = "pro";
+
+  plan = (plan || "free").toLowerCase();
+  const isPro = ["pro", "pro_trial", "enterprise"].includes(plan) || isProUser?.();
+
+  // Repo scan button — id-based
+  const repoBtn = document.getElementById("repoScanBtn");
+  if (repoBtn) {
+    if (!isPro) {
+      repoBtn.innerHTML = `<i class="bi bi-lock me-1"></i>Scan Repo`;
+      repoBtn.style.opacity = "0.6";
+      repoBtn.title = "Requires Pro plan";
+    } else {
+      repoBtn.innerHTML = `<i class="bi bi-github me-1"></i>Scan Repo`;
+      repoBtn.style.opacity = "";
+      repoBtn.title = "";
+    }
+  }
+
+  // Nav lock badges
+  const repoBadge = document.getElementById("repoLockBadge");
+  const cveBadge  = document.getElementById("cveLockBadge");
+  if (repoBadge) repoBadge.style.display = isPro ? "none" : "inline-flex";
+  if (cveBadge)  cveBadge.style.display  = isPro ? "none" : "inline-flex";
+
+  // Upgrade section
+  const upgradeSection = document.getElementById("upgradeSection");
+  if (upgradeSection) upgradeSection.style.display = (isPro || plan==="pro_trial") ? "none" : "";
+}
+
+async function loadTeam() {
+  const list = document.getElementById("teamList");
+  if (!list) return;
+
+  const plan = getUserPlan();
+  if (plan === "free") {
+    list.innerHTML = `<li style="color:var(--text-faint);font-size:12px;">
+      <i class="bi bi-lock me-1"></i>Team management requires Pro
+    </li>`;
+    return;
+  }
+
+  try {
+    const res  = await apiRequest("/api/org/users");
+    const data = await safeJson(res);
+    list.innerHTML = (data || []).map(u => `
+      <li style="font-size:12px;color:var(--text-muted);padding:5px 0;display:flex;align-items:center;gap:8px;">
+        <i class="bi bi-person-circle" style="color:var(--accent);"></i>
+        <span>${escHtml(u.email)}</span>
+        <span class="badge-pill sev-low" style="font-size:9px;">${escHtml(u.plan || "free")}</span>
+      </li>
+    `).join("") || `<li style="color:var(--text-faint);font-size:12px;">No team members yet</li>`;
+  } catch {
+    list.innerHTML = `<li style="color:var(--text-faint);font-size:12px;">Team unavailable</li>`;
+  }
+}
+
+// ============================================================
+//  RENDER VULNERABILITIES
+// ============================================================
+function renderVulnerabilities(data) {
+  const container = document.getElementById("vulnCards");
+  if (!container) return;
+
+  const list = Array.isArray(data) ? data : (data.findings || []);
+
+  if (!list.length) {
+    container.innerHTML = `
+      <div class="scan-panel" style="text-align:center;padding:28px;">
+        <i class="bi bi-shield-check" style="font-size:32px;color:var(--success);display:block;margin-bottom:10px;"></i>
+        <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--success);margin-bottom:4px;">
+          All Clear!
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">No security issues detected in this code.</div>
+      </div>`;
+    return;
+  }
+
+  const sevOrder = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+  const sorted   = [...list].sort((a, b) => (sevOrder[b.severity] || 0) - (sevOrder[a.severity] || 0));
+
+  container.innerHTML = sorted.map((vuln, i) => {
+    const sev       = (vuln.severity || "LOW").toUpperCase();
+    const badgeClass = sev === "CRITICAL" ? "sev-critical" : sev === "HIGH" ? "sev-high" : sev === "MEDIUM" ? "sev-medium" : "sev-low";
+    const borderColor = sev === "CRITICAL" ? "rgba(192,38,211,0.3)" : sev === "HIGH" ? "rgba(244,63,94,0.25)" : sev === "MEDIUM" ? "rgba(251,146,60,0.2)" : "var(--border)";
+
+    return `
+      <div class="vuln-card pop-in" onclick="toggleVuln(this, ${i})" data-idx="${i}"
+           style="border-left:3px solid ${borderColor};">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div style="flex:1;min-width:0;">
+            <div class="vuln-title">${escHtml(vuln.title || "Security Issue")}</div>
+            <div class="vuln-meta">
+              ${vuln.file   ? `<span><i class="bi bi-file-code me-1"></i>${escHtml(vuln.file)}</span>` : ""}
+              ${vuln.line   ? `<span>· line ${vuln.line}</span>` : ""}
+              ${vuln.source ? `<span style="color:var(--accent);">· ${escHtml(vuln.source)}</span>` : ""}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:10px;">
+            <span class="badge-pill ${badgeClass}">${sev}</span>
+            <i class="bi bi-chevron-down" style="color:var(--text-faint);font-size:11px;transition:transform 0.2s;" id="chevron-${i}"></i>
+          </div>
+        </div>
+
+        <div class="vuln-details" id="vd-${i}">
+          <div style="color:var(--text-muted);margin-bottom:8px;font-size:13px;line-height:1.5;">
+            ${escHtml(vuln.description || "No description provided.")}
+          </div>
+
+          ${vuln.fix && vuln.fix !== "No auto-fix available" ? `
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent);margin-bottom:5px;">
+              <i class="bi bi-wrench me-1"></i>Recommended Fix
+            </div>
+            <div class="fix-box">${escHtml(vuln.fix)}</div>
+          ` : ""}
+
+          ${vuln.cve && vuln.cve !== "N/A" ? `
+            <div style="margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="badge-pill sev-${cvssSev(vuln.cvss)}">
+                <i class="bi bi-bug me-1"></i>${escHtml(vuln.cve)}
+              </span>
+              ${vuln.cvss != null ? `<span style="font-size:11px;color:var(--text-muted);">CVSS ${vuln.cvss}</span>` : ""}
+            </div>
+          ` : ""}
+
+          ${(vuln.owasp || vuln.nist) ? `
+            <div style="margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-faint);">
+                <i class="bi bi-clipboard-check me-1"></i>Compliance:
+              </span>
+              ${vuln.owasp ? `<span class="badge-pill" style="background:rgba(91,123,254,0.12);color:#5b7bfe;border:1px solid rgba(91,123,254,0.25);">${escHtml(vuln.owasp)}</span>` : ""}
+              ${vuln.nist  ? `<span class="badge-pill" style="background:rgba(56,189,248,0.1);color:#38bdf8;border:1px solid rgba(56,189,248,0.2);">NIST ${escHtml(vuln.nist)}</span>` : ""}
+            </div>
+          ` : ""}
+
+          ${vuln.auto_fix ? renderAutoFixCard(vuln.auto_fix, i) : ""}
+
+          <div id="cve-${i}"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function toggleVuln(card, idx) {
+  const wasActive = card.classList.contains("active");
+  document.querySelectorAll(".vuln-card.active").forEach(c => {
+    c.classList.remove("active");
+    const ch = c.querySelector('[id^="chevron-"]');
+    if (ch) ch.style.transform = "";
+  });
+  if (!wasActive) {
+    card.classList.add("active");
+    const chevron = document.getElementById(`chevron-${idx}`);
+    if (chevron) chevron.style.transform = "rotate(180deg)";
+  }
+}
+
+// ============================================================
+//  PHASE 1 — AI AUTO-FIX ENGINE (before/after diff cards)
+// ============================================================
+function renderAutoFixCard(autoFix, idx) {
+  if (!autoFix || !autoFix.before) return "";
+
+  const confidence = autoFix.confidence ?? 0;
+  const confColor  = confidence >= 90 ? "#22c55e" : confidence >= 70 ? "#facc15" : "#fb923c";
+
+  return `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--success);">
+          <i class="bi bi-magic me-1"></i>AI Suggested Fix
+        </span>
+        <span class="badge-pill" style="background:rgba(${confColor === '#22c55e' ? '34,197,94' : confColor === '#facc15' ? '250,204,21' : '251,146,60'},0.12);color:${confColor};border:1px solid ${confColor}33;">
+          ${confidence}% confidence
+        </span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--danger);margin-bottom:3px;">Before</div>
+          <pre style="background:rgba(244,63,94,0.06);border:1px solid rgba(244,63,94,0.18);border-radius:6px;padding:8px;font-size:11px;overflow-x:auto;color:var(--text-primary);margin:0;white-space:pre-wrap;word-break:break-word;">${escHtml(autoFix.before)}</pre>
+        </div>
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.6px;color:var(--success);margin-bottom:3px;">After</div>
+          <pre style="background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.18);border-radius:6px;padding:8px;font-size:11px;overflow-x:auto;color:var(--text-primary);margin:0;white-space:pre-wrap;word-break:break-word;">${escHtml(autoFix.after)}</pre>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">
+        ${escHtml(autoFix.explanation || "")}
+      </div>
+    </div>`;
+}
+
+// ============================================================
+//  PHASE 1 — ADVANCED SECURITY SCORING ENGINE
+// ============================================================
+function renderSecurityScore(score, riskLevel) {
+  const el = document.getElementById("securityScoreCard");
+  if (!el) return;
+
+  const colorMap = {
+    "Excellent": "#22c55e",
+    "Good":      "#22c55e",
+    "Moderate":  "#facc15",
+    "High Risk": "#fb923c",
+    "Critical":  "#c026d3",
+  };
+  const color = colorMap[riskLevel] || "#facc15";
+  const pct   = Math.max(0, Math.min(100, score));
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="position:relative;width:64px;height:64px;flex-shrink:0;">
+        <svg width="64" height="64" viewBox="0 0 64 64" style="transform:rotate(-90deg);">
+          <circle cx="32" cy="32" r="28" fill="none" stroke="var(--bg-3)" stroke-width="6"/>
+          <circle cx="32" cy="32" r="28" fill="none" stroke="${color}" stroke-width="6"
+                  stroke-dasharray="${2 * Math.PI * 28}"
+                  stroke-dashoffset="${2 * Math.PI * 28 * (1 - pct / 100)}"
+                  stroke-linecap="round"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:${color};">
+          ${score}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-faint);margin-bottom:2px;">Security Score</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:${color};">${escHtml(riskLevel || "—")}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${score}/100 — weighted by severity</div>
+      </div>
+    </div>`;
+}
+
+// ============================================================
+//  PHASE 1 — REPOSITORY HEALTH DASHBOARD
+// ============================================================
+function renderRepoHealth(health) {
+  const el = document.getElementById("repoHealthCard");
+  if (!el || !health) return;
+
+  const colorMap = {
+    "Excellent": "#22c55e", "Good": "#22c55e",
+    "Moderate":  "#facc15", "High Risk": "#fb923c", "Critical": "#c026d3",
+  };
+  const scoreColor = colorMap[health.risk_level] || "#facc15";
+
+  el.style.display = "block";
+  el.innerHTML = `
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;margin-bottom:12px;">
+      <i class="bi bi-heart-pulse me-2" style="color:var(--accent);"></i>Repository Health
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:10px;">
+      <div class="health-stat">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:${scoreColor};">${health.security_score ?? 0}</div>
+        <div class="health-label">Security Score</div>
+      </div>
+      <div class="health-stat">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#c026d3;">${health.critical_count ?? 0}</div>
+        <div class="health-label">Critical</div>
+      </div>
+      <div class="health-stat">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#f43f5e;">${health.high_count ?? 0}</div>
+        <div class="health-label">High</div>
+      </div>
+      <div class="health-stat">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#fb923c;">${health.medium_count ?? 0}</div>
+        <div class="health-label">Medium</div>
+      </div>
+      <div class="health-stat">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#facc15;">${health.low_count ?? 0}</div>
+        <div class="health-label">Low</div>
+      </div>
+      <div class="health-stat">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#5b7bfe;">${health.secret_count ?? 0}</div>
+        <div class="health-label">Secrets Found</div>
+      </div>
+      <div class="health-stat">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#38bdf8;">${health.dependency_count ?? 0}</div>
+        <div class="health-label">Dependencies</div>
+      </div>
+      <div class="health-stat">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#fb923c;">${health.outdated_packages ?? 0}</div>
+        <div class="health-label">Outdated</div>
+      </div>
+    </div>`;
+}
+
+// ============================================================
+//  PHASE 1 — SECURITY TREND ANALYTICS (Chart.js)
+// ============================================================
+let securityTrendChart = null;
+
+async function loadSecurityTrendChart() {
+  const ctx = document.getElementById("securityTrendChart");
+  if (!ctx) return;
+
+  try {
+    const res  = await apiRequest("/api/analytics/security-trend");
+    const data = await safeJson(res);
+
+    const points = data.points || [];
+    const labels = points.map(p => p.date);
+    const scores = points.map(p => p.score);
+
+    // Update stat callouts if present
+    const avgEl   = document.getElementById("trendAvgScore");
+    const bestEl  = document.getElementById("trendBestScore");
+    const worstEl = document.getElementById("trendWorstScore");
+    if (avgEl)   avgEl.textContent   = data.average_score ?? "—";
+    if (bestEl)  bestEl.textContent  = data.best_score ?? "—";
+    if (worstEl) worstEl.textContent = data.worst_score ?? "—";
+
+    if (securityTrendChart) { securityTrendChart.destroy(); securityTrendChart = null; }
+
+    if (!points.length) {
+      // Empty state — hide canvas, show placeholder if present
+      const placeholder = document.getElementById("securityTrendEmpty");
+      if (placeholder) placeholder.style.display = "flex";
+      ctx.style.display = "none";
+      return;
+    }
+
+    const placeholder = document.getElementById("securityTrendEmpty");
+    if (placeholder) placeholder.style.display = "none";
+    ctx.style.display = "";
+
+    const gradient = ctx.getContext("2d").createLinearGradient(0, 0, 0, 200);
+    gradient.addColorStop(0, "rgba(34,197,94,0.35)");
+    gradient.addColorStop(1, "rgba(34,197,94,0)");
+
+    securityTrendChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "Security Score",
+          data: scores,
+          borderColor: "#22c55e",
+          borderWidth: 2.5,
+          backgroundColor: gradient,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: "#22c55e",
+          pointRadius: 3,
+          pointHoverRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "#0f1a2e", titleColor: "#e8edf8", bodyColor: "#8296b3",
+            callbacks: { label: (c) => ` Score: ${c.parsed.y}/100` }
+          }
+        },
+        scales: {
+          x: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#8296b3", font: { size: 10 } } },
+          y: {
+            min: 0, max: 100,
+            grid: { color: "rgba(255,255,255,0.04)" },
+            ticks: { color: "#8296b3", font: { size: 10 }, stepSize: 25 },
+          }
+        }
+      }
+    });
+  } catch (err) {
+    console.debug("Security trend chart load failed (non-fatal):", err.message);
+  }
+}
+
+// ============================================================
+//  AI INSIGHTS
+// ============================================================
+function renderAIInsights(data) {
+  const container = document.getElementById("aiInsights");
+  if (!container) return;
+
+  const ai       = data.ai || {};
+  const explain  = ai.explanation || "";
+  const fixes    = Array.isArray(ai.fixes) ? ai.fixes : [];
+  const findings = data.findings || [];
+  const plan     = (localStorage.getItem("user_plan") || getUserPlan() || "free").toLowerCase();
+  const isPro    = plan === "pro" || plan === "pro_trial" || plan === "enterprise";
+
+  // Always show something useful — even if AI is empty, show scan summary
+  const risk     = data.risk || "LOW";
+  const score    = data.score || 0;
+  const riskColors = { CRITICAL:"#f43f5e", HIGH:"#fb7185", MEDIUM:"#fdba74", LOW:"#fbbf24" };
+  const riskColor  = riskColors[risk] || "#fbbf24";
+
+  // Build severity counts from findings
+  const sevCounts = { CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0 };
+  findings.forEach(f => { sevCounts[f.severity] = (sevCounts[f.severity]||0)+1; });
+  const sevSummary = Object.entries(sevCounts)
+    .filter(([,v]) => v > 0)
+    .map(([k,v]) => `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;
+      background:${k==="CRITICAL"?"rgba(244,63,94,.15)":k==="HIGH"?"rgba(251,113,133,.12)":k==="MEDIUM"?"rgba(251,146,60,.12)":"rgba(250,204,21,.1)"};
+      color:${riskColors[k]||"#fbbf24"};">${v} ${k}</span>`).join(" ");
+
+  container.innerHTML = `
+    <div class="ai-box pop-in">
+      <div class="ai-label">
+        <i class="bi bi-cpu me-1"></i>AI Security Insights
+        ${!isPro ? '<span class="badge-pill sev-low" style="font-size:9px;margin-left:6px;">Basic</span>' : ""}
+      </div>
+
+      <!-- Risk summary row -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;
+                  padding:10px 12px;background:var(--bg-1);border-radius:8px;
+                  border:1px solid var(--border);">
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;
+                    color:${riskColor};min-width:40px;">${risk}</div>
+        <div style="flex:1;">
+          <div style="font-size:11px;color:var(--text-faint);margin-bottom:3px;">Risk level</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">${sevSummary || '<span style="font-size:11px;color:var(--success);">✓ No issues detected</span>'}</div>
+        </div>
+        ${score > 0 ? `<div style="text-align:right;">
+          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:${score>=70?"var(--danger)":score>=40?"var(--warning)":"var(--success)"};">${score}</div>
+          <div style="font-size:9px;color:var(--text-faint);">SCORE</div>
+        </div>` : ""}
+      </div>
+
+      ${explain ? `<p style="font-size:13px;color:var(--text-muted);margin-bottom:${fixes.length?"10px":"0"};
+        line-height:1.6;">${escHtml(explain)}</p>` : ""}
+
+      ${fixes.length > 0 ? `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;
+                    color:var(--text-faint);margin-bottom:6px;margin-top:6px;">
+          <i class="bi bi-wrench me-1"></i>Recommended Actions
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${fixes.slice(0, isPro ? 999 : 3).map(f => `
+            <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;
+                        color:var(--text-muted);padding:7px 10px;
+                        background:rgba(91,123,254,.04);border-radius:7px;
+                        border-left:2px solid var(--accent);">
+              <i class="bi bi-check2-circle" style="color:var(--success);flex-shrink:0;margin-top:1px;font-size:13px;"></i>
+              <span style="line-height:1.5;">${escHtml(f)}</span>
+            </div>
+          `).join("")}
+        </div>
+        ${!isPro && fixes.length > 3 ? `
+          <div style="font-size:11px;color:var(--text-faint);margin-top:6px;text-align:center;">
+            +${fixes.length - 3} more fix suggestions with Pro
+          </div>
+        ` : ""}
+      ` : ""}
+
+      ${!isPro && findings.length > 0 ? `
+        <div style="margin-top:12px;padding:10px 12px;
+                    background:linear-gradient(135deg,rgba(0,255,163,.05),rgba(91,123,254,.04));
+                    border:1px solid rgba(0,255,163,.15);border-radius:10px;
+                    display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="font-size:11px;color:var(--text-muted);">
+            🎁 <strong style="color:#00ffa3;">30-day Pro trial free</strong> — unlimited scans, full AI, PDF reports
+          </div>
+          <button onclick="showUpgradePrompt('Unlock full AI analysis, unlimited scans, PDF reports, and CVE lookup.')"
+                  style="background:linear-gradient(135deg,#5b7bfe,#4361ee);color:#fff;border:none;
+                         padding:5px 12px;border-radius:7px;font-size:11px;font-weight:600;
+                         cursor:pointer;white-space:nowrap;flex-shrink:0;">Try Pro Free</button>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+// ============================================================
+//  STATUS + SEVERITY TABS
+// ============================================================
+function updateStatus(findings) {
+  const statusEl = document.getElementById("statusText");
+  if (!statusEl) return;
+  const hasCritical = findings.some(f => ["HIGH","CRITICAL"].includes(f.severity));
+  const hasMedium   = findings.some(f => f.severity === "MEDIUM");
+  statusEl.innerHTML = hasCritical
+    ? `<span class="status-dot" style="background:var(--danger);box-shadow:0 0 6px var(--danger);"></span>Vulnerable`
+    : hasMedium
+    ? `<span class="status-dot" style="background:var(--warning);box-shadow:0 0 6px var(--warning);"></span>Caution`
+    : `<span class="status-dot online"></span>Secure`;
+  statusEl.className = hasCritical ? "status-risk" : hasMedium ? "" : "status-safe";
+}
+
+function renderSeverityTabs(data) {
+  const el = document.getElementById("severityTabs");
+  if (!el) return;
+  const f = data.findings || [];
+  if (!f.length) { el.innerHTML = ""; return; }
+
+  const counts = {
+    CRITICAL: f.filter(x => x.severity === "CRITICAL").length,
+    HIGH:     f.filter(x => x.severity === "HIGH").length,
+    MEDIUM:   f.filter(x => x.severity === "MEDIUM").length,
+    LOW:      f.filter(x => x.severity === "LOW").length
+  };
+  el.innerHTML = Object.entries(counts)
+    .filter(([, v]) => v > 0)
+    .map(([sev, cnt]) => `
+      <span class="badge-pill sev-${sev.toLowerCase()}">${sev} ${cnt}</span>
+    `).join("");
+}
+
+// ============================================================
+//  CVE ENRICHMENT — Pro, pro_trial, and Enterprise only; background, non-blocking
+// ============================================================
+async function enrichCVE(findingsList) {
+  const plan = getUserPlan();
+  if (!["pro", "pro_trial", "enterprise"].includes(plan)) return;
+  for (let i = 0; i < findingsList.length && i < 5; i++) {
+    const vuln = findingsList[i];
+    const box  = document.getElementById(`cve-${i}`);
+    if (!box || !vuln.title || (vuln.cve && vuln.cve !== "N/A")) continue;
+
+    try {
+      const res  = await apiRequest(`/api/cve/search?query=${encodeURIComponent(vuln.title)}`);
+      const data = await safeJson(res);
+      const cves = data?.cves || [];
+
+      if (cves.length) {
+        const top = cves[0];
+        box.innerHTML = `
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;
+                      padding:6px 8px;background:rgba(56,189,248,0.06);border-radius:6px;
+                      border:1px solid rgba(56,189,248,0.12);">
+            <i class="bi bi-shield-exclamation me-1" style="color:var(--warning);"></i>
+            <strong style="color:var(--accent-2);">${escHtml(top.id || "")}</strong>
+            ${top.cvss != null ? `· CVSS <strong>${top.cvss}</strong>` : ""}
+            ${top.description ? ` · <span style="color:var(--text-faint);">${escHtml(top.description.substring(0, 100))}…</span>` : ""}
+          </div>`;
+      }
+    } catch { /* silent — CVE enrichment is optional */ }
+  }
+}
+
+// ============================================================
+//  CHARTS
+// ============================================================
+async function loadUsageChart() {
+  const ctx = document.getElementById("usageChart");
+  if (!ctx) return;
+
+  // Build a 7-day window ending today as a fallback skeleton
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  const labelMap  = {};
+  days.forEach(d => { labelMap[d] = new Date(d).toLocaleDateString("en", { weekday: "short" }); });
+  let dataMap = {};
+  days.forEach(d => { dataMap[d] = 0; });
+
+  try {
+    const raw = await getUsage();
+    const arr = Array.isArray(raw) ? raw : [];
+    arr.forEach(r => {
+      const key = (r.date || "").slice(0, 10);
+      if (key in dataMap) dataMap[key] = r.request_count ?? r.count ?? 0;
+    });
+  } catch {
+    // /api/usage may 403 — keep zeroed defaults; chart still renders
+  }
+
+  const labels = days.map(d => labelMap[d]);
+  const values = days.map(d => dataMap[d]);
+
+  if (usageChart) { usageChart.destroy(); usageChart = null; }
+
+  const gradient = ctx.getContext("2d").createLinearGradient(0, 0, 0, 200);
+  gradient.addColorStop(0, "rgba(91,123,254,0.45)");
+  gradient.addColorStop(1, "rgba(91,123,254,0)");
+
+  usageChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Scans",
+        data: values,
+        borderColor: "#5b7bfe",
+        borderWidth: 2.5,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.45,
+        pointBackgroundColor: "#5b7bfe",
+        pointRadius: 4,
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#0f1a2e",
+          titleColor: "#e8edf8",
+          bodyColor: "#8296b3",
+          borderColor: "#1e3a5f",
+          borderWidth: 1,
+          callbacks: {
+            label: (ctx) => ` ${ctx.parsed.y} scan${ctx.parsed.y !== 1 ? "s" : ""}`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.04)" }, ticks: { color: "#8296b3", font: { size: 11 } } },
+        y: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          ticks: {
+            color: "#8296b3",
+            font: { size: 11 },
+            stepSize: 1,
+            // Only show integers on y-axis — no 0.5, 1.5 etc.
+            callback: (v) => Number.isInteger(v) ? v : null
+          },
+          beginAtZero: true,
+          // Ensure minimum range of 1 so the line shows up even with 0 data
+          suggestedMax: Math.max(...values, 1)
+        }
+      }
+    }
+  });
+}
+
+function loadRiskChart(findingsList) {
+  const ctx = document.getElementById("riskChart");
+  if (!ctx) return;
+
+  const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  (findingsList || []).forEach(f => {
+    const s = (f.severity || "low").toUpperCase();
+    if (s === "CRITICAL")    counts.Critical++;
+    else if (s === "HIGH")   counts.High++;
+    else if (s === "MEDIUM") counts.Medium++;
+    else                     counts.Low++;
+  });
+
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  if (riskChart) { riskChart.destroy(); riskChart = null; }
+
+  // Show empty state if no findings — don't silently leave the panel blank
+  if (!total) {
+    const container = ctx.closest(".chart-container, div") || ctx.parentElement;
+    // Only show placeholder if canvas parent is visible
+    const placeholder = document.getElementById("riskChartEmpty");
+    if (placeholder) placeholder.style.display = "flex";
+    ctx.style.display = "none";
+    return;
+  }
+
+  // Hide placeholder, show canvas
+  const placeholder = document.getElementById("riskChartEmpty");
+  if (placeholder) placeholder.style.display = "none";
+  ctx.style.display = "";
+
+  riskChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(counts),
+      datasets: [{
+        data: Object.values(counts),
+        backgroundColor: ["#c026d3","#f43f5e","#fb923c","#34d399"],
+        borderWidth: 0,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: "68%",
+      plugins: {
+        legend: {
+          position: "right",
+          labels: { color: "#8296b3", font: { size: 11 }, padding: 12 }
+        },
+        tooltip: {
+          backgroundColor: "#0f1a2e",
+          titleColor: "#e8edf8",
+          bodyColor: "#8296b3"
+        }
+      }
+    }
+  });
+}
+
+// ============================================================
+//  API KEY UI
+// ============================================================
+function initApiKey() {
+  const el = document.getElementById("apiKeyDisplay");
+  if (!el) return;
+
+  const key = localStorage.getItem("api_key") || "";
+  el.innerText        = key ? maskKey(key) : "Not available";
+  el.dataset.full     = key;
+  el.dataset.masked   = key ? maskKey(key) : "";
+  el.dataset.shown    = "false";
+}
+
+function maskKey(key) {
+  if (!key || key.length < 10) return "••••••••••••";
+  return key.substring(0, 8) + "••••••••" + key.substring(key.length - 4);
+}
+
+function toggleApiKey() {
+  const el   = document.getElementById("apiKeyDisplay");
+  const icon = document.getElementById("toggleKeyIcon");
+  if (!el) return;
+  const shown = el.dataset.shown === "true";
+  el.innerText     = shown ? el.dataset.masked : el.dataset.full;
+  el.dataset.shown = String(!shown);
+  if (icon) icon.className = shown ? "bi bi-eye" : "bi bi-eye-slash";
+}
+
+function copyKey() {
+  const key = localStorage.getItem("api_key");
+  if (!key || key === "undefined") { showToast("No API key available", "warning"); return; }
+
+  navigator.clipboard.writeText(key).then(() => {
+    showToast("API key copied to clipboard!", "success");
+    const confirm = document.getElementById("copyConfirm");
+    if (confirm) { confirm.classList.add("show"); setTimeout(() => confirm.classList.remove("show"), 1800); }
+  }).catch(() => {
+    // Fallback for older browsers
+    const el = document.createElement("textarea");
+    el.value = key; el.style.position = "fixed"; el.style.opacity = "0";
+    document.body.appendChild(el); el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+    showToast("API key copied!", "success");
+  });
+}
+
+// ============================================================
+//  UTILITY
+//  FIX: guarded to avoid duplicate declarations with api.js
+// ============================================================
+function logout() {
+  localStorage.clear();
+  window.location.replace("login.html");
+}
+
+// Use window.escHtml if already defined by api.js (loaded first), else define it
+function escHtml(str) {
+  if (window.escHtml && window.escHtml !== escHtml) return window.escHtml(str);
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function cvssSev(score) {
+  if (window.cvssSev && window.cvssSev !== cvssSev) return window.cvssSev(score);
+  if (score == null) return "low";
+  if (score >= 9) return "critical";
+  if (score >= 7) return "high";
+  if (score >= 4) return "medium";
+  return "low";
+}
+
+async function exportPDF() {
+  if (!findings.length) { showToast("Run a scan first to export results", "warning"); return; }
+
+  showToast("Generating PDF report…", "info");
+  try {
+    const res  = await apiRequest("/api/report/pdf", {
+      method: "POST",
+      body: JSON.stringify({ findings })
+    });
+    const blob = await res.blob();
+    const url  = window.URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = "safeaiscan-report.pdf"; a.click();
+    window.URL.revokeObjectURL(url);
+    showToast("PDF report downloaded!", "success");
+  } catch (err) {
+    showToast("PDF export failed: " + err.message, "error");
+  }
+}
+
+// ============================================================
+//  PHASE 1 — EXECUTIVE PDF REPORT EXPORT
+//  Sends the full last scan result (security_score, repo_health,
+//  dependency_findings, owasp/nist/auto_fix per finding) to the
+//  new /api/report/pdf/executive endpoint. Pro/Enterprise only —
+//  the backend returns 403 with an upgrade message for free users.
+// ============================================================
+async function exportExecutivePDF() {
+  if (!findings.length) { showToast("Run a scan first to export results", "warning"); return; }
+
+  showToast("Generating executive report…", "info");
+  try {
+    const payload = {
+      findings:            findings,
+      scan_id:             lastScanResult.id || lastScanResult.scan_id || "",
+      risk_level:          lastScanResult.risk_level || lastScanResult.risk || "NONE",
+      total_secrets:       lastScanResult.total_secrets ?? findings.length,
+      summary:             lastScanResult.summary || {},
+      source:              lastScanResult.source || "",
+      truncated:           lastScanResult.truncated || false,
+      security_score:      lastScanResult.security_score ?? 0,
+      score_risk_level:    lastScanResult.score_risk_level || "Moderate",
+      repo_health:         lastScanResult.repo_health || null,
+      dependency_findings: lastScanResult.dependency_findings || [],
+    };
+
+    const res = await apiRequest("/api/report/pdf/executive", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    if (res.status === 403) {
+      const data = await safeJson(res);
+      showUpgradePrompt(data?.error || "Executive PDF reports require a Pro or Enterprise plan.");
+      return;
+    }
+
+    const blob = await res.blob();
+    const url  = window.URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = "safeaiscan-executive-report.pdf"; a.click();
+    window.URL.revokeObjectURL(url);
+    showToast("Executive report downloaded!", "success");
+  } catch (err) {
+    showToast("Executive PDF export failed: " + err.message, "error");
+  }
+}
+
+function openSide(v) {
+  currentContext = JSON.stringify(v);
+  const side  = document.getElementById("side");
+  const title = document.getElementById("sideTitle");
+  const desc  = document.getElementById("sideDesc");
+  if (!side) return;
+  if (title) title.innerText = v.title || v.match || "Finding";
+  if (desc) desc.innerHTML = `
+    <p style="color:var(--text-muted);font-size:13px;line-height:1.55;">${escHtml(v.description || "No description available.")}</p>
+    ${v.fix && v.fix !== "No auto-fix available" ? `
+      <div class="ai-label mt-3 mb-2"><i class="bi bi-wrench me-1"></i>Recommended Fix</div>
+      <div class="fix-box">${escHtml(v.fix)}</div>
+    ` : ""}
+    ${v.cve && v.cve !== "N/A" ? `
+      <div style="margin-top:12px;">
+        <span class="badge-pill sev-${cvssSev(v.cvss)}">
+          <i class="bi bi-bug me-1"></i>${escHtml(v.cve)}
+        </span>
+        ${v.cvss != null ? `<span style="margin-left:8px;font-size:11px;color:var(--text-muted);">CVSS ${v.cvss}</span>` : ""}
+      </div>
+    ` : ""}
+  `;
+  side.classList.add("open");
+}
+
+function closeSide() {
+  document.getElementById("side")?.classList.remove("open");
+}
+
+async function askAI() {
+  const q    = document.getElementById("aiInput")?.value?.trim();
+  const chat = document.getElementById("aiChat");
+  if (!q || !chat) return;
+
+  chat.innerHTML += `
+    <div style="color:var(--accent);font-size:12px;margin-bottom:4px;">
+      <strong>You:</strong> ${escHtml(q)}
+    </div>`;
+
+  document.getElementById("aiInput").value = "";
+
+  try {
+    const res  = await apiRequest("/api/ai/explain", {
+      method: "POST",
+      body: JSON.stringify({ question: q, context: currentContext })
+    });
+    const data = await safeJson(res);
+    const text = data.explanation || data.data?.explanation || "";
+    chat.innerHTML += `
+      <div style="color:var(--text-muted);font-size:12px;margin-bottom:8px;
+                  padding-left:10px;border-left:2px solid var(--accent);">
+        ${escHtml(text)}
+      </div>`;
+    chat.scrollTop = chat.scrollHeight;
+  } catch (err) {
+    chat.innerHTML += `<div style="color:var(--danger);font-size:11px;margin-bottom:6px;">
+      <i class="bi bi-x-circle me-1"></i>${escHtml(err.message)}
+    </div>`;
+  }
+}
+
+function renderTimeline(data) {
+  const el = document.getElementById("timeline");
+  if (!el) return;
+  const steps = data.timeline || ["Code received","Parsing syntax","AI analysis","CVE lookup","Report ready"];
+  el.innerHTML = steps.map(s => `<div class="timeline-item">${escHtml(s)}</div>`).join("");
+}
+
+function renderTree(nodes) {
+  if (!Array.isArray(nodes)) return "";
+  return nodes.map(n => `
+    <div style="margin-left:12px;padding:2px 0;font-size:11px;color:var(--text-muted);">
+      ${n.type === "dir" ? "📁" : "📄"} ${escHtml(n.name)}
+      ${n.children ? renderTree(n.children) : ""}
+    </div>
+  `).join("");
+}
+
+// ============================================================
+//  SCROLL FADE-IN
+// ============================================================
+function initScrollFade() {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add("show"); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll(".fade-in").forEach(el => observer.observe(el));
+}
+
+// ============================================================
+//  PLAN EVENT LISTENER
+// ============================================================
+document.addEventListener("planUpdated", (e) => {
+  const d = e.detail;
+  if (d.usage_today != null) updateUsageMeter(d.usage_today, d.usage_limit);
+});
+
+// ============================================================
+//  INIT
+// ============================================================
+async function init() {
+  initApiKey();
+  initScrollFade();
+
+  const has = (id) => !!document.getElementById(id);
+
+  // Show risk chart empty state immediately — it populates after first scan
+  if (has("riskChart")) loadRiskChart([]);
+
+  // Load all data in parallel for speed
+  const tasks = [];
+  if (has("plan"))               tasks.push(loadPlan());
+  if (has("usage"))               tasks.push(loadUsage());
+  if (has("history"))             tasks.push(loadHistory());
+  if (has("usageChart"))          tasks.push(loadUsageChart());
+  if (has("teamList"))            tasks.push(loadTeam());
+  if (has("securityTrendChart"))  tasks.push(loadSecurityTrendChart());
+
+  await Promise.allSettled(tasks);
+}
+
+document.addEventListener("DOMContentLoaded", init);
+
+// ---- GLOBAL EXPORTS ----
+window.scan             = scan;
+window.scanRepo         = scanRepo;
+window.copyKey          = copyKey;
+window.toggleApiKey     = toggleApiKey;
+window.initApiKey       = initApiKey;   // FIX: expose so api.js rotateApiKey can call it
+window.logout           = logout;
+window.exportPDF        = exportPDF;
+window.openSide         = openSide;
+window.closeSide        = closeSide;
+window.askAI            = askAI;
+// FIX: fetchCVE is defined in api.js — don't re-export an undefined ref here
+// window.fetchCVE      = fetchCVE;  ← removed
+window.toggleVuln       = toggleVuln;
+window.renderVulnerabilities = renderVulnerabilities;
+window.loadRiskChart    = loadRiskChart;
+window.escHtml          = escHtml;
+window.cvssSev          = cvssSev;
+window.rotateApiKey     = rotateApiKey;
+
+// ---- PHASE 1 EXPORTS ----
+window.renderAutoFixCard      = renderAutoFixCard;
+window.renderSecurityScore    = renderSecurityScore;
+window.renderRepoHealth       = renderRepoHealth;
+window.loadSecurityTrendChart = loadSecurityTrendChart;
+window.exportExecutivePDF     = exportExecutivePDF;

@@ -408,6 +408,17 @@ class AIExplainRequest(BaseModel):
 # FIX: typed model for PDF endpoint — FastAPI cannot parse raw dict body
 class PDFReportRequest(BaseModel):
     findings: list = []
+    # ── Phase 1 additions (all optional, fully backward compatible) ──
+    scan_id:            str = ""
+    risk_level:         str = "NONE"
+    total_secrets:      int = 0
+    summary:            dict = {}
+    source:             str = ""
+    truncated:          bool = False
+    security_score:     int = 0
+    score_risk_level:   str = "Moderate"
+    repo_health:        dict | None = None
+    dependency_findings: list = []
 
 # ---- AUTH ----
 def get_user(request: Request, authorization: str = Header(None), x_api_key: str = Header(None)):
@@ -899,6 +910,45 @@ def get_org_users(auth=Depends(get_user)):
         return ok([])
     return ok(DB.fetch_org_members(org_id))
 
+# ══════════════════════════════════════════════════════════════
+#  PHASE 1 — ENTERPRISE AUDIT LOG  (item 10)
+# ══════════════════════════════════════════════════════════════
+@app.get("/api/audit-log")
+def get_audit_log(auth=Depends(get_user), limit: int = 50, action: str = ""):
+    """
+    Return recent audit log entries for the user's organization.
+
+    Query params:
+      limit:  max rows to return (default 50, capped at 200)
+      action: optional filter — "scan" | "login" | "subscription" | "admin"
+              (substring match against the stored action field)
+
+    Access:
+      - Pro/Enterprise/org-admin users see their organization's audit log.
+      - Free users see only their own events.
+
+    Requires a Pro or Enterprise plan for org-wide visibility — free users
+    are scoped to their own user_id only (existing security boundary).
+    """
+    user   = auth["user"]
+    org    = auth.get("org")
+    plan   = (user.get("plan") or "free").lower()
+    limit  = max(1, min(int(limit or 50), 200))
+
+    org_id = org["id"] if org else None
+    is_paid = plan in ("pro", "pro_trial", "enterprise")
+
+    try:
+        if is_paid and org_id:
+            rows = DB.fetch_audit_log(org_id=org_id, user_id=None, limit=limit, action_filter=action)
+        else:
+            rows = DB.fetch_audit_log(org_id=None, user_id=user["id"], limit=limit, action_filter=action)
+        return ok(rows)
+    except Exception as exc:
+        logger.error(f"audit-log fetch: {exc}")
+        return ok([])  # never break the dashboard on audit log errors
+
+
 @app.get("/api/dashboard")
 def get_dashboard(auth=Depends(get_user)):
     user   = auth["user"]
@@ -925,6 +975,50 @@ def get_history(auth=Depends(get_user)):
     user  = auth["user"]
     limit = get_plan_limits(user.get("plan", "free"))["history_limit"]
     return ok(DB.fetch_scan_history(user["id"], limit=min(limit, 20)))
+
+# ══════════════════════════════════════════════════════════════
+#  PHASE 1 — SECURITY TREND ANALYTICS  (item 8)
+# ══════════════════════════════════════════════════════════════
+@app.get("/api/analytics/security-trend")
+def get_security_trend(auth=Depends(get_user)):
+    """
+    Return the user's security_score trend over the last 30 days,
+    derived from analysis_history (the `scans` table).
+
+    Response:
+      {
+        "points": [ { "date": "2025-05-01", "score": 82 }, ... ],
+        "average_score": 78.4,
+        "best_score": 95,
+        "worst_score": 40,
+        "count": 24
+      }
+
+    Falls back to an empty series with zeroed stats if no history exists —
+    never errors, so the dashboard chart always has something to render.
+    """
+    user = auth["user"]
+    try:
+        rows = DB.fetch_security_score_trend(user["id"], days=30)
+    except Exception as exc:
+        logger.debug(f"security-trend fetch failed: {exc}")
+        rows = []
+
+    if not rows:
+        return ok({"points": [], "average_score": 0, "best_score": 0, "worst_score": 0, "count": 0})
+
+    scores = [r["score"] for r in rows if r.get("score") is not None]
+    if not scores:
+        return ok({"points": [], "average_score": 0, "best_score": 0, "worst_score": 0, "count": 0})
+
+    return ok({
+        "points":        [{"date": r["date"], "score": r["score"]} for r in rows],
+        "average_score": round(sum(scores) / len(scores), 1),
+        "best_score":    max(scores),
+        "worst_score":   min(scores),
+        "count":         len(scores),
+    })
+
 
 @app.post("/api/analyze")
 async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user)):
@@ -954,16 +1048,38 @@ async def analyze(req: AnalyzeRequest, request: Request, auth=Depends(get_user))
                                f"Review each finding below and apply the suggested fixes.",
                 "fixes": [f.get("fix","Review and sanitize this pattern.") for f in findings[:3]]
             }
+        # ── Original scoring — UNCHANGED, kept for backward compatibility ──
         sev_score = {"CRITICAL": 40, "HIGH": 25, "MEDIUM": 10, "LOW": 3}
         score     = min(100, sum(sev_score.get(f.get("severity", "LOW"), 3) for f in findings))
         hi_count  = sum(1 for f in findings if f.get("severity") in ("CRITICAL", "HIGH"))
         risk      = ("CRITICAL" if hi_count >= 3 else "HIGH" if hi_count >= 1 else "MEDIUM" if findings else "LOW")
+
+        # ── Phase 1 additions: weighted security score + compliance + auto-fix ──
+        # Additive only — new fields appended to response, nothing above changes.
+        try:
+            from security_engine import enrich_findings_full, compute_security_score
+            findings_enriched = enrich_findings_full(findings)
+            score_info        = compute_security_score(findings_enriched)
+            security_score    = score_info["security_score"]
+            score_risk_level  = score_info["risk_level"]
+        except Exception as _exc:
+            logger.debug(f"security_engine enrichment unavailable: {_exc}")
+            findings_enriched = findings
+            security_score    = max(0, 100 - score)   # best-effort fallback
+            score_risk_level  = "Moderate"
+
         analysis_id = str(uuid.uuid4())
-        DB.insert_scan_history({"id": analysis_id, "user_id": user["id"], "org_id": org_id, "input_text": req.text[:500], "risk": risk, "score": score, "findings_count": len(findings), "explanation": ai.get("explanation", "")[:1000], "fixes": ai.get("fixes", []), "timestamp": datetime.now(timezone.utc).isoformat()})
-        DB.write_audit_log(user["id"], "scan", org_id=org_id, resource="/api/analyze", ip_address=request.client.host, metadata={"findings": len(findings), "risk": risk})
+        DB.insert_scan_history({"id": analysis_id, "user_id": user["id"], "org_id": org_id, "input_text": req.text[:500], "risk": risk, "score": score, "security_score": security_score, "findings_count": len(findings), "explanation": ai.get("explanation", "")[:1000], "fixes": ai.get("fixes", []), "timestamp": datetime.now(timezone.utc).isoformat()})
+        DB.write_audit_log(user["id"], "scan", org_id=org_id, resource="/api/analyze", ip_address=request.client.host, metadata={"findings": len(findings), "risk": risk, "security_score": security_score})
         limits = get_plan_limits(user.get("plan", "free"))
-        logger.info(f"Scan: user={user['id']} plan={plan} findings={len(findings)} usage={usage_count}")
-        return ok({"id": analysis_id, "usage_today": usage_count, "usage_limit": limits["daily_scans"], "plan": plan, "findings": findings, "ai": ai, "risk": risk, "score": score})
+        logger.info(f"Scan: user={user['id']} plan={plan} findings={len(findings)} usage={usage_count} security_score={security_score}")
+        return ok({
+            "id": analysis_id, "usage_today": usage_count, "usage_limit": limits["daily_scans"],
+            "plan": plan, "findings": findings_enriched, "ai": ai, "risk": risk, "score": score,
+            # Phase 1 fields:
+            "security_score": security_score,
+            "score_risk_level": score_risk_level,
+        })
     except HTTPException:
         raise
     except Exception as exc:
@@ -1023,6 +1139,161 @@ async def cve_search(query: str, auth=Depends(get_user)):
         logger.error(f"CVE search: {exc}")
         fail("CVE lookup failed", 500)
 
+# ══════════════════════════════════════════════════════════════
+#  PHASE 1 — CVE ENRICHMENT 2.0  (item 9)
+#  New endpoint; the original /api/cve/search above is UNCHANGED
+#  so existing frontend calls keep working exactly as before.
+# ══════════════════════════════════════════════════════════════
+EPSS_API = "https://api.first.org/data/v1/epss"
+
+def _cvss_severity(score) -> str:
+    """Map a CVSS v3 base score to a severity label."""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+    if s >= 9.0:  return "CRITICAL"
+    if s >= 7.0:  return "HIGH"
+    if s >= 4.0:  return "MEDIUM"
+    if s > 0.0:   return "LOW"
+    return "NONE"
+
+
+@app.get("/api/cve/v2/search")
+async def cve_search_v2(query: str, auth=Depends(get_user)):
+    """
+    Enriched CVE lookup. For each CVE returned by NVD, also fetches its
+    EPSS (Exploit Prediction Scoring System) probability and assembles
+    a richer result shape:
+
+      {
+        "cves": [
+          {
+            "id": "CVE-2022-1234",
+            "cvss_score": 9.8,
+            "severity": "CRITICAL",
+            "published": "2022-03-15T00:00:00.000",
+            "description": "...",
+            "affected_products": ["cpe:2.3:a:vendor:product:*"],
+            "remediation": "Upgrade to version X or apply vendor patch.",
+            "references": ["https://..."],
+            "exploit_available": true,
+            "epss_score": 0.94
+          }
+        ],
+        "ai_suggestion": null   // populated only if NVD returned zero results
+      }
+
+    If NVD returns no results for the query, falls back to the AI model
+    to suggest the nearest matching vulnerability category (non-authoritative,
+    clearly labelled as an AI suggestion).
+    """
+    query = (query or "").strip()[:100]
+    if len(query) < 2:
+        fail("Query must be at least 2 characters")
+
+    cache_key = f"v2:{query}"
+    cached = DB.fetch_cve_cache(cache_key)
+    if cached:
+        return ok(cached)
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.get(CVE_API, params={"keywordSearch": query, "resultsPerPage": 5})
+        data = res.json()
+        vulns = data.get("vulnerabilities", [])
+
+        cves = []
+        cve_ids = []
+        for item in vulns:
+            cve   = item.get("cve", {})
+            cveid = cve.get("id", "")
+            cve_ids.append(cveid)
+
+            metrics  = cve.get("metrics", {})
+            cvss_obj = (metrics.get("cvssMetricV31") or metrics.get("cvssMetricV30") or metrics.get("cvssMetricV2") or [{}])[0]
+            cvss_data = cvss_obj.get("cvssData", {})
+            cvss_score = cvss_data.get("baseScore")
+
+            description = (cve.get("descriptions", [{}])[0].get("value", ""))[:500]
+
+            # Affected products (CPE configurations)
+            affected = []
+            for config in cve.get("configurations", []):
+                for node in config.get("nodes", []):
+                    for cpe_match in node.get("cpeMatch", []):
+                        if cpe_match.get("vulnerable"):
+                            affected.append(cpe_match.get("criteria", ""))
+            affected = affected[:5]
+
+            # References
+            refs = [r.get("url") for r in cve.get("references", [])][:5]
+
+            # Remediation — NVD doesn't always provide this; derive a generic message
+            remediation = (
+                f"Review the references for {cveid} and apply the vendor's recommended patch "
+                f"or upgrade affected packages to a non-vulnerable version."
+            )
+
+            cves.append({
+                "id":                cveid,
+                "cvss_score":        cvss_score,
+                "severity":          _cvss_severity(cvss_score),
+                "published":         cve.get("published", ""),
+                "description":       description,
+                "affected_products": affected,
+                "remediation":       remediation,
+                "references":        refs,
+                "exploit_available": None,   # populated below if EPSS lookup succeeds
+                "epss_score":        None,
+            })
+
+        # ── EPSS enrichment (exploit prediction scores) ─────────
+        if cve_ids:
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    epss_res = await client.get(EPSS_API, params={"cve": ",".join(cve_ids[:5])})
+                epss_data = epss_res.json().get("data", [])
+                epss_map  = {d["cve"]: d for d in epss_data}
+                for c in cves:
+                    e = epss_map.get(c["id"])
+                    if e:
+                        try:
+                            epss_score = float(e.get("epss", 0))
+                            c["epss_score"]        = round(epss_score, 4)
+                            c["exploit_available"] = epss_score >= 0.1   # heuristic threshold
+                        except (TypeError, ValueError):
+                            pass
+            except Exception as exc:
+                logger.debug(f"EPSS enrichment failed (non-fatal): {exc}")
+
+        result = {"cves": cves, "ai_suggestion": None}
+
+        # ── AI fallback if NVD found nothing ────────────────────
+        if not cves:
+            try:
+                ai_result = await ai_enrich(
+                    f"No exact CVE was found for the query '{query}'. "
+                    f"Based on your security knowledge, suggest the nearest matching "
+                    f"vulnerability category, typical CVSS severity range, and general "
+                    f"remediation advice. Be concise (2-3 sentences). This is a "
+                    f"non-authoritative AI suggestion, not a confirmed CVE.",
+                    [], depth="full",
+                )
+                result["ai_suggestion"] = ai_result.get("explanation", "")[:500]
+            except Exception as exc:
+                logger.debug(f"AI CVE fallback failed (non-fatal): {exc}")
+
+        DB.store_cve_cache(cache_key, result)
+        return ok(result)
+
+    except httpx.TimeoutException:
+        fail("CVE lookup timed out", 503)
+    except Exception as exc:
+        logger.error(f"CVE v2 search: {exc}")
+        fail("CVE lookup failed", 500)
+
+
 @app.post("/api/ai/explain")
 async def ai_explain(req: AIExplainRequest, auth=Depends(get_user)):
     user  = auth["user"]
@@ -1062,7 +1333,66 @@ def generate_pdf(data: PDFReportRequest, auth=Depends(get_user)):
         logger.error(f"PDF: {exc}")
         fail("PDF generation failed", 500)
 
-@app.get("/api/repo/tree")
+# ══════════════════════════════════════════════════════════════
+#  PHASE 1 — EXECUTIVE PDF REPORTS  (item 5)
+#  New endpoint. The original /api/report/pdf above is UNCHANGED.
+#  Gated to Pro / Enterprise / active trial — matches PDF download
+#  feature gating used elsewhere in the app.
+# ══════════════════════════════════════════════════════════════
+@app.post("/api/report/pdf/executive")
+def generate_executive_pdf_endpoint(data: PDFReportRequest, auth=Depends(get_user)):
+    """
+    Generate a multi-section executive security assessment PDF, including:
+      - Security score + risk level banner
+      - Repository health summary (if provided)
+      - Detailed CRITICAL/HIGH findings with OWASP/NIST compliance mapping
+      - Detected Secrets section
+      - Dependency risk table (if provided)
+      - OWASP Top 10 compliance coverage summary
+      - Actionable recommendations
+
+    Requires Pro, Pro Trial, or Enterprise plan (same gate as PDF downloads
+    elsewhere in the app). Free users receive a 403 with an upgrade prompt.
+    """
+    user = auth["user"]
+    plan = (user.get("plan") or "free").lower()
+    org  = auth.get("org")
+
+    if not has_feature(user, "pdf_download"):
+        fail("Executive PDF reports require a Pro or Enterprise plan. Start your free trial to unlock this feature.", 403)
+
+    result = {
+        "findings":            data.findings,
+        "risk_level":          data.risk_level,
+        "total_secrets":       data.total_secrets or len(data.findings),
+        "summary":             data.summary or {},
+        "source":              data.source,
+        "truncated":           data.truncated,
+        "security_score":      data.security_score,
+        "score_risk_level":    data.score_risk_level,
+        "repo_health":         data.repo_health,
+        "dependency_findings": data.dependency_findings,
+    }
+
+    scan_id  = data.scan_id or str(uuid.uuid4())
+    filepath = f"/tmp/executive_report_{uuid.uuid4()}.pdf"
+
+    try:
+        from pdf import generate_executive_pdf
+        generate_executive_pdf(
+            scan_id, result, filepath,
+            org_name=(org.get("name") if org else ""),
+            user_email=user.get("email", ""),
+        )
+        DB.write_audit_log(user["id"], "pdf_export", org_id=(org["id"] if org else None),
+                            resource="/api/report/pdf/executive",
+                            metadata={"scan_id": scan_id, "security_score": data.security_score})
+        return FileResponse(filepath, filename="safeaiscan-executive-report.pdf", media_type="application/pdf")
+    except Exception as exc:
+        logger.error(f"Executive PDF: {exc}")
+        fail("Executive PDF generation failed", 500)
+
+
 def get_repo_tree(repo_url: str, auth=Depends(get_user)):
     # repo_scan is available to all plans — pro_trial and free both get access
     # (free is limited by daily_scans count, not feature gate)
@@ -1321,6 +1651,8 @@ def cancel_subscription_endpoint(auth=Depends(get_user)):
         # Downgrade happens via webhook BILLING.SUBSCRIPTION.CANCELLED
         DB.update_user(user["id"], {"subscription_status": "CANCELLING"})
         DB.log_payment_event(user["id"], "USER_CANCELLED", subscription_id=sub_id)
+        DB.write_audit_log(user["id"], "subscription_cancel", org_id=user.get("org_id"),
+                            metadata={"subscription_id": sub_id})
         logger.info(f"Subscription cancelled by user: {user['id']}")
         return ok({"message": "Subscription cancelled. You keep Pro access until your next billing date."})
     else:

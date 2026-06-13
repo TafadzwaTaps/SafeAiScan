@@ -699,22 +699,30 @@ def insert_scan_history(data: dict) -> bool:
     """
     Persist a scan result. Maps old field names to the scans table schema.
     Accepts both old-style dicts (risk/score/findings_count) and new-style.
+
+    Phase 1: also stores `security_score` (weighted 0-100 score) inside
+    result_json so /api/analytics/security-trend can chart it over time.
+    Backward compatible — defaults to the legacy `score` if not provided.
     """
     try:
+        security_score = data.get("security_score", data.get("score", 0))
         row = {
             "user_id":       data.get("user_id"),
             "source":        data.get("input_text", "")[:120] or "code_paste",
             "risk_level":    data.get("risk", data.get("risk_level", "LOW")),
             "total_secrets": data.get("findings_count", 0),
             "result_json": {
-                "explanation":    data.get("explanation", ""),
-                "fixes":          data.get("fixes", []),
-                "score":          data.get("score", 0),
-                "findings_count": data.get("findings_count", 0),
+                "explanation":     data.get("explanation", ""),
+                "fixes":           data.get("fixes", []),
+                "score":           data.get("score", 0),
+                "security_score":  security_score,
+                "findings_count":  data.get("findings_count", 0),
             },
         }
         if data.get("id"):
             row["id"] = data["id"]
+        if data.get("timestamp"):
+            row["created_at"] = data["timestamp"]
         _get_db().table("scans").insert(row).execute()
         return True
     except Exception as e:
@@ -725,6 +733,94 @@ def insert_scan_history(data: dict) -> bool:
 def fetch_scan_history(user_id: str, limit: int = 20) -> list:
     """Fetch scan history for a user, newest first."""
     return list_scans(user_id, limit=limit)
+
+
+# ══════════════════════════════════════════════════════════════
+#  PHASE 1 — SECURITY TREND ANALYTICS
+# ══════════════════════════════════════════════════════════════
+
+def fetch_security_score_trend(user_id: str, days: int = 30) -> list:
+    """
+    Return the security_score for each scan in the last `days` days,
+    newest last (chronological order — good for line charts).
+
+    Returns:
+        [ { "date": "2025-05-01", "score": 82 }, ... ]
+
+    Reads from the `scans` table's result_json.security_score field.
+    Falls back to result_json.score (legacy) if security_score is absent.
+    Never raises — returns [] on any error so the dashboard chart
+    always has *something* to render (an empty state).
+    """
+    try:
+        from datetime import datetime, timezone, timedelta
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+        res = (
+            _get_db().table("scans")
+            .select("created_at, result_json")
+            .eq("user_id", user_id)
+            .gte("created_at", since)
+            .order("created_at", desc=False)
+            .limit(500)
+            .execute()
+        )
+        rows = res.data or []
+
+        points = []
+        for r in rows:
+            rj = r.get("result_json") or {}
+            score = rj.get("security_score", rj.get("score"))
+            if score is None:
+                continue
+            created = r.get("created_at", "")
+            date_str = created[:10] if created else ""
+            points.append({"date": date_str, "score": int(score)})
+
+        return points
+    except Exception as e:
+        logger.debug(f"fetch_security_score_trend (non-fatal): {e}")
+        return []
+
+
+# ══════════════════════════════════════════════════════════════
+#  PHASE 1 — ENTERPRISE AUDIT LOG QUERIES
+# ══════════════════════════════════════════════════════════════
+
+def fetch_audit_log(org_id: str | None = None, user_id: str | None = None,
+                     limit: int = 50, action_filter: str = "") -> list:
+    """
+    Fetch audit log entries, newest first.
+
+    At least one of org_id / user_id should be provided to scope results.
+    If both are None, returns [] (avoids accidentally returning all rows).
+
+    action_filter: optional substring match against the `action` column
+    (e.g. "scan", "login", "subscription", "admin").
+
+    Returns a list of dicts with at least: id, user_id, action, created_at,
+    plus any of org_id/resource/ip_address/metadata that exist on the row.
+    Never raises — returns [] on any error.
+    """
+    if not org_id and not user_id:
+        return []
+
+    try:
+        q = _get_db().table("audit_logs").select("*")
+        if org_id:
+            q = q.eq("org_id", org_id)
+        elif user_id:
+            q = q.eq("user_id", user_id)
+
+        if action_filter:
+            # Supabase PostgREST 'ilike' for case-insensitive substring match
+            q = q.ilike("action", f"%{action_filter}%")
+
+        res = q.order("created_at", desc=True).limit(limit).execute()
+        return res.data or []
+    except Exception as e:
+        logger.debug(f"fetch_audit_log (non-fatal): {e}")
+        return []
 
 
 # ── Usage tracking ────────────────────────────────────────────
